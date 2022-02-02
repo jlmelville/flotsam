@@ -3,6 +3,7 @@
 Finicky LOcal Tangent Space Alignment Method
 
 <!-- badges: start -->
+[![R-CMD-check](https://github.com/jlmelville/flotsam/workflows/R-CMD-check/badge.svg)](https://github.com/jlmelville/flotsam/actions)
 <!-- badges: end -->
 
 An implementation of the [Local Tangent Space
