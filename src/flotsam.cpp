@@ -98,7 +98,7 @@ create_idx1d(const integers& nnt, std::size_t n_nbrs, std::size_t n_obs)
   return ridx;
 }
 
-[[cpp11::register]] writable::list
+[[cpp11::register]] list
 nbrhood_triplets(const integers& nnt, std::size_t n_nbrs) {
   auto n_obs = nnt.size() / n_nbrs;
 

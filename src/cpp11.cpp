@@ -20,7 +20,7 @@ extern "C" SEXP _flotsam_spm_times_scalar(SEXP ps, SEXP xs, SEXP ds) {
   END_CPP11
 }
 // flotsam.cpp
-writable::list nbrhood_triplets(const integers& nnt, std::size_t n_nbrs);
+list nbrhood_triplets(const integers& nnt, std::size_t n_nbrs);
 extern "C" SEXP _flotsam_nbrhood_triplets(SEXP nnt, SEXP n_nbrs) {
   BEGIN_CPP11
     return cpp11::as_sexp(nbrhood_triplets(cpp11::as_cpp<cpp11::decay_t<const integers&>>(nnt), cpp11::as_cpp<cpp11::decay_t<std::size_t>>(n_nbrs)));
