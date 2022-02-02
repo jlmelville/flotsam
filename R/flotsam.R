@@ -324,19 +324,6 @@ diag_spm <- function(m) {
 }
 
 lsym_norm <- function(M, D) {
-  n <- nrow(M)
-  x <- M@x
-  ps <- M@p
-  for (i in 1:n) {
-    begin <- ps[i] + 1
-    end <- ps[i + 1]
-    x[begin:end] <- x[begin:end] * D[i]
-  }
-  M@x <- x
-  D * M
-}
-
-lsym_norm_new <- function(M, D) {
   M@x <- spm_times_scalar(M@p, M@x, D)
   D * M
 }
