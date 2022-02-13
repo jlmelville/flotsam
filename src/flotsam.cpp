@@ -2,7 +2,6 @@
 #include <cpp11.hpp>
 #include <cpp11/doubles.hpp>
 #include <cpp11/integers.hpp>
-#include <iostream>
 #include <unordered_set>
 #include <vector>
 using namespace cpp11;
@@ -65,11 +64,11 @@ sparse_idxs(const integers& is, const integers& ps, const integers& ns) {
   return dxs;
 }
 
-std::vector<int>
+std::vector<std::size_t>
 create_idx1d(const integers& nnt, std::size_t n_nbrs, std::size_t n_obs)
 {
-  std::unordered_set<int> all_idx;
-  std::unordered_set<int> tmp;
+  std::unordered_set<std::size_t> all_idx;
+  std::unordered_set<std::size_t> tmp;
   for (std::size_t i = 0; i < n_obs; i++) {
     auto inbrs = i * n_nbrs;
     for (std::size_t j = 0; j < n_nbrs; j++) {
@@ -91,7 +90,7 @@ create_idx1d(const integers& nnt, std::size_t n_nbrs, std::size_t n_obs)
   }
 
   // create sorted vector from set
-  std::vector<int> ridx;
+  std::vector<std::size_t> ridx;
   ridx.reserve(all_idx.size());
   ridx.insert(ridx.end(), all_idx.begin(), all_idx.end());
 
@@ -103,7 +102,7 @@ nbrhood_triplets(const integers& nnt, std::size_t n_nbrs) {
   auto n_obs = nnt.size() / n_nbrs;
 
   // find unique 1D indices (i < j only)
-  std::vector<int> ridx = create_idx1d(nnt, n_nbrs, n_obs);
+  std::vector<std::size_t> ridx = create_idx1d(nnt, n_nbrs, n_obs);
 
   std::sort(ridx.begin(), ridx.end());
 
