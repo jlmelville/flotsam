@@ -348,7 +348,7 @@ norm_and_shift_L <- function(L) {
 rs_opt <- function(n) {
   list(
     tol = 1e-6,
-    initvec = stats::runif(n, min = -1, max = 1)
+    initvec = jitter(rep(1, n))
   )
 }
 
