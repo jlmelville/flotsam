@@ -22,10 +22,6 @@ be Fast.
 devtools::install_github("jlmelville/flotsam")
 ```
 
-This package relies on a package
-([rnndescent](https://www.github.com/jlmelville/rnndescent)) which is not on
-CRAN.
-
 ## Example
 
 ``` r
@@ -35,6 +31,7 @@ library(flotsam)
 n <- 1000
 max_z <- 10
 
+# phi represents the position along the roll
 phi <- stats::runif(n, min = 1.5 * pi, max = 4.5 * pi)
 x <- phi * cos(phi)
 y <- phi * sin(phi)
@@ -52,7 +49,7 @@ swiss_unrolled <-
 plot(swiss_unrolled, col = phi)
 ```
 
-## A Brief Description of LTSA
+## A Not-Very Brief Description of LTSA
 
 The mathematics and some of the descriptions of LTSA are not always very clear,
 but this is what happens:
@@ -111,9 +108,9 @@ also be due to insufficiently tight convergence criteria. Some `B` matrices
 have several eigenvectors with very very similar eigenvalues, which will then
 be returned in the wrong order.
 * RSpectra hangs, doing nothing, very slowly increasing its memory usage. This
-seems to happen [during sparse
-factorization](https://github.com/yixuan/spectra/issues/126). Unfortunately, I
-don't have a solution for this.
+seems to happen
+[during sparse factorization](https://github.com/yixuan/spectra/issues/126).
+Unfortunately, I don't have a solution for this.
 
 If you use `method = "irlba"` or `method = "svdr"` then different functions in
 irlba will be used instead of RSpectra. These are more likely to finish their

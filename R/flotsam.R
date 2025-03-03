@@ -304,7 +304,7 @@ create_sparse <- function(nn_idx, verbose = FALSE) {
     Dim = as.integer(c(n, n))
   )
   m <- m + Matrix::t(m)
-  methods::as(m, "dgCMatrix")
+  methods::as(m, "CsparseMatrix")
 }
 
 find_in_spsq <- function(m, is) {
