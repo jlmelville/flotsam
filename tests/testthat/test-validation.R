@@ -48,8 +48,16 @@ test_that("dimension and neighborhood arguments are validated", {
     "ndim"
   )
   expect_error(
+    ltsa(iris[1:10, ], ndim = 10),
+    "ndim must be less than the number of observations"
+  )
+  expect_error(
     ltsa(iris[1:10, ], n_neighbors = 2, ndim = 2),
     "greater than ndim"
+  )
+  expect_error(
+    ltsa(iris[1:10, ], n_neighbors = 11, include_self = TRUE),
+    "too large"
   )
   expect_error(
     ltsa(iris[1:10, ], n_neighbors = 10, include_self = FALSE),
@@ -58,6 +66,25 @@ test_that("dimension and neighborhood arguments are validated", {
   expect_error(
     ltsa(iris[1:10, ], n_threads = -1),
     "n_threads"
+  )
+})
+
+test_that("logical arguments must be scalar TRUE or FALSE", {
+  expect_error(
+    ltsa(iris[1:10, ], include_self = NA),
+    "include_self"
+  )
+  expect_error(
+    ltsa(iris[1:10, ], normalize = c(TRUE, FALSE)),
+    "normalize"
+  )
+  expect_error(
+    ltsa(iris[1:10, ], ret_B = 1),
+    "ret_B"
+  )
+  expect_error(
+    ltsa(iris[1:10, ], verbose = NA),
+    "verbose"
   )
 })
 

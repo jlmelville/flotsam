@@ -190,3 +190,121 @@ test_that("triplet assembly component helper validates neighbor indices", {
     "outside the sparse matrix dimensions"
   )
 })
+
+test_that("append/finalize builder validates lifecycle", {
+  builder <- flotsam:::ltsa_triplet_builder_create(
+    value_nnt = c(1L, 2L, 1L, 2L),
+    value_n_nbrs = 2L
+  )
+
+  expect_error(
+    flotsam:::ltsa_triplet_builder_finalize(builder),
+    "Not all LTSA neighborhoods were appended"
+  )
+
+  flotsam:::ltsa_triplet_builder_append(
+    builder,
+    nni = c(1L, 2L),
+    weights = c(1, 0, 0, 1)
+  )
+  flotsam:::ltsa_triplet_builder_append(
+    builder,
+    nni = c(1L, 2L),
+    weights = c(1, 0, 0, 1)
+  )
+
+  components <- flotsam:::ltsa_triplet_builder_finalize(builder)
+  expect_named(components, c("i", "p", "x"))
+  expect_error(
+    flotsam:::ltsa_triplet_builder_finalize(builder),
+    "already been finalized"
+  )
+  expect_error(
+    flotsam:::ltsa_triplet_builder_append(
+      builder,
+      nni = c(1L, 2L),
+      weights = c(1, 0, 0, 1)
+    ),
+    "already been finalized"
+  )
+})
+
+test_that("append/finalize builder validates append dimensions and indices", {
+  expect_error(
+    flotsam:::ltsa_triplet_builder_create(
+      value_nnt = integer(),
+      value_n_nbrs = 2L
+    ),
+    "must not be empty"
+  )
+  expect_error(
+    flotsam:::ltsa_triplet_builder_create(
+      value_nnt = c(1L, 2L, 1L),
+      value_n_nbrs = 2L
+    ),
+    "Inconsistent value neighborhood dimensions"
+  )
+  expect_error(
+    flotsam:::ltsa_triplet_builder_create(
+      value_nnt = c(1L, 3L, 1L, 2L),
+      value_n_nbrs = 2L
+    ),
+    "outside the sparse matrix dimensions"
+  )
+
+  builder <- flotsam:::ltsa_triplet_builder_create(
+    value_nnt = c(1L, 2L, 1L, 2L),
+    value_n_nbrs = 2L
+  )
+  expect_error(
+    flotsam:::ltsa_triplet_builder_append(
+      builder,
+      nni = c(1L),
+      weights = c(1, 0, 0, 1)
+    ),
+    "Inconsistent value neighborhood dimensions"
+  )
+  expect_error(
+    flotsam:::ltsa_triplet_builder_append(
+      builder,
+      nni = c(1L, 2L),
+      weights = c(1, 0)
+    ),
+    "Inconsistent local weight dimensions"
+  )
+  expect_error(
+    flotsam:::ltsa_triplet_builder_append(
+      builder,
+      nni = c(1L, 3L),
+      weights = c(1, 0, 0, 1)
+    ),
+    "outside the sparse matrix dimensions"
+  )
+})
+
+test_that("append/finalize builder rejects too many appended neighborhoods", {
+  builder <- flotsam:::ltsa_triplet_builder_create(
+    value_nnt = c(1L, 2L, 1L, 2L),
+    value_n_nbrs = 2L
+  )
+
+  flotsam:::ltsa_triplet_builder_append(
+    builder,
+    nni = c(1L, 2L),
+    weights = c(1, 0, 0, 1)
+  )
+  flotsam:::ltsa_triplet_builder_append(
+    builder,
+    nni = c(1L, 2L),
+    weights = c(1, 0, 0, 1)
+  )
+
+  expect_error(
+    flotsam:::ltsa_triplet_builder_append(
+      builder,
+      nni = c(1L, 2L),
+      weights = c(1, 0, 0, 1)
+    ),
+    "Too many LTSA neighborhoods appended"
+  )
+})
