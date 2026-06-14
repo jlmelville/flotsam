@@ -150,6 +150,8 @@ ltsa <-
     tsmessage("Getting neighborhoods")
     # This is the slow bit
     prev_time <- Sys.time()
+    rank_deficient_count <- 0L
+    min_local_rank <- ndim
     for (i in 1:n) {
       # N
       if (verbose) {
@@ -167,8 +169,13 @@ ltsa <-
       # centered neighborhood k X M
       Xi <- (scale(X[nni, ], center = TRUE, scale = FALSE))
 
-      # get the right singular vectors
-      Vi <- svecs(Xi, ndim)
+      # get the local tangent basis
+      local_basis <- svecs(Xi, ndim)
+      Vi <- local_basis$vectors
+      if (local_basis$rank < ndim) {
+        rank_deficient_count <- rank_deficient_count + 1L
+        min_local_rank <- min(min_local_rank, local_basis$rank)
+      }
 
       # binding the 1/sqrt_k column handles the centering part during the crossprod
       Gi <- cbind(1 / sqrt(k), Vi)
@@ -181,6 +188,18 @@ ltsa <-
       Bx[spi] <- Bx[spi] + Wi
     }
     B@x <- Bx
+
+    if (rank_deficient_count > 0) {
+      warning(
+        rank_deficient_count,
+        " local neighborhoods had numerical rank below ndim = ",
+        ndim,
+        "; lower-dimensional local bases were used. Minimum local rank was ",
+        min_local_rank,
+        ".",
+        call. = FALSE
+      )
+    }
 
     if (ret_B) {
       return(B)
@@ -447,8 +466,32 @@ svecs <- function(X, ndim = 2) {
   ndim <- min(ndim, max_rank)
 
   if (ndim < 0.5 * max_rank) {
-    irlba::irlba(X, nu = ndim, nv = 0)$u
+    res <- tryCatch(
+      suppressWarnings(irlba::irlba(X, nu = ndim, nv = 0)),
+      error = function(e) NULL
+    )
+    if (is.null(res)) {
+      res <- svd(X, nu = ndim, nv = 0)
+    }
   } else {
-    svd(X, nu = ndim, nv = 0)$u
+    res <- svd(X, nu = ndim, nv = 0)
   }
+  rank <- numerical_rank(res$d, dim(X))
+  keep <- seq_len(min(ndim, length(res$d), ncol(res$u)))
+  keep <- keep[res$d[keep] > rank$tol]
+
+  list(
+    vectors = res$u[, keep, drop = FALSE],
+    rank = rank$rank,
+    tol = rank$tol
+  )
+}
+
+numerical_rank <- function(d, dims) {
+  if (length(d) == 0 || max(d) == 0) {
+    return(list(rank = 0L, tol = 0))
+  }
+  # standard conservative tolerance for numerical rank
+  tol <- max(dims) * max(d) * .Machine$double.eps
+  list(rank = sum(d > tol), tol = tol)
 }
