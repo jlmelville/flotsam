@@ -60,3 +60,17 @@ test_that("dimension and neighborhood arguments are validated", {
     "n_threads"
   )
 })
+
+test_that("eigenanalysis errors are not swallowed", {
+  expect_error(
+    ltsa(
+      iris[1:10, ],
+      nn_method = "exact",
+      n_neighbors = 8,
+      include_self = FALSE,
+      eig_method = "svdr",
+      not_an_argument = TRUE
+    ),
+    "unused argument"
+  )
+})

@@ -196,118 +196,95 @@ ltsa <-
 
     tsmessage("Performing eigenanalysis")
 
-    res <- NULL
-    out <- tryCatch(
-      {
-        if (normalize) {
-          switch(tolower(eig_method),
-            irlba = {
-              eig_args <- lmerge(
-                list(
-                  A = B,
-                  nv = ndim + 1,
-                  nu = 0
-                ),
-                list(...)
-              )
-              tsmessage("Calling irlba")
-              res <-
-                do.call(irlba::irlba, eig_args)$v[, 2:(ndim + 1)]
-            },
-            svdr = {
-              eig_args <- lmerge(
-                list(
-                  x = B,
-                  k = ndim + 1
-                ),
-                list(...)
-              )
-              tsmessage("Calling irlba svdr")
-              res <-
-                do.call(irlba::svdr, eig_args)$v[, 2:(ndim + 1)]
-            },
-            rspectra = {
-              tsmessage("Calling rspectra")
-
-              eig_args <- list(
-                A = B,
-                k = ndim + 1,
-                which = "LM",
-                opts = rs_opt(ncol(B)),
-                sigma = rs_sigma_eps() + 2.0
-              )
-              eig_args$opts <- lmerge(eig_args$opts, list(...))
-
-              res <-
-                do.call(RSpectra::eigs_sym, eig_args)$vectors
-              if (ncol(res) != ndim + 1) {
-                stop("Can't find enough vectors")
-              }
-              res <- res[, 2:(ndim + 1)]
-            },
-            fullsvd = {
-              tsmessage("Using full SVD")
-              res <-
-                svd(as.matrix(B), nv = ndim + 1, nu = 0)$v[, 2:(ndim + 1)]
-            },
-            eig = {
-              tsmessage("Using full eigenvalue decomposition")
-              res <- eigen(as.matrix(B))$vectors[, 2:(ndim + 1)]
-            },
-            stop(
-              "Unknown method: '",
-              eig_method,
-              "' for normalized Laplacian"
-            )
+    out <- if (normalize) {
+      switch(eig_method,
+        irlba = {
+          eig_args <- lmerge(
+            list(
+              A = B,
+              nv = ndim + 1,
+              nu = 0
+            ),
+            list(...)
           )
-          Dinvs * res
-        } else {
-          switch(tolower(eig_method),
-            rspectra = {
-              tsmessage("Calling rspectra")
-              opt <- lmerge(rs_opt(ncol(B)), list(...))
-              res <-
-                rs_eig(B, k = ndim + 1, list(opt = opt), verbose = verbose)$vectors
-              if (ncol(res) != ndim + 1) {
-                stop("Can't find enough vectors")
-              }
-              res[, 2:(ndim + 1)]
-            },
-            irlba = {
-              res <- irlba_eig(B, k = ndim + 1, ...)
-              res[, 2:(ndim + 1)]
-            },
-            svdr = {
-              res <- svdr_eig(B, k = ndim + 1, ...)
-              res[, 2:(ndim + 1)]
-            },
-            fullsvd = {
-              tsmessage("Using full SVD")
-              res <- svd(as.matrix(B))$v
-              nvec <- ncol(res)
-              res <- res[, rev((nvec - ndim):(nvec - 1))]
-            },
-            eig = {
-              tsmessage("Using full eigenvalue decomposition")
-              res <- eigen(as.matrix(B), symmetric = TRUE)$vectors
-              nvec <- ncol(res)
-              res <- res[, rev((nvec - ndim):(nvec - 1))]
-            },
-            stop(
-              "Unknown method '",
-              eig_method,
-              "' with un-normalized Laplacian"
-            )
+          tsmessage("Calling irlba")
+          res <-
+            do.call(irlba::irlba, eig_args)$v[, 2:(ndim + 1)]
+        },
+        svdr = {
+          eig_args <- lmerge(
+            list(
+              x = B,
+              k = ndim + 1
+            ),
+            list(...)
           )
+          tsmessage("Calling irlba svdr")
+          res <-
+            do.call(irlba::svdr, eig_args)$v[, 2:(ndim + 1)]
+        },
+        rspectra = {
+          tsmessage("Calling rspectra")
+
+          eig_args <- list(
+            A = B,
+            k = ndim + 1,
+            which = "LM",
+            opts = rs_opt(ncol(B)),
+            sigma = rs_sigma_eps() + 2.0
+          )
+          eig_args$opts <- lmerge(eig_args$opts, list(...))
+
+          res <-
+            do.call(RSpectra::eigs_sym, eig_args)$vectors
+          if (ncol(res) != ndim + 1) {
+            stop("Can't find enough vectors")
+          }
+          res <- res[, 2:(ndim + 1)]
+        },
+        fullsvd = {
+          tsmessage("Using full SVD")
+          res <-
+            svd(as.matrix(B), nv = ndim + 1, nu = 0)$v[, 2:(ndim + 1)]
+        },
+        eig = {
+          tsmessage("Using full eigenvalue decomposition")
+          res <- eigen(as.matrix(B))$vectors[, 2:(ndim + 1)]
         }
-      },
-      error = function(cond) {
-        tsmessage(cond)
-        NULL
-      }
-    )
-    if (is.null(out)) {
-      tsmessage("Eigenanalysis failed")
+      )
+      Dinvs * res
+    } else {
+      switch(eig_method,
+        rspectra = {
+          tsmessage("Calling rspectra")
+          res <-
+            rs_eig(B, k = ndim + 1, ..., verbose = verbose)$vectors
+          if (ncol(res) != ndim + 1) {
+            stop("Can't find enough vectors")
+          }
+          res[, 2:(ndim + 1)]
+        },
+        irlba = {
+          res <- irlba_eig(B, k = ndim + 1, ...)
+          res[, 2:(ndim + 1)]
+        },
+        svdr = {
+          res <- svdr_eig(B, k = ndim + 1, ...)
+          res[, 2:(ndim + 1)]
+        },
+        fullsvd = {
+          tsmessage("Using full SVD")
+          res <- svd(as.matrix(B))$v
+          nvec <- ncol(res)
+          res <- res[, rev((nvec - ndim):(nvec - 1))]
+        },
+        eig = {
+          tsmessage("Using full eigenvalue decomposition")
+          res <- eigen(as.matrix(B), symmetric = TRUE)$vectors
+          nvec <- ncol(res)
+          res <- res[, rev((nvec - ndim):(nvec - 1))]
+        }
+      )
     }
     tsmessage("Finished")
     out
