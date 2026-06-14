@@ -35,7 +35,7 @@ Slow for large datasets.
 
 \item{eig_method}{How to carry out the eigendecomposition. Possible values are:
 \itemize{
-\item \code{"rspectra"} Use \code{\link[RSpectra:eigs]{RSpectra::eigs_sym()}}.
+\item \code{"rspectra"} Use \code{\link[RSpectra:eigs_sym]{RSpectra::eigs_sym()}}.
 \item \code{"irlba"} Use \code{\link[irlba:irlba]{irlba::irlba()}}.
 \item \verb{"svdr} Use \code{\link[irlba:svdr]{irlba::svdr()}}.
 \item \code{"fullsvd"} Use the \code{\link[base:svd]{base::svd()}} function. This is only feasible for small
@@ -86,7 +86,7 @@ For \code{"svdr"} suitable arguments are:
 \item \code{it}  Maximum number of iterations.
 }
 
-For more details see the documentation for \code{\link[RSpectra:eigs]{RSpectra::eigs_sym()}},
+For more details see the documentation for \code{\link[RSpectra:eigs_sym]{RSpectra::eigs_sym()}},
 \code{\link[irlba:irlba]{irlba::irlba()}} and \code{\link[irlba:svdr]{irlba::svdr()}} functions, respectively. Don't pass
 other arguments unless you know what you are doing, as it may cause the
 \code{ltsa} to fail.}
