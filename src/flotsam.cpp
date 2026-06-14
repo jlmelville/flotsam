@@ -6,6 +6,7 @@
 #include <cpp11/integers.hpp>
 #include <cpp11/matrix.hpp>
 #include <limits>
+#include <memory>
 #include <vector>
 
 #include <R_ext/BLAS.h>
@@ -52,6 +53,23 @@ struct LocalWeights {
   int rank = 0;
 };
 
+struct GramLocalWeightsWorkspace {
+  GramLocalWeightsWorkspace(std::size_t n_nbrs, std::size_t n_dim, int ndim);
+
+  std::size_t n_nbrs_size;
+  std::size_t n_dim_size;
+  int n_nbrs;
+  int n_dim;
+  int requested;
+  std::vector<int> nni;
+  std::vector<double> centered;
+  std::vector<double> gram;
+  std::vector<double> values;
+  std::vector<double> work;
+  std::vector<double> weights;
+  std::vector<int> keep;
+};
+
 std::size_t checked_triplet_count(std::size_t n_obs, std::size_t n_nbrs,
                                   const char* name);
 
@@ -70,13 +88,29 @@ std::vector<int> flat_neighbors_zero_based(const integers& value_nnt,
                                            std::size_t offset,
                                            std::size_t n_nbrs);
 
+void fill_flat_neighbors_zero_based(const integers& value_nnt,
+                                    std::size_t offset, std::size_t n_nbrs,
+                                    std::vector<int>& out);
+
 void fill_centered_neighborhood(const doubles_matrix<>& x,
                                 const std::vector<int>& nni,
                                 std::vector<double>& centered);
 
+void fill_centered_neighborhood_ptr(const double* x_data, std::size_t n_obs,
+                                    const std::vector<int>& nni,
+                                    std::vector<double>& centered,
+                                    std::size_t n_dim);
+
 void fill_weights_from_basis(std::size_t n_nbrs, const std::vector<int>& keep,
                              const std::vector<double>& basis,
                              std::vector<double>& weights);
+
+int query_dsyev_workspace(int n, std::vector<double>& gram,
+                          std::vector<double>& values);
+
+int compute_local_weights_gram_workspace(const double* x_data,
+                                         std::size_t n_obs,
+                                         GramLocalWeightsWorkspace& workspace);
 
 LocalWeights compute_local_weights_svd(const doubles_matrix<>& x,
                                        const std::vector<int>& nni, int ndim);
@@ -270,6 +304,39 @@ int checked_lapack_dim(std::size_t value, const char* name) {
   return static_cast<int>(value);
 }
 
+int query_dsyev_workspace(int n, std::vector<double>& gram,
+                          std::vector<double>& values) {
+  char jobz = 'V';
+  char uplo = 'U';
+  int lwork = -1;
+  int info = 0;
+  double work_query = 0.0;
+
+  F77_CALL(dsyev)(&jobz, &uplo, &n, gram.data(), &n, values.data(), &work_query,
+                  &lwork, &info FCONE FCONE);
+  if (info != 0) {
+    stop("LAPACK dsyev workspace query failed with info = %d", info);
+  }
+  if (work_query > std::numeric_limits<int>::max()) {
+    stop("LAPACK dsyev workspace is too large");
+  }
+
+  return std::max(1, static_cast<int>(work_query));
+}
+
+GramLocalWeightsWorkspace::GramLocalWeightsWorkspace(std::size_t n_nbrs,
+                                                     std::size_t n_dim,
+                                                     int ndim)
+    : n_nbrs_size(n_nbrs), n_dim_size(n_dim),
+      n_nbrs(checked_lapack_dim(n_nbrs, "n_neighbors")),
+      n_dim(checked_lapack_dim(n_dim, "ncol(X)")),
+      requested(std::min(ndim, std::min(this->n_nbrs, this->n_dim))),
+      nni(n_nbrs), centered(n_nbrs * n_dim), gram(n_nbrs * n_nbrs),
+      values(n_nbrs), weights(n_nbrs * n_nbrs) {
+  keep.reserve(requested);
+  work.resize(query_dsyev_workspace(this->n_nbrs, gram, values));
+}
+
 std::vector<int> checked_neighbors(const integers& nni, std::size_t n_obs) {
   if (nni.size() == 0) {
     stop("Neighborhood must not be empty");
@@ -286,10 +353,17 @@ std::vector<int> flat_neighbors_zero_based(const integers& value_nnt,
                                            std::size_t offset,
                                            std::size_t n_nbrs) {
   std::vector<int> out(n_nbrs);
+  fill_flat_neighbors_zero_based(value_nnt, offset, n_nbrs, out);
+  return out;
+}
+
+void fill_flat_neighbors_zero_based(const integers& value_nnt,
+                                    std::size_t offset, std::size_t n_nbrs,
+                                    std::vector<int>& out) {
+  out.resize(n_nbrs);
   for (std::size_t local = 0; local < n_nbrs; local++) {
     out[local] = value_nnt[offset + local] - 1;
   }
-  return out;
 }
 
 void fill_centered_neighborhood(const doubles_matrix<>& x,
@@ -308,6 +382,27 @@ void fill_centered_neighborhood(const doubles_matrix<>& x,
 
     for (std::size_t row = 0; row < n_nbrs; row++) {
       centered[col * n_nbrs + row] = x(nni[row], col) - mean;
+    }
+  }
+}
+
+void fill_centered_neighborhood_ptr(const double* x_data, std::size_t n_obs,
+                                    const std::vector<int>& nni,
+                                    std::vector<double>& centered,
+                                    std::size_t n_dim) {
+  const std::size_t n_nbrs = nni.size();
+
+  for (std::size_t col = 0; col < n_dim; col++) {
+    const double* col_ptr = x_data + col * n_obs;
+    double mean = 0.0;
+    for (std::size_t row = 0; row < n_nbrs; row++) {
+      mean += col_ptr[nni[row]];
+    }
+    mean /= static_cast<double>(n_nbrs);
+
+    double* centered_col = centered.data() + col * n_nbrs;
+    for (std::size_t row = 0; row < n_nbrs; row++) {
+      centered_col[row] = col_ptr[nni[row]] - mean;
     }
   }
 }
@@ -486,6 +581,64 @@ LocalWeights compute_local_weights_gram(const doubles_matrix<>& x,
   return out;
 }
 
+int compute_local_weights_gram_workspace(const double* x_data,
+                                         std::size_t n_obs,
+                                         GramLocalWeightsWorkspace& workspace) {
+  fill_centered_neighborhood_ptr(x_data, n_obs, workspace.nni,
+                                 workspace.centered, workspace.n_dim_size);
+
+  char uplo = 'U';
+  char trans = 'N';
+  double alpha = 1.0;
+  double beta = 0.0;
+  int n = workspace.n_nbrs;
+  int k = workspace.n_dim;
+  int lda = workspace.n_nbrs;
+  int ldc = workspace.n_nbrs;
+  F77_CALL(dsyrk)(&uplo, &trans, &n, &k, &alpha, workspace.centered.data(),
+                  &lda, &beta, workspace.gram.data(), &ldc FCONE FCONE);
+
+  char jobz = 'V';
+  int info = 0;
+  int lwork = static_cast<int>(workspace.work.size());
+  F77_CALL(dsyev)(&jobz, &uplo, &n, workspace.gram.data(), &n,
+                  workspace.values.data(), workspace.work.data(), &lwork,
+                  &info FCONE FCONE);
+  if (info != 0) {
+    stop("LAPACK dsyev failed with info = %d", info);
+  }
+
+  double max_eval = 0.0;
+  for (int i = 0; i < workspace.n_nbrs; i++) {
+    max_eval = std::max(max_eval, workspace.values[i]);
+  }
+
+  const double eval_tol =
+      max_eval <= 0.0
+          ? 0.0
+          : static_cast<double>(std::max(workspace.n_nbrs, workspace.n_dim)) *
+                max_eval * std::numeric_limits<double>::epsilon();
+
+  int rank = 0;
+  if (max_eval > 0.0) {
+    for (int i = 0; i < workspace.n_nbrs; i++) {
+      rank += workspace.values[i] > eval_tol;
+    }
+  }
+
+  workspace.keep.clear();
+  for (int col = 0; col < workspace.requested; col++) {
+    const int eig_col = workspace.n_nbrs - 1 - col;
+    if (workspace.values[eig_col] > eval_tol) {
+      workspace.keep.push_back(eig_col);
+    }
+  }
+
+  fill_weights_from_basis(workspace.n_nbrs_size, workspace.keep, workspace.gram,
+                          workspace.weights);
+  return rank;
+}
+
 LocalWeights compute_local_weights_shape_routed(const doubles_matrix<>& x,
                                                 const std::vector<int>& nni,
                                                 int ndim) {
@@ -591,16 +744,39 @@ LtsaTripletAssemblyBuilder* checked_ltsa_triplet_builder(SEXP builder_xptr) {
 
   int rank_deficient_count = 0;
   int min_local_rank = ndim;
+  const bool use_gram_workspace =
+      x.ncol() != 0 && static_cast<std::size_t>(x.ncol()) > value_n_nbrs;
+  const double* x_data = use_gram_workspace ? REAL(x.data()) : nullptr;
+  std::unique_ptr<GramLocalWeightsWorkspace> gram_workspace;
+  if (use_gram_workspace) {
+    gram_workspace.reset(new GramLocalWeightsWorkspace(
+        value_n_nbrs, static_cast<std::size_t>(x.ncol()), ndim));
+  }
+
   for (std::size_t obs = 0; obs < n_obs; obs++) {
     const std::size_t offset = obs * value_n_nbrs;
-    std::vector<int> nni =
-        flat_neighbors_zero_based(value_nnt, offset, value_n_nbrs);
-    LocalWeights local = compute_local_weights_shape_routed(x, nni, ndim);
-    if (local.rank < ndim) {
-      rank_deficient_count++;
-      min_local_rank = std::min(min_local_rank, local.rank);
+
+    if (use_gram_workspace) {
+      fill_flat_neighbors_zero_based(value_nnt, offset, value_n_nbrs,
+                                     gram_workspace->nni);
+      int rank =
+          compute_local_weights_gram_workspace(x_data, n_obs, *gram_workspace);
+      if (rank < ndim) {
+        rank_deficient_count++;
+        min_local_rank = std::min(min_local_rank, rank);
+      }
+      builder.append_prechecked(gram_workspace->nni, gram_workspace->weights);
+    } else {
+      std::vector<int> local_nni =
+          flat_neighbors_zero_based(value_nnt, offset, value_n_nbrs);
+      LocalWeights local =
+          compute_local_weights_shape_routed(x, local_nni, ndim);
+      if (local.rank < ndim) {
+        rank_deficient_count++;
+        min_local_rank = std::min(min_local_rank, local.rank);
+      }
+      builder.append_prechecked(local_nni, local.weights);
     }
-    builder.append_prechecked(nni, local.weights);
   }
 
   SparseComponents components = builder.finalize_components();

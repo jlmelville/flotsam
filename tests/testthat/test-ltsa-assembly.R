@@ -114,6 +114,35 @@ test_that("append/finalize assembly matches R triplet reference", {
   }
 })
 
+test_that("append/finalize assembly Gram path matches R triplet reference", {
+  set.seed(2)
+  X <- matrix(rnorm(18L * 12L), nrow = 18L)
+  nn_idx <- exact_nn_idx(X, n_neighbors = 5L, include_self = TRUE)
+  expect_gt(ncol(X), ncol(nn_idx))
+
+  reference <- assemble_ltsa_B_r_triplet_reference(
+    X,
+    nn_idx,
+    ndim = 2L,
+    include_self = TRUE
+  )
+  candidate <- flotsam:::assemble_ltsa_B(
+    X,
+    nn_idx,
+    ndim = 2L,
+    include_self = TRUE
+  )
+
+  expect_sparse_equivalent(candidate$B, reference$B, tolerance = 1e-11)
+  expect_identical(
+    candidate$rank_deficient_count,
+    reference$rank_deficient_count
+  )
+  expect_identical(candidate$min_local_rank, reference$min_local_rank)
+  expect_true(Matrix::isSymmetric(candidate$B))
+  expect_equal(sum(candidate$B@x == 0), 0)
+})
+
 test_that("C++ local weights match exact R SVD reference", {
   set.seed(1)
   low_p <- matrix(rnorm(10 * 3), nrow = 10)
