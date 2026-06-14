@@ -25,7 +25,9 @@ ltsa(
 
 - X:
 
-  The input data matrix or dataframe with one observation per row.
+  The input data matrix or data frame with one observation per row. If a
+  data frame is supplied, non-numeric columns are ignored. At least one
+  numeric column is required.
 
 - n_neighbors:
 

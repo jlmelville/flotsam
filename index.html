@@ -22,7 +22,7 @@
 
     <a class="navbar-brand me-2" href="index.html">flotsam</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">0.0.0.9000</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">0.0.0.9001</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -106,23 +106,24 @@
 <div class="section level2">
 <h2 id="current-status">Current Status<a class="anchor" aria-label="anchor" href="#current-status"></a>
 </h2>
+<p><em>June 14 2026</em>: Version 0.0.0.9001 changes the <code>B</code> matrix assembly implementation to be modestly faster with slightly less peak memory usage.</p>
 <p>Very experimental. Will it ever graduate from ‘Finicky’ to ‘Fast’? Its speed relies on the interaction of:</p>
 <ul>
 <li>Using approximate nearest neighbors to define the local neighborhoods.</li>
 <li>Using a <a href="https://cran.r-project.org/package=Matrix" class="external-link">sparse matrix</a> representation of <code>B</code>.</li>
-<li>Using truncated SVD via <a href="https://cran.r-project.org/package=irlba" class="external-link">irlba</a> to calculate <code>W</code>.</li>
-<li>Using <a href="https://cran.r-project.org/package=RSpectra" class="external-link">RSpectra</a> to efficiently get the bottom eigenvectors of <code>B</code>.</li>
+<li>Using R-level dense SVD or truncated SVD via <a href="https://cran.r-project.org/package=irlba" class="external-link">irlba</a> to calculate local neighborhood weights.</li>
+<li>Using <a href="https://cran.r-project.org/package=RSpectra" class="external-link">RSpectra</a> by default to recover the small-eigenvalue directions of <code>B</code>.</li>
 </ul>
-<p>It’s not a great idea to use large values of <code>k</code> to define the neighborhoods: you will get something that approaches a “global” SVD/PCA at much greater effort. If you insist on doing this (e.g. set <code>n_neighbors = 1000</code>), the initial sparse matrix allocation can be surprisingly slow.</p>
+<p>It’s not a great idea to use large values of <code>k</code> to define the neighborhoods: you will get something that approaches a “global” SVD/PCA at much greater effort. If you insist on doing this (e.g. set <code>n_neighbors = 1000</code>), the local weight calculation and sparse matrix assembly both scale with the number of neighborhood entries, roughly <code>N * k * k</code>.</p>
 <p>The approximate nearest neighbor search (which can be exact if you want) <em>is</em> parallelized, but that’s the only thing that is.</p>
-<p>The other bottleneck is the truncated SVD for each <code>W</code>. This <em>could</em> be done in parallel, but I haven’t got round to it yet. The better your <a href="https://csantill.github.io/RPerformanceWBLAS/" class="external-link">underlying linear algebra library</a>, the better a time you will have.</p>
-<p>The final eigendecomposition of <code>B</code> can’t be done in parallel, but RSpectra is fast when it works. Please note that there a variety of failure states:</p>
+<p>The local SVD for each neighborhood is still computed from R, and the sparse matrix assembly path is serial. The better your <a href="https://csantill.github.io/RPerformanceWBLAS/" class="external-link">underlying linear algebra library</a>, the better a time you will have.</p>
+<p>The <code>n_threads</code> argument does not control the final eigenanalysis. RSpectra is fast when it works, but there are a variety of failure states:</p>
 <ul>
-<li>RSpectra doesn’t converge. You’ll see an error if this happens. This can be due to a bad choice of options, like the <code>tol</code> (the tolerance) or <code>ncv</code> (the number of Lanczos basis vectors).</li>
+<li>The solver doesn’t converge. You’ll see an <code>Eigenanalysis failed: ...</code> error that keeps the underlying solver message. This can be due to a bad choice of options, like <code>tol</code> (the tolerance), <code>ncv</code> (the number of Lanczos basis vectors for RSpectra), or equivalent controls for the selected solver.</li>
 <li>RSpectra does converge, but provides results that look weird. This could also be due to insufficiently tight convergence criteria. Some <code>B</code> matrices have several eigenvectors with very very similar eigenvalues, which will then be returned in the wrong order.</li>
 <li>RSpectra hangs, doing nothing, very slowly increasing its memory usage. This seems to happen <a href="https://github.com/yixuan/spectra/issues/126" class="external-link">during sparse factorization</a>. Unfortunately, I don’t have a solution for this.</li>
 </ul>
-<p>If you use <code>eig_method = "irlba"</code> or <code>eig_method = "svdr"</code> then different functions in irlba will be used instead of RSpectra. These are more likely to finish their calculations successfully under circumstances where RSpectra stalls, but they can require a lot more effort to give similarly converged results in other scenarios. For the same amount of CPU time, the <code>svdr</code> setting may do the better than <code>irlba</code> if you suspect there are several eigenvectors with very similar eigenvalues and the ordering is incorrect (don’t ask me how you would diagnose that in general however).</p>
+<p>If you use <code>eig_method = "irlba"</code> or <code>eig_method = "svdr"</code> then different functions in irlba will be used instead of RSpectra. These are more likely to finish their calculations successfully under circumstances where RSpectra stalls, but they can require a lot more effort to give similarly converged results in other scenarios. For the same amount of CPU time, the <code>svdr</code> setting may do better than <code>irlba</code> if you suspect there are several eigenvectors with very similar eigenvalues and the ordering is incorrect (don’t ask me how you would diagnose that in general however). For small diagnostic cases, <code>eig_method = "eig"</code> and <code>eig_method = "eigen"</code> are synonyms for base <code><a href="https://rdrr.io/r/base/eigen.html" class="external-link">eigen()</a></code>, and <code>eig_method = "fullsvd"</code> uses base <code><a href="https://rdrr.io/r/base/svd.html" class="external-link">svd()</a></code>.</p>
 </div>
 <div class="section level2">
 <h2 id="see-also">See Also<a class="anchor" aria-label="anchor" href="#see-also"></a>
@@ -182,6 +183,7 @@
 <h2 data-toc-skip>Dev status</h2>
 <ul class="list-unstyled">
 <li><a href="https://github.com/jlmelville/flotsam/actions/workflows/R-CMD-check.yaml" class="external-link"><img src="https://github.com/jlmelville/flotsam/actions/workflows/R-CMD-check.yaml/badge.svg" alt="R-CMD-check"></a></li>
+<li><a href="https://github.com/jlmelville/flotsam/actions/workflows/air.yaml" class="external-link"><img src="https://github.com/jlmelville/flotsam/actions/workflows/air.yaml/badge.svg" alt="air"></a></li>
 <li><a href="https://github.com/jlmelville/flotsam/actions/workflows/lint.yaml" class="external-link"><img src="https://github.com/jlmelville/flotsam/actions/workflows/lint.yaml/badge.svg" alt="lint"></a></li>
 <li><a href="https://app.codecov.io/gh/jlmelville/flotsam?branch=main" class="external-link"><img src="https://codecov.io/gh/jlmelville/flotsam/branch/main/graph/badge.svg" alt="Codecov test coverage"></a></li>
 </ul>

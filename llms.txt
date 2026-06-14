@@ -71,39 +71,46 @@ clear, but this is what happens:
 
 ## Current Status
 
+*June 14 2026*: Version 0.0.0.9001 changes the `B` matrix assembly
+implementation to be modestly faster with slightly less peak memory
+usage.
+
 Very experimental. Will it ever graduate from ‘Finicky’ to ‘Fast’? Its
 speed relies on the interaction of:
 
 - Using approximate nearest neighbors to define the local neighborhoods.
 - Using a [sparse matrix](https://cran.r-project.org/package=Matrix)
   representation of `B`.
-- Using truncated SVD via
-  [irlba](https://cran.r-project.org/package=irlba) to calculate `W`.
-- Using [RSpectra](https://cran.r-project.org/package=RSpectra) to
-  efficiently get the bottom eigenvectors of `B`.
+- Using R-level dense SVD or truncated SVD via
+  [irlba](https://cran.r-project.org/package=irlba) to calculate local
+  neighborhood weights.
+- Using [RSpectra](https://cran.r-project.org/package=RSpectra) by
+  default to recover the small-eigenvalue directions of `B`.
 
 It’s not a great idea to use large values of `k` to define the
 neighborhoods: you will get something that approaches a “global” SVD/PCA
 at much greater effort. If you insist on doing this (e.g. set
-`n_neighbors = 1000`), the initial sparse matrix allocation can be
-surprisingly slow.
+`n_neighbors = 1000`), the local weight calculation and sparse matrix
+assembly both scale with the number of neighborhood entries, roughly
+`N * k * k`.
 
 The approximate nearest neighbor search (which can be exact if you want)
 *is* parallelized, but that’s the only thing that is.
 
-The other bottleneck is the truncated SVD for each `W`. This *could* be
-done in parallel, but I haven’t got round to it yet. The better your
-[underlying linear algebra
-library](https://csantill.github.io/RPerformanceWBLAS/), the better a
-time you will have.
+The local SVD for each neighborhood is still computed from R, and the
+sparse matrix assembly path is serial. The better your [underlying
+linear algebra library](https://csantill.github.io/RPerformanceWBLAS/),
+the better a time you will have.
 
-The final eigendecomposition of `B` can’t be done in parallel, but
-RSpectra is fast when it works. Please note that there a variety of
-failure states:
+The `n_threads` argument does not control the final eigenanalysis.
+RSpectra is fast when it works, but there are a variety of failure
+states:
 
-- RSpectra doesn’t converge. You’ll see an error if this happens. This
-  can be due to a bad choice of options, like the `tol` (the tolerance)
-  or `ncv` (the number of Lanczos basis vectors).
+- The solver doesn’t converge. You’ll see an `Eigenanalysis failed: ...`
+  error that keeps the underlying solver message. This can be due to a
+  bad choice of options, like `tol` (the tolerance), `ncv` (the number
+  of Lanczos basis vectors for RSpectra), or equivalent controls for the
+  selected solver.
 - RSpectra does converge, but provides results that look weird. This
   could also be due to insufficiently tight convergence criteria. Some
   `B` matrices have several eigenvectors with very very similar
@@ -118,10 +125,14 @@ different functions in irlba will be used instead of RSpectra. These are
 more likely to finish their calculations successfully under
 circumstances where RSpectra stalls, but they can require a lot more
 effort to give similarly converged results in other scenarios. For the
-same amount of CPU time, the `svdr` setting may do the better than
-`irlba` if you suspect there are several eigenvectors with very similar
+same amount of CPU time, the `svdr` setting may do better than `irlba`
+if you suspect there are several eigenvectors with very similar
 eigenvalues and the ordering is incorrect (don’t ask me how you would
-diagnose that in general however).
+diagnose that in general however). For small diagnostic cases,
+`eig_method = "eig"` and `eig_method = "eigen"` are synonyms for base
+[`eigen()`](https://rdrr.io/r/base/eigen.html), and
+`eig_method = "fullsvd"` uses base
+[`svd()`](https://rdrr.io/r/base/svd.html).
 
 ## See Also
 
