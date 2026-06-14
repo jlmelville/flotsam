@@ -22,6 +22,31 @@ exact_nn_idx <- function(X, n_neighbors, include_self) {
   nn$idx
 }
 
+ltsa_local_weights_r_reference <- function(X, nni, ndim) {
+  Xi <- scale(X[nni, , drop = FALSE], center = TRUE, scale = FALSE)
+  max_rank <- min(dim(Xi))
+  ndim <- min(ndim, max_rank)
+  res <- svd(Xi, nu = ndim, nv = 0)
+
+  if (length(res$d) == 0 || max(res$d) == 0) {
+    rank <- 0L
+    tol <- 0
+  } else {
+    tol <- max(dim(Xi)) * max(res$d) * .Machine$double.eps
+    rank <- sum(res$d > tol)
+  }
+
+  keep <- seq_len(min(ndim, length(res$d), ncol(res$u)))
+  keep <- keep[res$d[keep] > tol]
+
+  k <- length(nni)
+  Gi <- cbind(1 / sqrt(k), res$u[, keep, drop = FALSE])
+  Wi <- -tcrossprod(Gi)
+  diag(Wi) <- diag(Wi) + 1.0
+
+  list(Wi = Wi, rank = rank)
+}
+
 assemble_ltsa_B_r_triplet_reference <- function(X, nn_idx, ndim, include_self) {
   n <- nrow(X)
   weight_idx <- flotsam:::ltsa_weight_neighborhoods(nn_idx, include_self)
@@ -35,7 +60,7 @@ assemble_ltsa_B_r_triplet_reference <- function(X, nn_idx, ndim, include_self) {
 
   for (i in seq_len(n)) {
     nni <- weight_idx[i, ]
-    local <- flotsam:::ltsa_local_weights(X, nni, ndim)
+    local <- ltsa_local_weights_r_reference(X, nni, ndim)
     if (local$rank < ndim) {
       rank_deficient_count <- rank_deficient_count + 1L
       min_local_rank <- min(min_local_rank, local$rank)
@@ -87,6 +112,23 @@ test_that("append/finalize assembly matches R triplet reference", {
     expect_true(Matrix::isSymmetric(candidate$B))
     expect_equal(sum(candidate$B@x == 0), 0)
   }
+})
+
+test_that("C++ local weights match exact R SVD reference", {
+  set.seed(1)
+  low_p <- matrix(rnorm(10 * 3), nrow = 10)
+  low_nni <- c(1L, 3L, 4L, 6L, 8L, 10L)
+  low_reference <- ltsa_local_weights_r_reference(low_p, low_nni, ndim = 2L)
+  low_candidate <- flotsam:::ltsa_local_weights(low_p, low_nni, ndim = 2L)
+  expect_equal(low_candidate$Wi, low_reference$Wi, tolerance = 1e-12)
+  expect_identical(low_candidate$rank, low_reference$rank)
+
+  high_p <- matrix(rnorm(9 * 12), nrow = 9)
+  high_nni <- c(1L, 2L, 4L, 7L, 9L)
+  high_reference <- ltsa_local_weights_r_reference(high_p, high_nni, ndim = 2L)
+  high_candidate <- flotsam:::ltsa_local_weights(high_p, high_nni, ndim = 2L)
+  expect_equal(high_candidate$Wi, high_reference$Wi, tolerance = 1e-12)
+  expect_identical(high_candidate$rank, high_reference$rank)
 })
 
 test_that("ltsa ret_B uses append/finalize assembly", {
