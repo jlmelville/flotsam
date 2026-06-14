@@ -3,7 +3,9 @@
 #' Apply the Local Tangent Space Alignment (LTSA) method (Zhang and Zha, 2004)
 #' for dimensionality reduction.
 #'
-#' @param X The input data matrix or dataframe with one observation per row.
+#' @param X The input data matrix or data frame with one observation per row. If
+#'   a data frame is supplied, non-numeric columns are ignored. At least one
+#'   numeric column is required.
 #' @param n_neighbors  The size of local neighborhood (in terms of number of
 #'   neighboring sample points) used for manifold approximation.
 #' @param ndim The dimension of the space to embed into.

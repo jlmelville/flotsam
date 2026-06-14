@@ -87,16 +87,18 @@ get the bottom eigenvectors of `B`.
 
 It's not a great idea to use large values of `k` to define the neighborhoods:
 you will get something that approaches a "global" SVD/PCA at much greater
-effort. If you insist on doing this (e.g. set `n_neighbors = 1000`), the initial
-sparse matrix allocation can be surprisingly slow.
+effort. If you insist on doing this (e.g. set `n_neighbors = 1000`), the local
+weight calculation and sparse matrix assembly both scale with the number of
+neighborhood entries, roughly `N * k * k`.
 
 The approximate nearest neighbor search (which can be exact if you want) *is*
 parallelized, but that's the only thing that is.
 
-The other bottleneck is the truncated SVD for each `W`. This *could* be done in
-parallel, but I haven't got round to it yet. The better your [underlying linear
-algebra library](https://csantill.github.io/RPerformanceWBLAS/), the better a
-time you will have.
+The local SVD for each `W` is still computed from R. This *could* be done in
+parallel, but the current path is deliberately serial outside the nearest
+neighbor search. The better your [underlying linear algebra
+library](https://csantill.github.io/RPerformanceWBLAS/), the better a time you
+will have.
 
 The final eigendecomposition of `B` can't be done in parallel, but RSpectra is
 fast when it works. Please note that there a variety of failure states:

@@ -19,7 +19,9 @@ ltsa(
 )
 }
 \arguments{
-\item{X}{The input data matrix or dataframe with one observation per row.}
+\item{X}{The input data matrix or data frame with one observation per row. If
+a data frame is supplied, non-numeric columns are ignored. At least one
+numeric column is required.}
 
 \item{n_neighbors}{The size of local neighborhood (in terms of number of
 neighboring sample points) used for manifold approximation.}

@@ -4,7 +4,23 @@ test_that("invalid methods are rejected early", {
     "nn_method"
   )
   expect_error(
+    ltsa(iris[1:10, ], nn_method = c("exact", "nnd")),
+    "nn_method"
+  )
+  expect_error(
+    ltsa(iris[1:10, ], nn_method = NA_character_),
+    "nn_method"
+  )
+  expect_error(
     ltsa(iris[1:10, ], eig_method = "bad"),
+    "eig_method"
+  )
+  expect_error(
+    ltsa(iris[1:10, ], eig_method = c("eig", "eigen")),
+    "eig_method"
+  )
+  expect_error(
+    ltsa(iris[1:10, ], eig_method = NA_character_),
     "eig_method"
   )
 })
@@ -29,9 +45,16 @@ test_that("eigen is accepted as an eig alias", {
 
 test_that("input data must be numeric and finite", {
   expect_error(
+    ltsa(seq_len(4)),
+    "matrix or data frame"
+  )
+  expect_error(
     ltsa(data.frame(group = letters[1:4])),
     "at least one numeric column"
   )
+  mixed_df <- flotsam:::x2m(data.frame(x = 1:3, group = letters[1:3]))
+  expect_equal(unname(mixed_df), matrix(as.double(1:3), ncol = 1))
+  expect_identical(colnames(mixed_df), "x")
   expect_error(
     ltsa(matrix(letters[1:4], ncol = 2)),
     "numeric values"
@@ -39,6 +62,14 @@ test_that("input data must be numeric and finite", {
   expect_error(
     ltsa(matrix(c(1, 2, NA, 4), ncol = 2)),
     "finite"
+  )
+  expect_error(
+    ltsa(matrix(numeric(), nrow = 2, ncol = 0)),
+    "at least one column"
+  )
+  expect_error(
+    ltsa(matrix(1, nrow = 1, ncol = 2)),
+    "at least two observations"
   )
 })
 
@@ -48,8 +79,16 @@ test_that("dimension and neighborhood arguments are validated", {
     "ndim"
   )
   expect_error(
+    ltsa(iris[1:10, ], ndim = 1.5),
+    "ndim"
+  )
+  expect_error(
     ltsa(iris[1:10, ], ndim = 10),
     "ndim must be less than the number of observations"
+  )
+  expect_error(
+    ltsa(iris[1:10, ], n_neighbors = 2.5),
+    "n_neighbors"
   )
   expect_error(
     ltsa(iris[1:10, ], n_neighbors = 2, ndim = 2),
@@ -65,6 +104,10 @@ test_that("dimension and neighborhood arguments are validated", {
   )
   expect_error(
     ltsa(iris[1:10, ], n_threads = -1),
+    "n_threads"
+  )
+  expect_error(
+    ltsa(iris[1:10, ], n_threads = 1.5),
     "n_threads"
   )
 })
