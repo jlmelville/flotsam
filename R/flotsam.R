@@ -316,37 +316,17 @@ assemble_ltsa_B_append <- function(
   n <- nrow(X)
   weight_idx <- ltsa_weight_neighborhoods(nn_idx, include_self)
   k <- ncol(weight_idx)
-  builder <- ltsa_triplet_builder_create(t(weight_idx), k)
 
-  prev_time <- Sys.time()
-  rank_deficient_count <- 0L
-  min_local_rank <- ndim
-  for (i in seq_len(n)) {
-    if (verbose) {
-      curr_time <- Sys.time()
-      if (difftime(curr_time, prev_time, units = "secs") > 60) {
-        tsmessage("processed ", i, " / ", n)
-        prev_time <- curr_time
-      }
-    }
-
-    nni <- weight_idx[i, ]
-    local <- ltsa_local_weights(X, nni, ndim)
-    if (local$rank < ndim) {
-      rank_deficient_count <- rank_deficient_count + 1L
-      min_local_rank <- min(min_local_rank, local$rank)
-    }
-    ltsa_triplet_builder_append(builder, nni, as.vector(local$Wi))
+  if (verbose) {
+    tsmessage("Computing local weights and assembling sparse matrix")
   }
-
-  tsmessage("Assembling sparse matrix")
-  components <- ltsa_triplet_builder_finalize(builder)
+  components <- ltsa_assemble_local_weights(X, t(weight_idx), k, ndim)
   B <- ltsa_components_to_dgCMatrix(components, n)
 
   list(
     B = B,
-    rank_deficient_count = rank_deficient_count,
-    min_local_rank = min_local_rank
+    rank_deficient_count = components$rank_deficient_count,
+    min_local_rank = components$min_local_rank
   )
 }
 
@@ -369,16 +349,7 @@ ltsa_weight_neighborhoods <- function(nn_idx, include_self) {
 }
 
 ltsa_local_weights <- function(X, nni, ndim) {
-  Xi <- (scale(X[nni, , drop = FALSE], center = TRUE, scale = FALSE))
-
-  local_basis <- svecs(Xi, ndim)
-  Vi <- local_basis$vectors
-  k <- length(nni)
-  Gi <- cbind(1 / sqrt(k), Vi)
-  Wi <- -tcrossprod(Gi)
-  diag(Wi) <- diag(Wi) + 1.0
-
-  list(Wi = Wi, rank = local_basis$rank)
+  ltsa_local_weights_cpp(X, nni, ndim)
 }
 
 ltsa_iterative_search_k <- function(ndim, n) {

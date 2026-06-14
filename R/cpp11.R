@@ -15,3 +15,11 @@ ltsa_triplet_builder_append <- function(builder_xptr, nni, weights) {
 ltsa_triplet_builder_finalize <- function(builder_xptr) {
   .Call(`_flotsam_ltsa_triplet_builder_finalize`, builder_xptr)
 }
+
+ltsa_local_weights_cpp <- function(x, nni, ndim) {
+  .Call(`_flotsam_ltsa_local_weights_cpp`, x, nni, ndim)
+}
+
+ltsa_assemble_local_weights <- function(x, value_nnt, value_n_nbrs, ndim) {
+  .Call(`_flotsam_ltsa_assemble_local_weights`, x, value_nnt, value_n_nbrs, ndim)
+}

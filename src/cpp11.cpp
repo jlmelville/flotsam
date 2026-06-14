@@ -34,9 +34,25 @@ extern "C" SEXP _flotsam_ltsa_triplet_builder_finalize(SEXP builder_xptr) {
     return cpp11::as_sexp(ltsa_triplet_builder_finalize(cpp11::as_cpp<cpp11::decay_t<SEXP>>(builder_xptr)));
   END_CPP11
 }
+// flotsam.cpp
+list ltsa_local_weights_cpp(const doubles_matrix<>& x, const integers& nni, int ndim);
+extern "C" SEXP _flotsam_ltsa_local_weights_cpp(SEXP x, SEXP nni, SEXP ndim) {
+  BEGIN_CPP11
+    return cpp11::as_sexp(ltsa_local_weights_cpp(cpp11::as_cpp<cpp11::decay_t<const doubles_matrix<>&>>(x), cpp11::as_cpp<cpp11::decay_t<const integers&>>(nni), cpp11::as_cpp<cpp11::decay_t<int>>(ndim)));
+  END_CPP11
+}
+// flotsam.cpp
+list ltsa_assemble_local_weights(const doubles_matrix<>& x, const integers& value_nnt, std::size_t value_n_nbrs, int ndim);
+extern "C" SEXP _flotsam_ltsa_assemble_local_weights(SEXP x, SEXP value_nnt, SEXP value_n_nbrs, SEXP ndim) {
+  BEGIN_CPP11
+    return cpp11::as_sexp(ltsa_assemble_local_weights(cpp11::as_cpp<cpp11::decay_t<const doubles_matrix<>&>>(x), cpp11::as_cpp<cpp11::decay_t<const integers&>>(value_nnt), cpp11::as_cpp<cpp11::decay_t<std::size_t>>(value_n_nbrs), cpp11::as_cpp<cpp11::decay_t<int>>(ndim)));
+  END_CPP11
+}
 
 extern "C" {
 static const R_CallMethodDef CallEntries[] = {
+    {"_flotsam_ltsa_assemble_local_weights",   (DL_FUNC) &_flotsam_ltsa_assemble_local_weights,   4},
+    {"_flotsam_ltsa_local_weights_cpp",        (DL_FUNC) &_flotsam_ltsa_local_weights_cpp,        3},
     {"_flotsam_ltsa_triplet_builder_append",   (DL_FUNC) &_flotsam_ltsa_triplet_builder_append,   3},
     {"_flotsam_ltsa_triplet_builder_create",   (DL_FUNC) &_flotsam_ltsa_triplet_builder_create,   2},
     {"_flotsam_ltsa_triplet_builder_finalize", (DL_FUNC) &_flotsam_ltsa_triplet_builder_finalize, 1},
