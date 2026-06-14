@@ -16,23 +16,36 @@ sparse_idxs(const integers& is, const integers& ps, const integers& ns) {
   std::size_t n_nbrs = ns.size();
   writable::integers sp_idx(n_nbrs * n_nbrs);
   auto mbegin = is.cbegin();
+  R_xlen_t n_cols = ps.size() - 1;
 
   // loop over every pair in n including e.g. (j, i) as well as (i, j)
   for (std::size_t i = 0; i < n_nbrs; i++) {
     auto r = ns[i]; // r is 1-indexed
+    if (r < 1 || r > n_cols) {
+      stop("Neighborhood index is outside the sparse matrix dimensions");
+    }
 
     for (std::size_t j = 0; j < n_nbrs; j++) {
       auto c = ns[j]; // c is 1-indexed
+      if (c < 1 || c > n_cols) {
+        stop("Neighborhood index is outside the sparse matrix dimensions");
+      }
 
       // cbegin/cend range of data at row r
 
-      auto cbegin = ps[r - 1];
-      auto cend = ps[r];
-      auto pos = std::find(integers::const_iterator(mbegin + cbegin),
-                           is.cend() + cend,
-                           c - 1) -
-                 mbegin + 1;
-      sp_idx[i * n_nbrs + j] = pos;
+      R_xlen_t cbegin = ps[r - 1];
+      R_xlen_t cend = ps[r];
+      if (cbegin < 0 || cend < cbegin || cend > is.size()) {
+        stop("Inconsistent sparse matrix pointers");
+      }
+
+      auto range_begin = integers::const_iterator(mbegin + cbegin);
+      auto range_end = integers::const_iterator(mbegin + cend);
+      auto pos = std::find(range_begin, range_end, c - 1);
+      if (pos == range_end) {
+        stop("Sparse matrix does not contain requested neighborhood pair");
+      }
+      sp_idx[i * n_nbrs + j] = pos - mbegin + 1;
     }
   }
 
