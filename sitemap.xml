@@ -1,10 +1,10 @@
 <urlset xmlns = 'http://www.sitemaps.org/schemas/sitemap/0.9'>
-<url><loc>/404.html</loc></url>
-<url><loc>/LICENSE.html</loc></url>
-<url><loc>/authors.html</loc></url>
-<url><loc>/index.html</loc></url>
-<url><loc>/news/index.html</loc></url>
-<url><loc>/reference/index.html</loc></url>
-<url><loc>/reference/ltsa.html</loc></url>
+<url><loc>https://jlmelville.github.io/flotsam/404.html</loc></url>
+<url><loc>https://jlmelville.github.io/flotsam/LICENSE.html</loc></url>
+<url><loc>https://jlmelville.github.io/flotsam/authors.html</loc></url>
+<url><loc>https://jlmelville.github.io/flotsam/index.html</loc></url>
+<url><loc>https://jlmelville.github.io/flotsam/news/index.html</loc></url>
+<url><loc>https://jlmelville.github.io/flotsam/reference/index.html</loc></url>
+<url><loc>https://jlmelville.github.io/flotsam/reference/ltsa.html</loc></url>
 </urlset>
 
