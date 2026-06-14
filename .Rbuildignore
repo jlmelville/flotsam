@@ -1,5 +1,13 @@
 ^\.github$
+^CRAN-RELEASE$
+^CRAN-SUBMISSION$
+^cran-comments\.md$
 ^.*\.Rproj$
 ^\.Rproj\.user$
 ^LICENSE\.md$
 ^codecov\.yml$
+^_pkgdown\.yml$
+^docs$
+^pkgdown$
+^revdep$
+^.*\/*DONTCHECKMEIN.*$

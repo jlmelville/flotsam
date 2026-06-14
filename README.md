@@ -3,7 +3,8 @@
 Finicky LOcal Tangent Space Alignment Method
 
 <!-- badges: start -->
-[![R-CMD-check](https://github.com/jlmelville/flotsam/workflows/R-CMD-check/badge.svg)](https://github.com/jlmelville/flotsam/actions)
+[![R-CMD-check](https://github.com/jlmelville/flotsam/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/jlmelville/flotsam/actions/workflows/R-CMD-check.yaml)
+[![lint](https://github.com/jlmelville/flotsam/actions/workflows/lint.yaml/badge.svg)](https://github.com/jlmelville/flotsam/actions/workflows/lint.yaml)
 [![Codecov test coverage](https://codecov.io/gh/jlmelville/flotsam/branch/main/graph/badge.svg)](https://app.codecov.io/gh/jlmelville/flotsam?branch=main)
 <!-- badges: end -->
 
@@ -92,7 +93,7 @@ sparse matrix allocation can be surprisingly slow.
 The approximate nearest neighbor search (which can be exact if you want) *is*
 parallelized, but that's the only thing that is.
 
-The other bottleneck is the trucated SVD for each `W`. This *could* be done in
+The other bottleneck is the truncated SVD for each `W`. This *could* be done in
 parallel, but I haven't got round to it yet. The better your [underlying linear
 algebra library](https://csantill.github.io/RPerformanceWBLAS/), the better a
 time you will have.
@@ -112,14 +113,14 @@ seems to happen
 [during sparse factorization](https://github.com/yixuan/spectra/issues/126).
 Unfortunately, I don't have a solution for this.
 
-If you use `method = "irlba"` or `method = "svdr"` then different functions in
-irlba will be used instead of RSpectra. These are more likely to finish their
-calculations successfully under circumstances where RSpectra stalls, but they
-can require a lot more effort to give similarly converged results in other
-scenarios. For the same amount of CPU time, the `svdr` setting may do the better
-than `irlba` if you suspect there are several eigenvectors with very similar
-eigenvalues and the ordering is incorrect (don't ask me how you would diagnose
-that in general however).
+If you use `eig_method = "irlba"` or `eig_method = "svdr"` then different
+functions in irlba will be used instead of RSpectra. These are more likely to
+finish their calculations successfully under circumstances where RSpectra
+stalls, but they can require a lot more effort to give similarly converged
+results in other scenarios. For the same amount of CPU time, the `svdr` setting
+may do the better than `irlba` if you suspect there are several eigenvectors
+with very similar eigenvalues and the ordering is incorrect (don't ask me how
+you would diagnose that in general however).
 
 ## See Also
 

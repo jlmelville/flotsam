@@ -37,11 +37,12 @@ Slow for large datasets.
 \itemize{
 \item \code{"rspectra"} Use \code{\link[RSpectra:eigs_sym]{RSpectra::eigs_sym()}}.
 \item \code{"irlba"} Use \code{\link[irlba:irlba]{irlba::irlba()}}.
-\item \verb{"svdr} Use \code{\link[irlba:svdr]{irlba::svdr()}}.
+\item \code{"svdr"} Use \code{\link[irlba:svdr]{irlba::svdr()}}.
 \item \code{"fullsvd"} Use the \code{\link[base:svd]{base::svd()}} function. This is only feasible for small
 datasets and should be used for diagnostic purposes only.
-\item \code{"eigen"} Use the \code{\link[base:eigen]{base::eigen()}} function. This is only feasible for
-small datasets and should be used for diagnostic purposes only.
+\item \code{"eig"} or \code{"eigen"} Use the \code{\link[base:eigen]{base::eigen()}} function. This is only
+feasible for small datasets and should be used for diagnostic purposes
+only.
 }}
 
 \item{include_self}{Should an item be part of its own neighborhood? This has

@@ -1,13 +1,19 @@
+Type: Package
 Package: flotsam
 Title: Finicky LOcal Tangent Space Alignment Method
 Version: 0.0.0.9000
 Authors@R: 
-    person("James", "Melville", , "jlmelville@gmail.com", role = c("aut", "cre"))
-Description: Implements the LTSA method of Zhang and Zha (2004) <doi:10.1137/S1064827502419154>.
+    person("James", "Melville", , "jlmelville@gmail.com", role = c("aut", "cre", "cph"))
+Description: Implements the Local Tangent Space Alignment (LTSA) method of
+    Zhang and Zha (2004) <doi:10.1137/S1064827502419154> for nonlinear
+    dimensionality reduction. Nearest-neighbor search and sparse eigensolvers
+    are used to construct low-dimensional embeddings from local tangent space
+    approximations.
 License: GPL (>= 3)
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
-URL: https://github.com/jlmelville/flotsam
+URL: https://jlmelville.github.io/flotsam/,
+    https://github.com/jlmelville/flotsam
 BugReports: https://github.com/jlmelville/flotsam/issues
 Depends:
     Matrix
@@ -20,6 +26,8 @@ Imports:
     methods
 Suggests: 
     covr,
+    pkgdown,
     testthat (>= 3.0.0)
 Config/testthat/edition: 3
+Config/Needs/website: pkgdown
 Config/roxygen2/version: 8.0.0

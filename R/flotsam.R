@@ -14,11 +14,12 @@
 #' @param eig_method How to carry out the eigendecomposition. Possible values are:
 #'    * `"rspectra"` Use [RSpectra::eigs_sym()].
 #'    * `"irlba"` Use [irlba::irlba()].
-#'    * `"svdr` Use [irlba::svdr()].
+#'    * `"svdr"` Use [irlba::svdr()].
 #'    * `"fullsvd"` Use the [base::svd()] function. This is only feasible for small
 #'    datasets and should be used for diagnostic purposes only.
-#'    * `"eigen"` Use the [base::eigen()] function. This is only feasible for
-#'    small datasets and should be used for diagnostic purposes only.
+#'    * `"eig"` or `"eigen"` Use the [base::eigen()] function. This is only
+#'    feasible for small datasets and should be used for diagnostic purposes
+#'    only.
 #' @param include_self Should an item be part of its own neighborhood? This has
 #'   a minor effect on most results, but work by Zhang and co-workers (2017)
 #'   suggests that this is in effect the main difference between LTSA and the
@@ -100,13 +101,33 @@ ltsa <-
            n_threads = 0,
            verbose = FALSE,
            ...) {
-    k <- n_neighbors
     X <- x2m(X)
+    args <- validate_ltsa_args(
+      X = X,
+      n_neighbors = n_neighbors,
+      ndim = ndim,
+      nn_method = nn_method,
+      eig_method = eig_method,
+      include_self = include_self,
+      normalize = normalize,
+      ret_B = ret_B,
+      n_threads = n_threads,
+      verbose = verbose
+    )
+    X <- args$X
+    k <- args$n_neighbors
+    ndim <- args$ndim
+    nn_method <- args$nn_method
+    eig_method <- args$eig_method
+    include_self <- args$include_self
+    normalize <- args$normalize
+    ret_B <- args$ret_B
+    n_threads <- args$n_threads
+    verbose <- args$verbose
 
     nn_fun <- switch(nn_method,
       exact = rnndescent::brute_force_knn,
-      nnd = rnndescent::nnd_knn,
-      stop("Unknown nn method '", nn_method, "'")
+      nnd = rnndescent::nnd_knn
     )
     tsmessage("Finding nearest neighbors with method '", nn_method, "'")
     nn_args <- list(
@@ -120,7 +141,6 @@ ltsa <-
     mode(nn$idx) <- "integer"
 
     n <- nrow(X)
-    indim <- ncol(X)
 
     tsmessage("Allocating space for sparse matrix")
     B <- create_sparse(nn$idx, verbose = verbose)
