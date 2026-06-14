@@ -1,7 +1,7 @@
 Type: Package
 Package: flotsam
 Title: Finicky LOcal Tangent Space Alignment Method
-Version: 0.0.0.9000
+Version: 0.0.0.9001
 Authors@R: 
     person("James", "Melville", , "jlmelville@gmail.com", role = c("aut", "cre", "cph"))
 Description: Implements the Local Tangent Space Alignment (LTSA) method of
