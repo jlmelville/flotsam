@@ -131,7 +131,7 @@ test_that("logical arguments must be scalar TRUE or FALSE", {
   )
 })
 
-test_that("eigenanalysis errors are not swallowed", {
+test_that("eigenanalysis errors include ltsa context and solver details", {
   expect_error(
     ltsa(
       iris[1:10, ],
@@ -141,6 +141,6 @@ test_that("eigenanalysis errors are not swallowed", {
       eig_method = "svdr",
       not_an_argument = TRUE
     ),
-    "unused argument"
+    "Eigenanalysis failed:.*unused argument"
   )
 })

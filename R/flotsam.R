@@ -182,98 +182,105 @@ ltsa <-
 
     tsmessage("Performing eigenanalysis")
 
-    out <- if (normalize) {
-      switch(eig_method,
-        irlba = {
-          eig_args <- lmerge(
-            list(
-              A = B,
-              nv = ndim + 1,
-              nu = 0
-            ),
-            list(...)
-          )
-          tsmessage("Calling irlba")
-          res <-
-            do.call(irlba::irlba, eig_args)$v[, 2:(ndim + 1)]
-        },
-        svdr = {
-          eig_args <- lmerge(
-            list(
-              x = B,
-              k = ndim + 1
-            ),
-            list(...)
-          )
-          tsmessage("Calling irlba svdr")
-          res <-
-            do.call(irlba::svdr, eig_args)$v[, 2:(ndim + 1)]
-        },
-        rspectra = {
-          tsmessage("Calling rspectra")
+    out <- tryCatch(
+      {
+        if (normalize) {
+          switch(eig_method,
+            irlba = {
+              eig_args <- lmerge(
+                list(
+                  A = B,
+                  nv = ndim + 1,
+                  nu = 0
+                ),
+                list(...)
+              )
+              tsmessage("Calling irlba")
+              res <-
+                do.call(irlba::irlba, eig_args)$v[, 2:(ndim + 1)]
+            },
+            svdr = {
+              eig_args <- lmerge(
+                list(
+                  x = B,
+                  k = ndim + 1
+                ),
+                list(...)
+              )
+              tsmessage("Calling irlba svdr")
+              res <-
+                do.call(irlba::svdr, eig_args)$v[, 2:(ndim + 1)]
+            },
+            rspectra = {
+              tsmessage("Calling rspectra")
 
-          eig_args <- list(
-            A = B,
-            k = ndim + 1,
-            which = "LM",
-            opts = rs_opt()
-          )
-          eig_args$opts <- lmerge(eig_args$opts, list(...))
+              eig_args <- list(
+                A = B,
+                k = ndim + 1,
+                which = "LM",
+                opts = rs_opt()
+              )
+              eig_args$opts <- lmerge(eig_args$opts, list(...))
 
-          res <-
-            do.call(RSpectra::eigs_sym, eig_args)$vectors
-          if (ncol(res) != ndim + 1) {
-            stop("Can't find enough vectors")
-          }
-          res <- res[, 2:(ndim + 1)]
-        },
-        fullsvd = {
-          tsmessage("Using full SVD")
-          res <-
-            svd(as.matrix(B), nv = ndim + 1, nu = 0)$v[, 2:(ndim + 1)]
-        },
-        eig = {
-          tsmessage("Using full eigenvalue decomposition")
-          res <- eigen(as.matrix(B))$vectors[, 2:(ndim + 1)]
+              res <-
+                do.call(RSpectra::eigs_sym, eig_args)$vectors
+              if (ncol(res) != ndim + 1) {
+                stop("Can't find enough vectors")
+              }
+              res <- res[, 2:(ndim + 1)]
+            },
+            fullsvd = {
+              tsmessage("Using full SVD")
+              res <-
+                svd(as.matrix(B), nv = ndim + 1, nu = 0)$v[, 2:(ndim + 1)]
+            },
+            eig = {
+              tsmessage("Using full eigenvalue decomposition")
+              res <- eigen(as.matrix(B))$vectors[, 2:(ndim + 1)]
+            }
+          )
+          Dinvs * res
+        } else {
+          switch(eig_method,
+            rspectra = {
+              tsmessage("Calling rspectra")
+              k_search <- ltsa_iterative_search_k(ndim, ncol(B))
+              res <-
+                rs_eig(B, k = k_search, ..., verbose = verbose)$vectors
+              if (ncol(res) < ndim) {
+                stop("Can't find enough vectors")
+              }
+              select_ltsa_embedding_vectors(B, res, ndim)
+            },
+            irlba = {
+              k_search <- ltsa_iterative_search_k(ndim, ncol(B))
+              res <- irlba_eig(B, k = k_search, ...)
+              select_ltsa_embedding_vectors(B, res, ndim)
+            },
+            svdr = {
+              k_search <- ltsa_iterative_search_k(ndim, ncol(B))
+              res <- svdr_eig(B, k = k_search, ...)
+              select_ltsa_embedding_vectors(B, res, ndim)
+            },
+            fullsvd = {
+              tsmessage("Using full SVD")
+              res <- svd(as.matrix(B))$v
+              nvec <- ncol(res)
+              res <- res[, rev((nvec - ndim):(nvec - 1))]
+            },
+            eig = {
+              tsmessage("Using full eigenvalue decomposition")
+              res <- eigen(as.matrix(B), symmetric = TRUE)$vectors
+              nvec <- ncol(res)
+              res <- res[, rev((nvec - ndim):(nvec - 1))]
+            }
+          )
         }
-      )
-      Dinvs * res
-    } else {
-      switch(eig_method,
-        rspectra = {
-          tsmessage("Calling rspectra")
-          k_search <- ltsa_iterative_search_k(ndim, ncol(B))
-          res <-
-            rs_eig(B, k = k_search, ..., verbose = verbose)$vectors
-          if (ncol(res) < ndim) {
-            stop("Can't find enough vectors")
-          }
-          select_ltsa_embedding_vectors(B, res, ndim)
-        },
-        irlba = {
-          k_search <- ltsa_iterative_search_k(ndim, ncol(B))
-          res <- irlba_eig(B, k = k_search, ...)
-          select_ltsa_embedding_vectors(B, res, ndim)
-        },
-        svdr = {
-          k_search <- ltsa_iterative_search_k(ndim, ncol(B))
-          res <- svdr_eig(B, k = k_search, ...)
-          select_ltsa_embedding_vectors(B, res, ndim)
-        },
-        fullsvd = {
-          tsmessage("Using full SVD")
-          res <- svd(as.matrix(B))$v
-          nvec <- ncol(res)
-          res <- res[, rev((nvec - ndim):(nvec - 1))]
-        },
-        eig = {
-          tsmessage("Using full eigenvalue decomposition")
-          res <- eigen(as.matrix(B), symmetric = TRUE)$vectors
-          nvec <- ncol(res)
-          res <- res[, rev((nvec - ndim):(nvec - 1))]
-        }
-      )
-    }
+      },
+      error = function(e) {
+        stop("Eigenanalysis failed: ", conditionMessage(e), call. = FALSE)
+      }
+    )
     tsmessage("Finished")
     out
   }
