@@ -13,7 +13,11 @@ selection_test_matrix <- function(basis) {
 }
 
 expect_selected_basis <- function(selected, expected) {
-  expect_equal(abs(crossprod(selected, expected)), diag(ncol(expected)), tolerance = 1e-12)
+  expect_equal(
+    abs(crossprod(selected, expected)),
+    diag(ncol(expected)),
+    tolerance = 1e-12
+  )
 }
 
 test_that("embedding vector selection drops a returned trivial vector", {

@@ -4,6 +4,7 @@ Finicky LOcal Tangent Space Alignment Method
 
 <!-- badges: start -->
 [![R-CMD-check](https://github.com/jlmelville/flotsam/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/jlmelville/flotsam/actions/workflows/R-CMD-check.yaml)
+[![air](https://github.com/jlmelville/flotsam/actions/workflows/air.yaml/badge.svg)](https://github.com/jlmelville/flotsam/actions/workflows/air.yaml)
 [![lint](https://github.com/jlmelville/flotsam/actions/workflows/lint.yaml/badge.svg)](https://github.com/jlmelville/flotsam/actions/workflows/lint.yaml)
 [![Codecov test coverage](https://codecov.io/gh/jlmelville/flotsam/branch/main/graph/badge.svg)](https://app.codecov.io/gh/jlmelville/flotsam?branch=main)
 <!-- badges: end -->

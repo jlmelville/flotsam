@@ -7,5 +7,9 @@ test_that("iris", {
       include_self = FALSE,
       eig_method = "eig"
     )
-  expect_equal(abs(irisnn50_ltsa), abs(irisnn50_ltsa_expected), tolerance = 1e-2)
+  expect_equal(
+    abs(irisnn50_ltsa),
+    abs(irisnn50_ltsa_expected),
+    tolerance = 1e-2
+  )
 })

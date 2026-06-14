@@ -1,9 +1,11 @@
 # Legacy sparse-slot-search assembly retained for internal regression tests.
-assemble_ltsa_B_slot_search_reference <- function(X,
-                                                  nn_idx,
-                                                  ndim,
-                                                  include_self,
-                                                  verbose = FALSE) {
+assemble_ltsa_B_slot_search_reference <- function(
+  X,
+  nn_idx,
+  ndim,
+  include_self,
+  verbose = FALSE
+) {
   n <- nrow(X)
   B <- create_sparse(nn_idx, verbose = verbose)
   Bx <- B@x

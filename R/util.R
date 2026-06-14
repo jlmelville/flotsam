@@ -6,11 +6,13 @@ stime <- function() {
 # appears only if called from an environment where a logical verbose = TRUE
 # OR force = TRUE
 tsmessage <-
-  function(...,
-           domain = NULL,
-           appendLF = TRUE,
-           force = FALSE,
-           time_stamp = TRUE) {
+  function(
+    ...,
+    domain = NULL,
+    appendLF = TRUE,
+    force = FALSE,
+    time_stamp = TRUE
+  ) {
     verbose <- get0("verbose", envir = sys.parent())
 
     if (force || (!is.null(verbose) && verbose)) {
@@ -43,16 +45,18 @@ x2m <- function(X) {
   m
 }
 
-validate_ltsa_args <- function(X,
-                               n_neighbors,
-                               ndim,
-                               nn_method,
-                               eig_method,
-                               include_self,
-                               normalize,
-                               ret_B,
-                               n_threads,
-                               verbose) {
+validate_ltsa_args <- function(
+  X,
+  n_neighbors,
+  ndim,
+  nn_method,
+  eig_method,
+  include_self,
+  normalize,
+  ret_B,
+  n_threads,
+  verbose
+) {
   if (!all(is.finite(X))) {
     stop("X must contain only finite numeric values", call. = FALSE)
   }
@@ -112,12 +116,14 @@ validate_ltsa_args <- function(X,
 }
 
 check_whole_number <- function(x, name, min = 0) {
-  if (!is.numeric(x) ||
-    length(x) != 1 ||
-    is.na(x) ||
-    !is.finite(x) ||
-    x < min ||
-    x != floor(x)) {
+  if (
+    !is.numeric(x) ||
+      length(x) != 1 ||
+      is.na(x) ||
+      !is.finite(x) ||
+      x < min ||
+      x != floor(x)
+  ) {
     stop(name, " must be a whole number >= ", min, call. = FALSE)
   }
   as.integer(x)
@@ -132,11 +138,21 @@ check_scalar_logical <- function(x, name) {
 
 check_choice <- function(x, choices, name) {
   if (!is.character(x) || length(x) != 1 || is.na(x)) {
-    stop(name, " must be one of: ", paste(choices, collapse = ", "), call. = FALSE)
+    stop(
+      name,
+      " must be one of: ",
+      paste(choices, collapse = ", "),
+      call. = FALSE
+    )
   }
   x <- tolower(x)
   if (!x %in% choices) {
-    stop(name, " must be one of: ", paste(choices, collapse = ", "), call. = FALSE)
+    stop(
+      name,
+      " must be one of: ",
+      paste(choices, collapse = ", "),
+      call. = FALSE
+    )
   }
   x
 }

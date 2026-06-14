@@ -40,7 +40,10 @@ test_that("C++ triplet assembly matches slot-search assembly with self", {
   )
 
   expect_sparse_equivalent(candidate$B, reference$B)
-  expect_identical(candidate$rank_deficient_count, reference$rank_deficient_count)
+  expect_identical(
+    candidate$rank_deficient_count,
+    reference$rank_deficient_count
+  )
   expect_identical(candidate$min_local_rank, reference$min_local_rank)
   expect_true(Matrix::isSymmetric(candidate$B))
 })
@@ -65,7 +68,10 @@ test_that("append/finalize assembly matches compact assembly", {
     )
 
     expect_sparse_identical(candidate$B, reference$B)
-    expect_identical(candidate$rank_deficient_count, reference$rank_deficient_count)
+    expect_identical(
+      candidate$rank_deficient_count,
+      reference$rank_deficient_count
+    )
     expect_identical(candidate$min_local_rank, reference$min_local_rank)
     expect_true(Matrix::isSymmetric(candidate$B))
   }

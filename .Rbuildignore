@@ -6,6 +6,8 @@
 ^\.Rproj\.user$
 ^LICENSE\.md$
 ^codecov\.yml$
+^\.lintr$
+^air\.toml$
 ^_pkgdown\.yml$
 ^bench$
 ^docs$

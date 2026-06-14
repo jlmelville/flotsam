@@ -92,17 +92,19 @@
 #' plot(swiss_pca, col = phi)
 #' @export
 ltsa <-
-  function(X,
-           n_neighbors = 15,
-           ndim = 2,
-           nn_method = "nnd",
-           eig_method = "rspectra",
-           include_self = TRUE,
-           normalize = FALSE,
-           ret_B = FALSE,
-           n_threads = 0,
-           verbose = FALSE,
-           ...) {
+  function(
+    X,
+    n_neighbors = 15,
+    ndim = 2,
+    nn_method = "nnd",
+    eig_method = "rspectra",
+    include_self = TRUE,
+    normalize = FALSE,
+    ret_B = FALSE,
+    n_threads = 0,
+    verbose = FALSE,
+    ...
+  ) {
     X <- x2m(X)
     args <- validate_ltsa_args(
       X = X,
@@ -127,7 +129,8 @@ ltsa <-
     n_threads <- args$n_threads
     verbose <- args$verbose
 
-    nn_fun <- switch(nn_method,
+    nn_fun <- switch(
+      nn_method,
       exact = rnndescent::brute_force_knn,
       nnd = rnndescent::nnd_knn
     )
@@ -185,7 +188,8 @@ ltsa <-
     out <- tryCatch(
       {
         if (normalize) {
-          switch(eig_method,
+          switch(
+            eig_method,
             irlba = {
               eig_args <- lmerge(
                 list(
@@ -241,7 +245,8 @@ ltsa <-
           )
           Dinvs * res
         } else {
-          switch(eig_method,
+          switch(
+            eig_method,
             rspectra = {
               tsmessage("Calling rspectra")
               k_search <- ltsa_iterative_search_k(ndim, ncol(B))
@@ -285,12 +290,14 @@ ltsa <-
     out
   }
 
-assemble_ltsa_B <- function(X,
-                            nn_idx,
-                            ndim,
-                            include_self,
-                            verbose = FALSE,
-                            preserve_pattern = FALSE) {
+assemble_ltsa_B <- function(
+  X,
+  nn_idx,
+  ndim,
+  include_self,
+  verbose = FALSE,
+  preserve_pattern = FALSE
+) {
   if (preserve_pattern) {
     return(assemble_ltsa_B_compact(
       X = X,
@@ -311,11 +318,13 @@ assemble_ltsa_B <- function(X,
   )
 }
 
-assemble_ltsa_B_append <- function(X,
-                                   nn_idx,
-                                   ndim,
-                                   include_self,
-                                   verbose = FALSE) {
+assemble_ltsa_B_append <- function(
+  X,
+  nn_idx,
+  ndim,
+  include_self,
+  verbose = FALSE
+) {
   n <- nrow(X)
   weight_idx <- ltsa_weight_neighborhoods(nn_idx, include_self)
   k <- ncol(weight_idx)
@@ -353,12 +362,14 @@ assemble_ltsa_B_append <- function(X,
   )
 }
 
-assemble_ltsa_B_compact <- function(X,
-                                    nn_idx,
-                                    ndim,
-                                    include_self,
-                                    verbose = FALSE,
-                                    preserve_pattern = FALSE) {
+assemble_ltsa_B_compact <- function(
+  X,
+  nn_idx,
+  ndim,
+  include_self,
+  verbose = FALSE,
+  preserve_pattern = FALSE
+) {
   n <- nrow(X)
   weight_idx <- ltsa_weight_neighborhoods(nn_idx, include_self)
   k <- ncol(weight_idx)
@@ -475,11 +486,17 @@ diag_spm <- function(m) {
   is <- m@i
   ps <- m@p
   n <- nrow(m)
-  sapply(1:n, function(i, is, ps) {
-    begin <- ps[i] + 1
-    end <- ps[i + 1]
-    begin + which(is[begin:end] == i - 1)
-  }, is, ps) - 1
+  sapply(
+    1:n,
+    function(i, is, ps) {
+      begin <- ps[i] + 1
+      end <- ps[i + 1]
+      begin + which(is[begin:end] == i - 1)
+    },
+    is,
+    ps
+  ) -
+    1
 }
 
 lsym_norm <- function(M, D) {
@@ -514,11 +531,7 @@ rs_opt <- function() {
 # factorizations hang or skip eigenvectors.
 # https://github.com/yixuan/spectra/issues/126
 rs_eig <-
-  function(X,
-           k = ncol(X) - 1,
-           ...,
-           lambda_max = NULL,
-           verbose = FALSE) {
+  function(X, k = ncol(X) - 1, ..., lambda_max = NULL, verbose = FALSE) {
     varargs <- list(...)
     if (is.null(lambda_max)) {
       tsmessage("Finding largest eigenvalue")
@@ -545,11 +558,7 @@ rs_eig <-
   }
 
 irlba_eig <-
-  function(X,
-           k = ncol(X) - 1,
-           ...,
-           lambda_max = NULL,
-           verbose = FALSE) {
+  function(X, k = ncol(X) - 1, ..., lambda_max = NULL, verbose = FALSE) {
     varargs <- list(...)
 
     if (is.null(lambda_max)) {
@@ -565,20 +574,25 @@ irlba_eig <-
     X_shift <- shift_lap(X, lm2)
 
     tsmessage("Decomposing shifted matrix")
-    args <- lmerge(list(
-      A = X_shift,
-      nv = k,
-      nu = 0
-    ), varargs)
+    args <- lmerge(
+      list(
+        A = X_shift,
+        nv = k,
+        nu = 0
+      ),
+      varargs
+    )
     res <- do.call(irlba::irlba, args)
     res$v
   }
 
-svdr_eig <- function(X,
-                     k = ncol(X) - 1,
-                     ...,
-                     lambda_max = NULL,
-                     verbose = FALSE) {
+svdr_eig <- function(
+  X,
+  k = ncol(X) - 1,
+  ...,
+  lambda_max = NULL,
+  verbose = FALSE
+) {
   varargs <- list(...)
 
   if (is.null(lambda_max)) {
@@ -593,10 +607,13 @@ svdr_eig <- function(X,
   X_shift <- shift_lap(X, lm2)
 
   tsmessage("Decomposing shifted matrix")
-  args <- lmerge(list(
-    x = X_shift,
-    k = k
-  ), varargs)
+  args <- lmerge(
+    list(
+      x = X_shift,
+      k = k
+    ),
+    varargs
+  )
   res <- do.call(irlba::svdr, args)
   res$v
 }
