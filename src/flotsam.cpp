@@ -138,6 +138,11 @@ struct WeightedEntry {
   std::size_t seq;
 };
 
+struct CompactEntry {
+  int row;
+  double value;
+};
+
 std::size_t checked_triplet_count(std::size_t n_obs,
                                   std::size_t n_nbrs,
                                   const char* name) {
@@ -156,6 +161,89 @@ int checked_neighbor_index(int idx, std::size_t n_obs) {
     stop("Neighborhood index is outside the sparse matrix dimensions");
   }
   return idx - 1;
+}
+
+void checked_append_output(int row,
+                           double value,
+                           std::vector<int>& out_i,
+                           std::vector<double>& out_x,
+                           std::size_t max_int) {
+  if (out_i.size() >= max_int) {
+    stop("Too many non-zero slots for a dgCMatrix");
+  }
+  out_i.push_back(row);
+  out_x.push_back(value);
+}
+
+list compact_ltsa_triplet_assembly_components(const integers& value_nnt,
+                                               const doubles& weights,
+                                               std::size_t value_n_nbrs,
+                                               std::size_t n_obs,
+                                               std::size_t max_int) {
+  std::vector<std::size_t> col_counts(n_obs, 0);
+  for (std::size_t obs = 0; obs < n_obs; obs++) {
+    std::size_t offset = obs * value_n_nbrs;
+    for (std::size_t local_col = 0; local_col < value_n_nbrs; local_col++) {
+      int col = checked_neighbor_index(value_nnt[offset + local_col], n_obs);
+      col_counts[col] += value_n_nbrs;
+    }
+  }
+
+  std::vector<std::vector<CompactEntry>> columns(n_obs);
+  for (std::size_t col = 0; col < n_obs; col++) {
+    columns[col].reserve(col_counts[col]);
+  }
+
+  std::size_t value_k2 = value_n_nbrs * value_n_nbrs;
+  for (std::size_t obs = 0; obs < n_obs; obs++) {
+    std::size_t nnt_offset = obs * value_n_nbrs;
+    std::size_t weight_offset = obs * value_k2;
+    for (std::size_t local_col = 0; local_col < value_n_nbrs; local_col++) {
+      int col = checked_neighbor_index(value_nnt[nnt_offset + local_col], n_obs);
+      for (std::size_t local_row = 0; local_row < value_n_nbrs; local_row++) {
+        int row = checked_neighbor_index(value_nnt[nnt_offset + local_row], n_obs);
+        double value = weights[weight_offset + local_col * value_n_nbrs + local_row];
+        columns[col].push_back(CompactEntry{row, value});
+      }
+    }
+  }
+
+  std::vector<int> out_i;
+  std::vector<double> out_x;
+  std::vector<int> p(n_obs + 1, 0);
+
+  std::vector<double> row_sums(n_obs, 0.0);
+  std::vector<int> row_seen(n_obs, -1);
+  std::vector<int> touched_rows;
+
+  for (std::size_t col = 0; col < n_obs; col++) {
+    auto& entries = columns[col];
+    int col_marker = static_cast<int>(col);
+    touched_rows.clear();
+    for (const auto& entry : entries) {
+      if (row_seen[entry.row] != col_marker) {
+        row_seen[entry.row] = col_marker;
+        row_sums[entry.row] = 0.0;
+        touched_rows.push_back(entry.row);
+      }
+      row_sums[entry.row] += entry.value;
+    }
+
+    std::sort(touched_rows.begin(), touched_rows.end());
+    for (const auto& row : touched_rows) {
+      double value = row_sums[row];
+      if (value != 0.0) {
+        checked_append_output(row, value, out_i, out_x, max_int);
+      }
+    }
+    p[col + 1] = static_cast<int>(out_i.size());
+  }
+
+  return writable::list({
+    "i"_nm = out_i,
+    "p"_nm = p,
+    "x"_nm = out_x
+  });
 }
 
 [[cpp11::register]] list
@@ -202,6 +290,16 @@ ltsa_triplet_assembly_components(const integers& pattern_nnt,
   const auto max_int = static_cast<std::size_t>(std::numeric_limits<int>::max());
   if (n_obs + 1 > max_int) {
     stop("Too many observations for a dgCMatrix");
+  }
+
+  if (!preserve_pattern) {
+    return compact_ltsa_triplet_assembly_components(
+      value_nnt,
+      weights,
+      value_n_nbrs,
+      n_obs,
+      max_int
+    );
   }
 
   std::vector<WeightedEntry> entries;
@@ -271,11 +369,7 @@ ltsa_triplet_assembly_components(const integers& pattern_nnt,
     }
 
     if (preserve_pattern || value != 0.0) {
-      if (out_i.size() >= max_int) {
-        stop("Too many non-zero slots for a dgCMatrix");
-      }
-      out_i.push_back(row);
-      out_x.push_back(value);
+      checked_append_output(row, value, out_i, out_x, max_int);
     }
   }
 
