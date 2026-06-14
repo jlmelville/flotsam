@@ -13,7 +13,7 @@ extern "C" SEXP _flotsam_sparse_idxs(SEXP is, SEXP ps, SEXP ns) {
   END_CPP11
 }
 // flotsam.cpp
-doubles   spm_times_scalar(const integers& ps, const doubles& xs, const doubles& ds);
+doubles spm_times_scalar(const integers& ps, const doubles& xs, const doubles& ds);
 extern "C" SEXP _flotsam_spm_times_scalar(SEXP ps, SEXP xs, SEXP ds) {
   BEGIN_CPP11
     return cpp11::as_sexp(spm_times_scalar(cpp11::as_cpp<cpp11::decay_t<const integers&>>(ps), cpp11::as_cpp<cpp11::decay_t<const doubles&>>(xs), cpp11::as_cpp<cpp11::decay_t<const doubles&>>(ds)));

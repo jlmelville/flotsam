@@ -6,6 +6,7 @@
 ^\.Rproj\.user$
 ^LICENSE\.md$
 ^codecov\.yml$
+^\.clang-format$
 ^\.lintr$
 ^air\.toml$
 ^_pkgdown\.yml$

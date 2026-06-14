@@ -10,8 +10,8 @@ using namespace cpp11;
 
 // convert the row/column indices of neighbor idx in ns to the 1D index in the
 // sparse is vector, using ps to find the row range
-[[cpp11::register]] integers
-sparse_idxs(const integers& is, const integers& ps, const integers& ns) {
+[[cpp11::register]] integers sparse_idxs(const integers& is, const integers& ps,
+                                         const integers& ns) {
   // contents of ns are 1-indexed
   // contents of is and ps are 0-indexed
 
@@ -54,11 +54,10 @@ sparse_idxs(const integers& is, const integers& ps, const integers& ns) {
   return sp_idx;
 }
 
-  // calculates M * d where M is a sparse matrix with pointer ps and values
-  // xs, and d is the vector ds
-  [[cpp11::register]] doubles
-  spm_times_scalar(const integers& ps, const doubles& xs, const doubles& ds)
-{
+// calculates M * d where M is a sparse matrix with pointer ps and values
+// xs, and d is the vector ds
+[[cpp11::register]] doubles
+spm_times_scalar(const integers& ps, const doubles& xs, const doubles& ds) {
   auto nrow = ds.size();
   if (nrow != ps.size() - 1) {
     stop("Inconsistent diagonal and pointer lengths");
@@ -79,9 +78,8 @@ sparse_idxs(const integers& is, const integers& ps, const integers& ns) {
   return dxs;
 }
 
-std::vector<std::size_t>
-create_idx1d(const integers& nnt, std::size_t n_nbrs, std::size_t n_obs)
-{
+std::vector<std::size_t> create_idx1d(const integers& nnt, std::size_t n_nbrs,
+                                      std::size_t n_obs) {
   std::unordered_set<std::size_t> all_idx;
   std::unordered_set<std::size_t> tmp;
   for (std::size_t i = 0; i < n_obs; i++) {
@@ -112,8 +110,8 @@ create_idx1d(const integers& nnt, std::size_t n_nbrs, std::size_t n_obs)
   return ridx;
 }
 
-[[cpp11::register]] list
-nbrhood_triplets(const integers& nnt, std::size_t n_nbrs) {
+[[cpp11::register]] list nbrhood_triplets(const integers& nnt,
+                                          std::size_t n_nbrs) {
   auto n_obs = nnt.size() / n_nbrs;
 
   // find unique 1D indices (i < j only)
@@ -129,7 +127,7 @@ nbrhood_triplets(const integers& nnt, std::size_t n_nbrs) {
     cidx[i] = static_cast<int>(i1d / n_obs);
   }
 
-  return writable::list({ "i"_nm = ridx, "j"_nm = cidx });
+  return writable::list({"i"_nm = ridx, "j"_nm = cidx});
 }
 
 struct WeightedEntry {
@@ -144,27 +142,20 @@ struct CompactEntry {
   double value;
 };
 
-std::size_t checked_triplet_count(std::size_t n_obs,
-                                  std::size_t n_nbrs,
+std::size_t checked_triplet_count(std::size_t n_obs, std::size_t n_nbrs,
                                   const char* name);
 
 int checked_neighbor_index(int idx, std::size_t n_obs);
 
-void checked_append_output(int row,
-                           double value,
-                           std::vector<int>& out_i,
-                           std::vector<double>& out_x,
-                           std::size_t max_int);
+void checked_append_output(int row, double value, std::vector<int>& out_i,
+                           std::vector<double>& out_x, std::size_t max_int);
 
 class LtsaTripletAssemblyBuilder {
- public:
+public:
   LtsaTripletAssemblyBuilder(const integers& value_nnt,
-                             std::size_t value_n_nbrs,
-                             std::size_t n_obs,
+                             std::size_t value_n_nbrs, std::size_t n_obs,
                              std::size_t max_int)
-      : n_obs_(n_obs),
-        value_n_nbrs_(value_n_nbrs),
-        max_int_(max_int),
+      : n_obs_(n_obs), value_n_nbrs_(value_n_nbrs), max_int_(max_int),
         columns_(n_obs) {
     std::vector<std::size_t> col_counts(n_obs_, 0);
     for (std::size_t obs = 0; obs < n_obs_; obs++) {
@@ -191,9 +182,8 @@ class LtsaTripletAssemblyBuilder {
       stop("Inconsistent value neighborhood dimensions");
     }
 
-    std::size_t value_k2 = checked_triplet_count(
-      1, value_n_nbrs_, "value_n_nbrs"
-    );
+    std::size_t value_k2 =
+        checked_triplet_count(1, value_n_nbrs_, "value_n_nbrs");
     if (static_cast<std::size_t>(weights.size()) != value_k2) {
       stop("Inconsistent local weight dimensions");
     }
@@ -253,14 +243,10 @@ class LtsaTripletAssemblyBuilder {
     columns_.clear();
     columns_.shrink_to_fit();
 
-    return writable::list({
-      "i"_nm = out_i,
-      "p"_nm = p,
-      "x"_nm = out_x
-    });
+    return writable::list({"i"_nm = out_i, "p"_nm = p, "x"_nm = out_x});
   }
 
- private:
+private:
   std::size_t n_obs_;
   std::size_t value_n_nbrs_;
   std::size_t max_int_;
@@ -269,8 +255,7 @@ class LtsaTripletAssemblyBuilder {
   std::vector<std::vector<CompactEntry>> columns_;
 };
 
-std::size_t checked_triplet_count(std::size_t n_obs,
-                                  std::size_t n_nbrs,
+std::size_t checked_triplet_count(std::size_t n_obs, std::size_t n_nbrs,
                                   const char* name) {
   if (n_nbrs == 0) {
     stop("%s must be positive", name);
@@ -289,11 +274,8 @@ int checked_neighbor_index(int idx, std::size_t n_obs) {
   return idx - 1;
 }
 
-void checked_append_output(int row,
-                           double value,
-                           std::vector<int>& out_i,
-                           std::vector<double>& out_x,
-                           std::size_t max_int) {
+void checked_append_output(int row, double value, std::vector<int>& out_i,
+                           std::vector<double>& out_x, std::size_t max_int) {
   if (out_i.size() >= max_int) {
     stop("Too many non-zero slots for a dgCMatrix");
   }
@@ -302,10 +284,10 @@ void checked_append_output(int row,
 }
 
 list compact_ltsa_triplet_assembly_components(const integers& value_nnt,
-                                               const doubles& weights,
-                                               std::size_t value_n_nbrs,
-                                               std::size_t n_obs,
-                                               std::size_t max_int) {
+                                              const doubles& weights,
+                                              std::size_t value_n_nbrs,
+                                              std::size_t n_obs,
+                                              std::size_t max_int) {
   std::vector<std::size_t> col_counts(n_obs, 0);
   for (std::size_t obs = 0; obs < n_obs; obs++) {
     std::size_t offset = obs * value_n_nbrs;
@@ -325,10 +307,13 @@ list compact_ltsa_triplet_assembly_components(const integers& value_nnt,
     std::size_t nnt_offset = obs * value_n_nbrs;
     std::size_t weight_offset = obs * value_k2;
     for (std::size_t local_col = 0; local_col < value_n_nbrs; local_col++) {
-      int col = checked_neighbor_index(value_nnt[nnt_offset + local_col], n_obs);
+      int col =
+          checked_neighbor_index(value_nnt[nnt_offset + local_col], n_obs);
       for (std::size_t local_row = 0; local_row < value_n_nbrs; local_row++) {
-        int row = checked_neighbor_index(value_nnt[nnt_offset + local_row], n_obs);
-        double value = weights[weight_offset + local_col * value_n_nbrs + local_row];
+        int row =
+            checked_neighbor_index(value_nnt[nnt_offset + local_row], n_obs);
+        double value =
+            weights[weight_offset + local_col * value_n_nbrs + local_row];
         columns[col].push_back(CompactEntry{row, value});
       }
     }
@@ -365,15 +350,11 @@ list compact_ltsa_triplet_assembly_components(const integers& value_nnt,
     p[col + 1] = static_cast<int>(out_i.size());
   }
 
-  return writable::list({
-    "i"_nm = out_i,
-    "p"_nm = p,
-    "x"_nm = out_x
-  });
+  return writable::list({"i"_nm = out_i, "p"_nm = p, "x"_nm = out_x});
 }
 
 using LtsaTripletAssemblyBuilderPtr =
-  external_pointer<LtsaTripletAssemblyBuilder>;
+    external_pointer<LtsaTripletAssemblyBuilder>;
 
 LtsaTripletAssemblyBuilder* checked_ltsa_triplet_builder(SEXP builder_xptr) {
   LtsaTripletAssemblyBuilderPtr builder(builder_xptr);
@@ -384,9 +365,8 @@ LtsaTripletAssemblyBuilder* checked_ltsa_triplet_builder(SEXP builder_xptr) {
   return ptr;
 }
 
-[[cpp11::register]] sexp
-ltsa_triplet_builder_create(const integers& value_nnt,
-                            std::size_t value_n_nbrs) {
+[[cpp11::register]] sexp ltsa_triplet_builder_create(const integers& value_nnt,
+                                                     std::size_t value_n_nbrs) {
   if (value_nnt.size() == 0 || value_n_nbrs == 0) {
     stop("Value neighborhoods must not be empty");
   }
@@ -401,36 +381,31 @@ ltsa_triplet_builder_create(const integers& value_nnt,
 
   checked_triplet_count(n_obs, value_n_nbrs, "value_n_nbrs");
 
-  const auto max_int = static_cast<std::size_t>(std::numeric_limits<int>::max());
+  const auto max_int =
+      static_cast<std::size_t>(std::numeric_limits<int>::max());
   if (n_obs + 1 > max_int) {
     stop("Too many observations for a dgCMatrix");
   }
 
   LtsaTripletAssemblyBuilderPtr builder(
-    new LtsaTripletAssemblyBuilder(value_nnt, value_n_nbrs, n_obs, max_int)
-  );
+      new LtsaTripletAssemblyBuilder(value_nnt, value_n_nbrs, n_obs, max_int));
   return sexp(static_cast<SEXP>(builder));
 }
 
-[[cpp11::register]] void
-ltsa_triplet_builder_append(SEXP builder_xptr,
-                            const integers& nni,
-                            const doubles& weights) {
+[[cpp11::register]] void ltsa_triplet_builder_append(SEXP builder_xptr,
+                                                     const integers& nni,
+                                                     const doubles& weights) {
   checked_ltsa_triplet_builder(builder_xptr)->append(nni, weights);
 }
 
-[[cpp11::register]] list
-ltsa_triplet_builder_finalize(SEXP builder_xptr) {
+[[cpp11::register]] list ltsa_triplet_builder_finalize(SEXP builder_xptr) {
   return checked_ltsa_triplet_builder(builder_xptr)->finalize();
 }
 
-[[cpp11::register]] list
-ltsa_triplet_assembly_components(const integers& pattern_nnt,
-                                  std::size_t pattern_n_nbrs,
-                                  const integers& value_nnt,
-                                  const doubles& weights,
-                                  std::size_t value_n_nbrs,
-                                  bool preserve_pattern) {
+[[cpp11::register]] list ltsa_triplet_assembly_components(
+    const integers& pattern_nnt, std::size_t pattern_n_nbrs,
+    const integers& value_nnt, const doubles& weights, std::size_t value_n_nbrs,
+    bool preserve_pattern) {
   if (value_nnt.size() == 0 || value_n_nbrs == 0) {
     stop("Value neighborhoods must not be empty");
   }
@@ -456,28 +431,25 @@ ltsa_triplet_assembly_components(const integers& pattern_nnt,
     stop("Inconsistent value neighborhood dimensions");
   }
 
-  std::size_t n_pattern_triplets = preserve_pattern
-    ? checked_triplet_count(n_obs, pattern_n_nbrs, "pattern_n_nbrs")
-    : 0;
+  std::size_t n_pattern_triplets =
+      preserve_pattern
+          ? checked_triplet_count(n_obs, pattern_n_nbrs, "pattern_n_nbrs")
+          : 0;
   std::size_t n_value_triplets =
-    checked_triplet_count(n_obs, value_n_nbrs, "value_n_nbrs");
+      checked_triplet_count(n_obs, value_n_nbrs, "value_n_nbrs");
   if (weights.size() != n_value_triplets) {
     stop("Inconsistent local weight dimensions");
   }
 
-  const auto max_int = static_cast<std::size_t>(std::numeric_limits<int>::max());
+  const auto max_int =
+      static_cast<std::size_t>(std::numeric_limits<int>::max());
   if (n_obs + 1 > max_int) {
     stop("Too many observations for a dgCMatrix");
   }
 
   if (!preserve_pattern) {
     return compact_ltsa_triplet_assembly_components(
-      value_nnt,
-      weights,
-      value_n_nbrs,
-      n_obs,
-      max_int
-    );
+        value_nnt, weights, value_n_nbrs, n_obs, max_int);
   }
 
   std::vector<WeightedEntry> entries;
@@ -488,9 +460,12 @@ ltsa_triplet_assembly_components(const integers& pattern_nnt,
     for (std::size_t obs = 0; obs < n_obs; obs++) {
       std::size_t offset = obs * pattern_n_nbrs;
       for (std::size_t local_col = 0; local_col < pattern_n_nbrs; local_col++) {
-        int col = checked_neighbor_index(pattern_nnt[offset + local_col], n_obs);
-        for (std::size_t local_row = 0; local_row < pattern_n_nbrs; local_row++) {
-          int row = checked_neighbor_index(pattern_nnt[offset + local_row], n_obs);
+        int col =
+            checked_neighbor_index(pattern_nnt[offset + local_col], n_obs);
+        for (std::size_t local_row = 0; local_row < pattern_n_nbrs;
+             local_row++) {
+          int row =
+              checked_neighbor_index(pattern_nnt[offset + local_row], n_obs);
           entries.push_back(WeightedEntry{col, row, 0.0, seq++});
         }
       }
@@ -502,25 +477,28 @@ ltsa_triplet_assembly_components(const integers& pattern_nnt,
     std::size_t nnt_offset = obs * value_n_nbrs;
     std::size_t weight_offset = obs * value_k2;
     for (std::size_t local_col = 0; local_col < value_n_nbrs; local_col++) {
-      int col = checked_neighbor_index(value_nnt[nnt_offset + local_col], n_obs);
+      int col =
+          checked_neighbor_index(value_nnt[nnt_offset + local_col], n_obs);
       for (std::size_t local_row = 0; local_row < value_n_nbrs; local_row++) {
-        int row = checked_neighbor_index(value_nnt[nnt_offset + local_row], n_obs);
-        double value = weights[weight_offset + local_col * value_n_nbrs + local_row];
+        int row =
+            checked_neighbor_index(value_nnt[nnt_offset + local_row], n_obs);
+        double value =
+            weights[weight_offset + local_col * value_n_nbrs + local_row];
         entries.push_back(WeightedEntry{col, row, value, seq++});
       }
     }
   }
 
-  std::sort(entries.begin(), entries.end(), [](const WeightedEntry& lhs,
-                                               const WeightedEntry& rhs) {
-    if (lhs.col != rhs.col) {
-      return lhs.col < rhs.col;
-    }
-    if (lhs.row != rhs.row) {
-      return lhs.row < rhs.row;
-    }
-    return lhs.seq < rhs.seq;
-  });
+  std::sort(entries.begin(), entries.end(),
+            [](const WeightedEntry& lhs, const WeightedEntry& rhs) {
+              if (lhs.col != rhs.col) {
+                return lhs.col < rhs.col;
+              }
+              if (lhs.row != rhs.row) {
+                return lhs.row < rhs.row;
+              }
+              return lhs.seq < rhs.seq;
+            });
 
   std::vector<int> out_i;
   std::vector<double> out_x;
@@ -539,8 +517,7 @@ ltsa_triplet_assembly_components(const integers& pattern_nnt,
       p[++current_col] = static_cast<int>(out_i.size());
     }
 
-    while (pos < entries.size() &&
-           entries[pos].col == col &&
+    while (pos < entries.size() && entries[pos].col == col &&
            entries[pos].row == row) {
       value += entries[pos].value;
       pos++;
@@ -555,9 +532,5 @@ ltsa_triplet_assembly_components(const integers& pattern_nnt,
     p[++current_col] = static_cast<int>(out_i.size());
   }
 
-  return writable::list({
-    "i"_nm = out_i,
-    "p"_nm = p,
-    "x"_nm = out_x
-  });
+  return writable::list({"i"_nm = out_i, "p"_nm = p, "x"_nm = out_x});
 }
