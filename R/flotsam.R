@@ -240,20 +240,23 @@ ltsa <-
       switch(eig_method,
         rspectra = {
           tsmessage("Calling rspectra")
+          k_search <- ltsa_iterative_search_k(ndim, ncol(B))
           res <-
-            rs_eig(B, k = ndim + 1, ..., verbose = verbose)$vectors
-          if (ncol(res) != ndim + 1) {
+            rs_eig(B, k = k_search, ..., verbose = verbose)$vectors
+          if (ncol(res) < ndim) {
             stop("Can't find enough vectors")
           }
-          res[, 2:(ndim + 1)]
+          select_ltsa_embedding_vectors(B, res, ndim)
         },
         irlba = {
-          res <- irlba_eig(B, k = ndim + 1, ...)
-          res[, 2:(ndim + 1)]
+          k_search <- ltsa_iterative_search_k(ndim, ncol(B))
+          res <- irlba_eig(B, k = k_search, ...)
+          select_ltsa_embedding_vectors(B, res, ndim)
         },
         svdr = {
-          res <- svdr_eig(B, k = ndim + 1, ...)
-          res[, 2:(ndim + 1)]
+          k_search <- ltsa_iterative_search_k(ndim, ncol(B))
+          res <- svdr_eig(B, k = k_search, ...)
+          select_ltsa_embedding_vectors(B, res, ndim)
         },
         fullsvd = {
           tsmessage("Using full SVD")
@@ -346,6 +349,42 @@ ltsa_local_weights <- function(X, nni, ndim) {
   diag(Wi) <- diag(Wi) + 1.0
 
   list(Wi = Wi, rank = local_basis$rank)
+}
+
+ltsa_iterative_search_k <- function(ndim, n) {
+  base_k <- ndim + 1L
+  search_k <- max(ndim + 3L, 2L * base_k)
+  if (search_k >= 0.5 * n) {
+    return(base_k)
+  }
+  min(n - 1L, search_k)
+}
+
+# RSpectra sometimes fails to return the trivial constant vector, so we can't
+# blindly drop the first vector. We also want to make sure we have the
+# eigenvectors in the expected order. We fetch an "over-complete" set of
+# vectors and then sort them by their Rayleigh quotient on the original matrix.
+# A small Rayleigh quotient means the vector is close to a small-eigenvalue
+#direction of B.
+select_ltsa_embedding_vectors <- function(B, vectors, ndim) {
+  if (ncol(vectors) < ndim) {
+    stop("Can't find enough vectors", call. = FALSE)
+  }
+
+  rayleigh <- colSums(vectors * (B %*% vectors)) / colSums(vectors * vectors)
+  vectors <- vectors[, order(rayleigh), drop = FALSE]
+
+  first <- vectors[, 1L]
+  centered_norm <- sqrt(sum((first - mean(first))^2))
+  first_norm <- sqrt(sum(first^2))
+  drop_trivial <- first_norm > 0 && centered_norm <= 1e-4 * first_norm
+  start <- if (drop_trivial && ncol(vectors) > ndim) 2L else 1L
+  end <- start + ndim - 1L
+  if (end > ncol(vectors)) {
+    stop("Can't find enough vectors", call. = FALSE)
+  }
+
+  vectors[, start:end, drop = FALSE]
 }
 
 # get indices of the diagonal from the sparse matrix m
