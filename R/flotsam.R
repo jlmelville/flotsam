@@ -282,6 +282,74 @@ assemble_ltsa_B <- function(X,
                             include_self,
                             verbose = FALSE,
                             preserve_pattern = FALSE) {
+  if (preserve_pattern) {
+    return(assemble_ltsa_B_compact(
+      X = X,
+      nn_idx = nn_idx,
+      ndim = ndim,
+      include_self = include_self,
+      verbose = verbose,
+      preserve_pattern = TRUE
+    ))
+  }
+
+  assemble_ltsa_B_append(
+    X = X,
+    nn_idx = nn_idx,
+    ndim = ndim,
+    include_self = include_self,
+    verbose = verbose
+  )
+}
+
+assemble_ltsa_B_append <- function(X,
+                                   nn_idx,
+                                   ndim,
+                                   include_self,
+                                   verbose = FALSE) {
+  n <- nrow(X)
+  weight_idx <- ltsa_weight_neighborhoods(nn_idx, include_self)
+  k <- ncol(weight_idx)
+  builder <- ltsa_triplet_builder_create(t(weight_idx), k)
+
+  prev_time <- Sys.time()
+  rank_deficient_count <- 0L
+  min_local_rank <- ndim
+  for (i in seq_len(n)) {
+    if (verbose) {
+      curr_time <- Sys.time()
+      if (difftime(curr_time, prev_time, units = "secs") > 60) {
+        tsmessage("processed ", i, " / ", n)
+        prev_time <- curr_time
+      }
+    }
+
+    nni <- weight_idx[i, ]
+    local <- ltsa_local_weights(X, nni, ndim)
+    if (local$rank < ndim) {
+      rank_deficient_count <- rank_deficient_count + 1L
+      min_local_rank <- min(min_local_rank, local$rank)
+    }
+    ltsa_triplet_builder_append(builder, nni, as.vector(local$Wi))
+  }
+
+  tsmessage("Assembling sparse matrix")
+  components <- ltsa_triplet_builder_finalize(builder)
+  B <- ltsa_components_to_dgCMatrix(components, n)
+
+  list(
+    B = B,
+    rank_deficient_count = rank_deficient_count,
+    min_local_rank = min_local_rank
+  )
+}
+
+assemble_ltsa_B_compact <- function(X,
+                                    nn_idx,
+                                    ndim,
+                                    include_self,
+                                    verbose = FALSE,
+                                    preserve_pattern = FALSE) {
   n <- nrow(X)
   weight_idx <- ltsa_weight_neighborhoods(nn_idx, include_self)
   k <- ncol(weight_idx)
@@ -317,18 +385,22 @@ assemble_ltsa_B <- function(X,
     preserve_pattern
   )
 
-  B <- methods::new(
-    "dgCMatrix",
-    i = components$i,
-    p = components$p,
-    x = components$x,
-    Dim = as.integer(c(n, n))
-  )
+  B <- ltsa_components_to_dgCMatrix(components, n)
 
   list(
     B = B,
     rank_deficient_count = rank_deficient_count,
     min_local_rank = min_local_rank
+  )
+}
+
+ltsa_components_to_dgCMatrix <- function(components, n) {
+  methods::new(
+    "dgCMatrix",
+    i = components$i,
+    p = components$p,
+    x = components$x,
+    Dim = as.integer(c(n, n))
   )
 }
 

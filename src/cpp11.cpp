@@ -27,6 +27,28 @@ extern "C" SEXP _flotsam_nbrhood_triplets(SEXP nnt, SEXP n_nbrs) {
   END_CPP11
 }
 // flotsam.cpp
+sexp ltsa_triplet_builder_create(const integers& value_nnt, std::size_t value_n_nbrs);
+extern "C" SEXP _flotsam_ltsa_triplet_builder_create(SEXP value_nnt, SEXP value_n_nbrs) {
+  BEGIN_CPP11
+    return cpp11::as_sexp(ltsa_triplet_builder_create(cpp11::as_cpp<cpp11::decay_t<const integers&>>(value_nnt), cpp11::as_cpp<cpp11::decay_t<std::size_t>>(value_n_nbrs)));
+  END_CPP11
+}
+// flotsam.cpp
+void ltsa_triplet_builder_append(SEXP builder_xptr, const integers& nni, const doubles& weights);
+extern "C" SEXP _flotsam_ltsa_triplet_builder_append(SEXP builder_xptr, SEXP nni, SEXP weights) {
+  BEGIN_CPP11
+    ltsa_triplet_builder_append(cpp11::as_cpp<cpp11::decay_t<SEXP>>(builder_xptr), cpp11::as_cpp<cpp11::decay_t<const integers&>>(nni), cpp11::as_cpp<cpp11::decay_t<const doubles&>>(weights));
+    return R_NilValue;
+  END_CPP11
+}
+// flotsam.cpp
+list ltsa_triplet_builder_finalize(SEXP builder_xptr);
+extern "C" SEXP _flotsam_ltsa_triplet_builder_finalize(SEXP builder_xptr) {
+  BEGIN_CPP11
+    return cpp11::as_sexp(ltsa_triplet_builder_finalize(cpp11::as_cpp<cpp11::decay_t<SEXP>>(builder_xptr)));
+  END_CPP11
+}
+// flotsam.cpp
 list ltsa_triplet_assembly_components(const integers& pattern_nnt, std::size_t pattern_n_nbrs, const integers& value_nnt, const doubles& weights, std::size_t value_n_nbrs, bool preserve_pattern);
 extern "C" SEXP _flotsam_ltsa_triplet_assembly_components(SEXP pattern_nnt, SEXP pattern_n_nbrs, SEXP value_nnt, SEXP weights, SEXP value_n_nbrs, SEXP preserve_pattern) {
   BEGIN_CPP11
@@ -37,6 +59,9 @@ extern "C" SEXP _flotsam_ltsa_triplet_assembly_components(SEXP pattern_nnt, SEXP
 extern "C" {
 static const R_CallMethodDef CallEntries[] = {
     {"_flotsam_ltsa_triplet_assembly_components", (DL_FUNC) &_flotsam_ltsa_triplet_assembly_components, 6},
+    {"_flotsam_ltsa_triplet_builder_append",      (DL_FUNC) &_flotsam_ltsa_triplet_builder_append,      3},
+    {"_flotsam_ltsa_triplet_builder_create",      (DL_FUNC) &_flotsam_ltsa_triplet_builder_create,      2},
+    {"_flotsam_ltsa_triplet_builder_finalize",    (DL_FUNC) &_flotsam_ltsa_triplet_builder_finalize,    1},
     {"_flotsam_nbrhood_triplets",                 (DL_FUNC) &_flotsam_nbrhood_triplets,                 2},
     {"_flotsam_sparse_idxs",                      (DL_FUNC) &_flotsam_sparse_idxs,                      3},
     {"_flotsam_spm_times_scalar",                 (DL_FUNC) &_flotsam_spm_times_scalar,                 3},

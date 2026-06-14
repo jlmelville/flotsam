@@ -45,6 +45,32 @@ test_that("C++ triplet assembly matches slot-search assembly with self", {
   expect_true(Matrix::isSymmetric(candidate$B))
 })
 
+test_that("append/finalize assembly matches compact assembly", {
+  X <- as.matrix(iris[seq_len(20L), seq_len(4L)])
+
+  for (include_self in c(TRUE, FALSE)) {
+    nn_idx <- exact_nn_idx(X, n_neighbors = 6L, include_self = include_self)
+
+    reference <- flotsam:::assemble_ltsa_B_compact(
+      X,
+      nn_idx,
+      ndim = 2L,
+      include_self = include_self
+    )
+    candidate <- flotsam:::assemble_ltsa_B_append(
+      X,
+      nn_idx,
+      ndim = 2L,
+      include_self = include_self
+    )
+
+    expect_sparse_identical(candidate$B, reference$B)
+    expect_identical(candidate$rank_deficient_count, reference$rank_deficient_count)
+    expect_identical(candidate$min_local_rank, reference$min_local_rank)
+    expect_true(Matrix::isSymmetric(candidate$B))
+  }
+})
+
 test_that("C++ triplet assembly drops excluded-self zero-only pattern by default", {
   X <- as.matrix(iris[seq_len(20L), seq_len(4L)])
   nn_idx <- exact_nn_idx(X, n_neighbors = 6L, include_self = FALSE)

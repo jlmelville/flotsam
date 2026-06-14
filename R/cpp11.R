@@ -12,6 +12,18 @@ nbrhood_triplets <- function(nnt, n_nbrs) {
   .Call(`_flotsam_nbrhood_triplets`, nnt, n_nbrs)
 }
 
+ltsa_triplet_builder_create <- function(value_nnt, value_n_nbrs) {
+  .Call(`_flotsam_ltsa_triplet_builder_create`, value_nnt, value_n_nbrs)
+}
+
+ltsa_triplet_builder_append <- function(builder_xptr, nni, weights) {
+  invisible(.Call(`_flotsam_ltsa_triplet_builder_append`, builder_xptr, nni, weights))
+}
+
+ltsa_triplet_builder_finalize <- function(builder_xptr) {
+  .Call(`_flotsam_ltsa_triplet_builder_finalize`, builder_xptr)
+}
+
 ltsa_triplet_assembly_components <- function(pattern_nnt, pattern_n_nbrs, value_nnt, weights, value_n_nbrs, preserve_pattern) {
   .Call(`_flotsam_ltsa_triplet_assembly_components`, pattern_nnt, pattern_n_nbrs, value_nnt, weights, value_n_nbrs, preserve_pattern)
 }
