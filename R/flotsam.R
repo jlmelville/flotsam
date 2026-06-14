@@ -142,52 +142,17 @@ ltsa <-
 
     n <- nrow(X)
 
-    tsmessage("Allocating space for sparse matrix")
-    B <- create_sparse(nn$idx, verbose = verbose)
-
-    Bx <- B@x
-
     tsmessage("Getting neighborhoods")
-    # This is the slow bit
-    prev_time <- Sys.time()
-    rank_deficient_count <- 0L
-    min_local_rank <- ndim
-    for (i in 1:n) {
-      # N
-      if (verbose) {
-        curr_time <- Sys.time()
-        if (difftime(curr_time, prev_time, units = "secs") > 60) {
-          tsmessage("processed ", i, " / ", n)
-          prev_time <- curr_time
-        }
-      }
-
-      nni <- nn$idx[i, ]
-      if (!include_self) {
-        nni <- nni[-1]
-      }
-      # centered neighborhood k X M
-      Xi <- (scale(X[nni, ], center = TRUE, scale = FALSE))
-
-      # get the local tangent basis
-      local_basis <- svecs(Xi, ndim)
-      Vi <- local_basis$vectors
-      if (local_basis$rank < ndim) {
-        rank_deficient_count <- rank_deficient_count + 1L
-        min_local_rank <- min(min_local_rank, local_basis$rank)
-      }
-
-      # binding the 1/sqrt_k column handles the centering part during the crossprod
-      Gi <- cbind(1 / sqrt(k), Vi)
-      # Because Vs are orthonormal, Moore-Penrose inverse is V.V'
-      # I - V.V'
-      Wi <- -tcrossprod(Gi)
-      diag(Wi) <- diag(Wi) + 1.0
-
-      spi <- find_in_spsq(B, nni)
-      Bx[spi] <- Bx[spi] + Wi
-    }
-    B@x <- Bx
+    assembly <- assemble_ltsa_B(
+      X = X,
+      nn_idx = nn$idx,
+      ndim = ndim,
+      include_self = include_self,
+      verbose = verbose
+    )
+    B <- assembly$B
+    rank_deficient_count <- assembly$rank_deficient_count
+    min_local_rank <- assembly$min_local_rank
 
     if (rank_deficient_count > 0) {
       warning(
@@ -308,22 +273,79 @@ ltsa <-
     out
   }
 
-create_sparse <- function(nn_idx, verbose = FALSE) {
-  n <- nrow(nn_idx)
-  ij <- nbrhood_triplets(t(nn_idx), ncol(nn_idx))
-  m <- methods::new(
-    "dgTMatrix",
-    i = ij$i,
-    j = ij$j,
-    x = rep(0, length(ij$i)),
+assemble_ltsa_B <- function(X,
+                            nn_idx,
+                            ndim,
+                            include_self,
+                            verbose = FALSE) {
+  n <- nrow(X)
+  weight_idx <- ltsa_weight_neighborhoods(nn_idx, include_self)
+  k <- ncol(weight_idx)
+  weights <- matrix(0, nrow = k * k, ncol = n)
+
+  prev_time <- Sys.time()
+  rank_deficient_count <- 0L
+  min_local_rank <- ndim
+  for (i in seq_len(n)) {
+    if (verbose) {
+      curr_time <- Sys.time()
+      if (difftime(curr_time, prev_time, units = "secs") > 60) {
+        tsmessage("processed ", i, " / ", n)
+        prev_time <- curr_time
+      }
+    }
+
+    local <- ltsa_local_weights(X, weight_idx[i, ], ndim)
+    if (local$rank < ndim) {
+      rank_deficient_count <- rank_deficient_count + 1L
+      min_local_rank <- min(min_local_rank, local$rank)
+    }
+    weights[, i] <- as.vector(local$Wi)
+  }
+
+  tsmessage("Assembling sparse matrix")
+  components <- ltsa_triplet_assembly_components(
+    t(nn_idx),
+    ncol(nn_idx),
+    t(weight_idx),
+    weights,
+    k
+  )
+
+  B <- methods::new(
+    "dgCMatrix",
+    i = components$i,
+    p = components$p,
+    x = components$x,
     Dim = as.integer(c(n, n))
   )
-  m <- m + Matrix::t(m)
-  methods::as(m, "CsparseMatrix")
+
+  list(
+    B = B,
+    rank_deficient_count = rank_deficient_count,
+    min_local_rank = min_local_rank
+  )
 }
 
-find_in_spsq <- function(m, is) {
-  sparse_idxs(m@i, m@p, is)
+ltsa_weight_neighborhoods <- function(nn_idx, include_self) {
+  if (include_self) {
+    nn_idx
+  } else {
+    nn_idx[, -1L, drop = FALSE]
+  }
+}
+
+ltsa_local_weights <- function(X, nni, ndim) {
+  Xi <- (scale(X[nni, , drop = FALSE], center = TRUE, scale = FALSE))
+
+  local_basis <- svecs(Xi, ndim)
+  Vi <- local_basis$vectors
+  k <- length(nni)
+  Gi <- cbind(1 / sqrt(k), Vi)
+  Wi <- -tcrossprod(Gi)
+  diag(Wi) <- diag(Wi) + 1.0
+
+  list(Wi = Wi, rank = local_basis$rank)
 }
 
 # get indices of the diagonal from the sparse matrix m

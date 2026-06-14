@@ -26,12 +26,20 @@ extern "C" SEXP _flotsam_nbrhood_triplets(SEXP nnt, SEXP n_nbrs) {
     return cpp11::as_sexp(nbrhood_triplets(cpp11::as_cpp<cpp11::decay_t<const integers&>>(nnt), cpp11::as_cpp<cpp11::decay_t<std::size_t>>(n_nbrs)));
   END_CPP11
 }
+// flotsam.cpp
+list ltsa_triplet_assembly_components(const integers& pattern_nnt, std::size_t pattern_n_nbrs, const integers& value_nnt, const doubles& weights, std::size_t value_n_nbrs);
+extern "C" SEXP _flotsam_ltsa_triplet_assembly_components(SEXP pattern_nnt, SEXP pattern_n_nbrs, SEXP value_nnt, SEXP weights, SEXP value_n_nbrs) {
+  BEGIN_CPP11
+    return cpp11::as_sexp(ltsa_triplet_assembly_components(cpp11::as_cpp<cpp11::decay_t<const integers&>>(pattern_nnt), cpp11::as_cpp<cpp11::decay_t<std::size_t>>(pattern_n_nbrs), cpp11::as_cpp<cpp11::decay_t<const integers&>>(value_nnt), cpp11::as_cpp<cpp11::decay_t<const doubles&>>(weights), cpp11::as_cpp<cpp11::decay_t<std::size_t>>(value_n_nbrs)));
+  END_CPP11
+}
 
 extern "C" {
 static const R_CallMethodDef CallEntries[] = {
-    {"_flotsam_nbrhood_triplets", (DL_FUNC) &_flotsam_nbrhood_triplets, 2},
-    {"_flotsam_sparse_idxs",      (DL_FUNC) &_flotsam_sparse_idxs,      3},
-    {"_flotsam_spm_times_scalar", (DL_FUNC) &_flotsam_spm_times_scalar, 3},
+    {"_flotsam_ltsa_triplet_assembly_components", (DL_FUNC) &_flotsam_ltsa_triplet_assembly_components, 5},
+    {"_flotsam_nbrhood_triplets",                 (DL_FUNC) &_flotsam_nbrhood_triplets,                 2},
+    {"_flotsam_sparse_idxs",                      (DL_FUNC) &_flotsam_sparse_idxs,                      3},
+    {"_flotsam_spm_times_scalar",                 (DL_FUNC) &_flotsam_spm_times_scalar,                 3},
     {NULL, NULL, 0}
 };
 }
