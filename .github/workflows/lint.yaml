@@ -4,7 +4,7 @@ on:
   pull_request:
     branches: [main, master]
 
-name: test-coverage
+name: lint
 
 permissions:
   contents: read
@@ -14,12 +14,11 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  test-coverage:
-    name: Test coverage
+  lint:
+    name: Lint
     runs-on: ubuntu-latest
     env:
       GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
-
     steps:
       # Pinned to a full-length commit SHA for immutability; Dependabot updates this reference.
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
@@ -34,8 +33,8 @@ jobs:
       # Pinned to a full-length commit SHA for immutability; Dependabot updates this reference.
       - uses: r-lib/actions/setup-r-dependencies@a51a8012b0aab7c32ef9d19bf54da93f3254335e
         with:
-          extra-packages: any::covr
-          needs: coverage
+          extra-packages: any::lintr, local::.
+          needs: lint
 
-      - name: Test coverage
-        run: Rscript -e 'covr::codecov(quiet = FALSE)'
+      - name: Lint
+        run: Rscript -e 'lintr::lint_package()'
