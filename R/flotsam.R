@@ -295,20 +295,8 @@ assemble_ltsa_B <- function(
   nn_idx,
   ndim,
   include_self,
-  verbose = FALSE,
-  preserve_pattern = FALSE
+  verbose = FALSE
 ) {
-  if (preserve_pattern) {
-    return(assemble_ltsa_B_compact(
-      X = X,
-      nn_idx = nn_idx,
-      ndim = ndim,
-      include_self = include_self,
-      verbose = verbose,
-      preserve_pattern = TRUE
-    ))
-  }
-
   assemble_ltsa_B_append(
     X = X,
     nn_idx = nn_idx,
@@ -353,58 +341,6 @@ assemble_ltsa_B_append <- function(
 
   tsmessage("Assembling sparse matrix")
   components <- ltsa_triplet_builder_finalize(builder)
-  B <- ltsa_components_to_dgCMatrix(components, n)
-
-  list(
-    B = B,
-    rank_deficient_count = rank_deficient_count,
-    min_local_rank = min_local_rank
-  )
-}
-
-assemble_ltsa_B_compact <- function(
-  X,
-  nn_idx,
-  ndim,
-  include_self,
-  verbose = FALSE,
-  preserve_pattern = FALSE
-) {
-  n <- nrow(X)
-  weight_idx <- ltsa_weight_neighborhoods(nn_idx, include_self)
-  k <- ncol(weight_idx)
-  weights <- matrix(0, nrow = k * k, ncol = n)
-
-  prev_time <- Sys.time()
-  rank_deficient_count <- 0L
-  min_local_rank <- ndim
-  for (i in seq_len(n)) {
-    if (verbose) {
-      curr_time <- Sys.time()
-      if (difftime(curr_time, prev_time, units = "secs") > 60) {
-        tsmessage("processed ", i, " / ", n)
-        prev_time <- curr_time
-      }
-    }
-
-    local <- ltsa_local_weights(X, weight_idx[i, ], ndim)
-    if (local$rank < ndim) {
-      rank_deficient_count <- rank_deficient_count + 1L
-      min_local_rank <- min(min_local_rank, local$rank)
-    }
-    weights[, i] <- as.vector(local$Wi)
-  }
-
-  tsmessage("Assembling sparse matrix")
-  components <- ltsa_triplet_assembly_components(
-    t(nn_idx),
-    ncol(nn_idx),
-    t(weight_idx),
-    weights,
-    k,
-    preserve_pattern
-  )
-
   B <- ltsa_components_to_dgCMatrix(components, n)
 
   list(

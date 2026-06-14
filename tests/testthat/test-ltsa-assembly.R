@@ -1,14 +1,14 @@
-expect_sparse_identical <- function(candidate, reference) {
+expect_sparse_equivalent <- function(candidate, reference, tolerance = 1e-12) {
+  candidate <- Matrix::drop0(candidate)
+  reference <- Matrix::drop0(reference)
   expect_s4_class(candidate, "dgCMatrix")
   expect_s4_class(reference, "dgCMatrix")
   expect_identical(candidate@Dim, reference@Dim)
-  expect_identical(candidate@p, reference@p)
-  expect_identical(candidate@i, reference@i)
-  expect_identical(candidate@x, reference@x)
-}
-
-expect_sparse_equivalent <- function(candidate, reference) {
-  expect_sparse_identical(Matrix::drop0(candidate), Matrix::drop0(reference))
+  expect_equal(
+    as.matrix(candidate),
+    as.matrix(reference),
+    tolerance = tolerance
+  )
 }
 
 exact_nn_idx <- function(X, n_neighbors, include_self) {
@@ -22,111 +22,77 @@ exact_nn_idx <- function(X, n_neighbors, include_self) {
   nn$idx
 }
 
-test_that("C++ triplet assembly matches slot-search assembly with self", {
-  X <- as.matrix(iris[seq_len(20L), seq_len(4L)])
-  nn_idx <- exact_nn_idx(X, n_neighbors = 6L, include_self = TRUE)
+assemble_ltsa_B_r_triplet_reference <- function(X, nn_idx, ndim, include_self) {
+  n <- nrow(X)
+  weight_idx <- flotsam:::ltsa_weight_neighborhoods(nn_idx, include_self)
+  k <- ncol(weight_idx)
+  n_triplets <- n * k * k
+  rows <- integer(n_triplets)
+  cols <- integer(n_triplets)
+  vals <- numeric(n_triplets)
+  rank_deficient_count <- 0L
+  min_local_rank <- ndim
 
-  reference <- flotsam:::assemble_ltsa_B_slot_search_reference(
-    X,
-    nn_idx,
-    ndim = 2L,
-    include_self = TRUE
-  )
-  candidate <- flotsam:::assemble_ltsa_B(
-    X,
-    nn_idx,
-    ndim = 2L,
-    include_self = TRUE
-  )
+  for (i in seq_len(n)) {
+    nni <- weight_idx[i, ]
+    local <- flotsam:::ltsa_local_weights(X, nni, ndim)
+    if (local$rank < ndim) {
+      rank_deficient_count <- rank_deficient_count + 1L
+      min_local_rank <- min(min_local_rank, local$rank)
+    }
 
-  expect_sparse_equivalent(candidate$B, reference$B)
-  expect_identical(
-    candidate$rank_deficient_count,
-    reference$rank_deficient_count
-  )
-  expect_identical(candidate$min_local_rank, reference$min_local_rank)
-  expect_true(Matrix::isSymmetric(candidate$B))
-})
+    idx <- ((i - 1L) * k * k + 1L):(i * k * k)
+    rows[idx] <- rep.int(nni, times = k)
+    cols[idx] <- rep(nni, each = k)
+    vals[idx] <- as.vector(local$Wi)
+  }
 
-test_that("append/finalize assembly matches compact assembly", {
+  list(
+    B = Matrix::sparseMatrix(
+      i = rows,
+      j = cols,
+      x = vals,
+      dims = c(n, n),
+      giveCsparse = TRUE
+    ),
+    rank_deficient_count = rank_deficient_count,
+    min_local_rank = min_local_rank
+  )
+}
+
+test_that("append/finalize assembly matches R triplet reference", {
   X <- as.matrix(iris[seq_len(20L), seq_len(4L)])
 
   for (include_self in c(TRUE, FALSE)) {
     nn_idx <- exact_nn_idx(X, n_neighbors = 6L, include_self = include_self)
-
-    reference <- flotsam:::assemble_ltsa_B_compact(
+    reference <- assemble_ltsa_B_r_triplet_reference(
       X,
       nn_idx,
       ndim = 2L,
       include_self = include_self
     )
-    candidate <- flotsam:::assemble_ltsa_B_append(
+    candidate <- flotsam:::assemble_ltsa_B(
       X,
       nn_idx,
       ndim = 2L,
       include_self = include_self
     )
 
-    expect_sparse_identical(candidate$B, reference$B)
+    expect_sparse_equivalent(candidate$B, reference$B)
     expect_identical(
       candidate$rank_deficient_count,
       reference$rank_deficient_count
     )
     expect_identical(candidate$min_local_rank, reference$min_local_rank)
     expect_true(Matrix::isSymmetric(candidate$B))
+    expect_equal(sum(candidate$B@x == 0), 0)
   }
 })
 
-test_that("C++ triplet assembly drops excluded-self zero-only pattern by default", {
-  X <- as.matrix(iris[seq_len(20L), seq_len(4L)])
-  nn_idx <- exact_nn_idx(X, n_neighbors = 6L, include_self = FALSE)
-
-  reference <- flotsam:::assemble_ltsa_B_slot_search_reference(
-    X,
-    nn_idx,
-    ndim = 2L,
-    include_self = FALSE
-  )
-  candidate <- flotsam:::assemble_ltsa_B(
-    X,
-    nn_idx,
-    ndim = 2L,
-    include_self = FALSE
-  )
-
-  expect_sparse_equivalent(candidate$B, reference$B)
-  expect_lt(length(candidate$B@x), length(reference$B@x))
-  expect_equal(sum(candidate$B@x == 0), 0)
-  expect_true(Matrix::isSymmetric(candidate$B))
-})
-
-test_that("C++ triplet assembly can preserve excluded-self sparse pattern", {
-  X <- as.matrix(iris[seq_len(20L), seq_len(4L)])
-  nn_idx <- exact_nn_idx(X, n_neighbors = 6L, include_self = FALSE)
-
-  reference <- flotsam:::assemble_ltsa_B_slot_search_reference(
-    X,
-    nn_idx,
-    ndim = 2L,
-    include_self = FALSE
-  )
-  candidate <- flotsam:::assemble_ltsa_B(
-    X,
-    nn_idx,
-    ndim = 2L,
-    include_self = FALSE,
-    preserve_pattern = TRUE
-  )
-
-  expect_sparse_identical(candidate$B, reference$B)
-  expect_gt(sum(candidate$B@x == 0), 0)
-  expect_true(Matrix::isSymmetric(candidate$B))
-})
-
-test_that("ltsa ret_B uses assembly matching the slot-search reference", {
+test_that("ltsa ret_B uses append/finalize assembly", {
   X <- as.matrix(iris[seq_len(15L), seq_len(4L)])
   nn_idx <- exact_nn_idx(X, n_neighbors = 5L, include_self = FALSE)
-  reference <- flotsam:::assemble_ltsa_B_slot_search_reference(
+  reference <- assemble_ltsa_B_r_triplet_reference(
     X,
     nn_idx,
     ndim = 2L,
@@ -143,58 +109,7 @@ test_that("ltsa ret_B uses assembly matching the slot-search reference", {
   )
 
   expect_sparse_equivalent(candidate, reference$B)
-})
-
-test_that("triplet assembly component helper validates dimensions", {
-  expect_error(
-    flotsam:::ltsa_triplet_assembly_components(
-      pattern_nnt = c(1L, 2L, 3L),
-      pattern_n_nbrs = 2L,
-      value_nnt = c(1L, 2L),
-      weights = c(0, 0, 0, 0),
-      value_n_nbrs = 2L,
-      preserve_pattern = TRUE
-    ),
-    "Inconsistent pattern neighborhood dimensions"
-  )
-
-  expect_error(
-    flotsam:::ltsa_triplet_assembly_components(
-      pattern_nnt = c(1L, 2L),
-      pattern_n_nbrs = 2L,
-      value_nnt = c(1L, 2L),
-      weights = c(0, 0),
-      value_n_nbrs = 2L,
-      preserve_pattern = FALSE
-    ),
-    "Inconsistent local weight dimensions"
-  )
-})
-
-test_that("triplet assembly component helper validates neighbor indices", {
-  expect_error(
-    flotsam:::ltsa_triplet_assembly_components(
-      pattern_nnt = c(1L, 3L),
-      pattern_n_nbrs = 2L,
-      value_nnt = c(1L, 2L),
-      weights = c(0, 0, 0, 0),
-      value_n_nbrs = 2L,
-      preserve_pattern = TRUE
-    ),
-    "outside the sparse matrix dimensions"
-  )
-
-  expect_error(
-    flotsam:::ltsa_triplet_assembly_components(
-      pattern_nnt = c(1L, 2L),
-      pattern_n_nbrs = 2L,
-      value_nnt = c(1L, 3L),
-      weights = c(0, 0, 0, 0),
-      value_n_nbrs = 2L,
-      preserve_pattern = FALSE
-    ),
-    "outside the sparse matrix dimensions"
-  )
+  expect_equal(sum(candidate@x == 0), 0)
 })
 
 test_that("append/finalize builder validates lifecycle", {

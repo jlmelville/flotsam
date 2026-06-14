@@ -75,6 +75,9 @@ Laplacian eigenmaps or diffusion maps.
 
 ## Current Status
 
+*June 14 2026*: Version 0.0.0.9001 changes the `B` matrix assembly implementation to be modestly
+faster with slightly less peak memory usage.
+
 Very experimental. Will it ever graduate from 'Finicky' to 'Fast'? Its speed
 relies on the interaction of:
 
