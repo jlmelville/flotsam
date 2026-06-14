@@ -249,8 +249,7 @@ ltsa <-
             A = B,
             k = ndim + 1,
             which = "LM",
-            opts = rs_opt(ncol(B)),
-            sigma = rs_sigma_eps() + 2.0
+            opts = rs_opt()
           )
           eig_args$opts <- lmerge(eig_args$opts, list(...))
 
@@ -361,17 +360,14 @@ norm_and_shift_L <- function(L) {
   list(Lshift = shift_lap(lsym_norm(L, Dinvs), 2.0), Dinvs = Dinvs)
 }
 
-rs_opt <- function(n) {
+rs_opt <- function() {
   list(
-    tol = 1e-6,
-    initvec = jitter(rep(1, n))
+    tol = 1e-6
   )
 }
 
-rs_sigma_eps <- function() {
-  0.0001
-}
-
+# Avoid shift-invert here; near-zero LTSA/Laplacian eigenvalues can make sparse
+# factorizations hang or skip eigenvectors.
 # https://github.com/yixuan/spectra/issues/126
 rs_eig <-
   function(X,
@@ -397,8 +393,8 @@ rs_eig <-
       list(
         A = X_shift,
         k = k,
-        sigma = rs_sigma_eps() + lm2,
-        opts = rs_opt(ncol(X_shift))
+        which = "LM",
+        opts = rs_opt()
       )
     args$opts <- lmerge(args$opts, varargs)
     do.call(RSpectra::eigs_sym, args)
