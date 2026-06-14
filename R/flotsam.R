@@ -365,7 +365,7 @@ ltsa_iterative_search_k <- function(ndim, n) {
 # eigenvectors in the expected order. We fetch an "over-complete" set of
 # vectors and then sort them by their Rayleigh quotient on the original matrix.
 # A small Rayleigh quotient means the vector is close to a small-eigenvalue
-#direction of B.
+# direction of B.
 select_ltsa_embedding_vectors <- function(B, vectors, ndim) {
   if (ncol(vectors) < ndim) {
     stop("Can't find enough vectors", call. = FALSE)
