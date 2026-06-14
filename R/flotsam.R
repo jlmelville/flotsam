@@ -280,7 +280,8 @@ assemble_ltsa_B <- function(X,
                             nn_idx,
                             ndim,
                             include_self,
-                            verbose = FALSE) {
+                            verbose = FALSE,
+                            preserve_pattern = FALSE) {
   n <- nrow(X)
   weight_idx <- ltsa_weight_neighborhoods(nn_idx, include_self)
   k <- ncol(weight_idx)
@@ -312,7 +313,8 @@ assemble_ltsa_B <- function(X,
     ncol(nn_idx),
     t(weight_idx),
     weights,
-    k
+    k,
+    preserve_pattern
   )
 
   B <- methods::new(

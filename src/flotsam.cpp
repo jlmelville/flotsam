@@ -163,21 +163,36 @@ ltsa_triplet_assembly_components(const integers& pattern_nnt,
                                   std::size_t pattern_n_nbrs,
                                   const integers& value_nnt,
                                   const doubles& weights,
-                                  std::size_t value_n_nbrs) {
-  if (pattern_nnt.size() == 0 || pattern_n_nbrs == 0) {
-    stop("Pattern neighborhoods must not be empty");
+                                  std::size_t value_n_nbrs,
+                                  bool preserve_pattern) {
+  if (value_nnt.size() == 0 || value_n_nbrs == 0) {
+    stop("Value neighborhoods must not be empty");
   }
-  if (pattern_nnt.size() % pattern_n_nbrs != 0) {
-    stop("Inconsistent pattern neighborhood dimensions");
+  if (value_nnt.size() % value_n_nbrs != 0) {
+    stop("Inconsistent value neighborhood dimensions");
   }
 
-  std::size_t n_obs = pattern_nnt.size() / pattern_n_nbrs;
+  std::size_t n_obs = value_nnt.size() / value_n_nbrs;
+
+  if (preserve_pattern) {
+    if (pattern_nnt.size() == 0 || pattern_n_nbrs == 0) {
+      stop("Pattern neighborhoods must not be empty");
+    }
+    if (pattern_nnt.size() % pattern_n_nbrs != 0) {
+      stop("Inconsistent pattern neighborhood dimensions");
+    }
+    if (pattern_nnt.size() / pattern_n_nbrs != n_obs) {
+      stop("Inconsistent pattern neighborhood dimensions");
+    }
+  }
+
   if (value_nnt.size() != n_obs * value_n_nbrs) {
     stop("Inconsistent value neighborhood dimensions");
   }
 
-  std::size_t n_pattern_triplets =
-    checked_triplet_count(n_obs, pattern_n_nbrs, "pattern_n_nbrs");
+  std::size_t n_pattern_triplets = preserve_pattern
+    ? checked_triplet_count(n_obs, pattern_n_nbrs, "pattern_n_nbrs")
+    : 0;
   std::size_t n_value_triplets =
     checked_triplet_count(n_obs, value_n_nbrs, "value_n_nbrs");
   if (weights.size() != n_value_triplets) {
@@ -193,13 +208,15 @@ ltsa_triplet_assembly_components(const integers& pattern_nnt,
   entries.reserve(n_pattern_triplets + n_value_triplets);
 
   std::size_t seq = 0;
-  for (std::size_t obs = 0; obs < n_obs; obs++) {
-    std::size_t offset = obs * pattern_n_nbrs;
-    for (std::size_t local_col = 0; local_col < pattern_n_nbrs; local_col++) {
-      int col = checked_neighbor_index(pattern_nnt[offset + local_col], n_obs);
-      for (std::size_t local_row = 0; local_row < pattern_n_nbrs; local_row++) {
-        int row = checked_neighbor_index(pattern_nnt[offset + local_row], n_obs);
-        entries.push_back(WeightedEntry{col, row, 0.0, seq++});
+  if (preserve_pattern) {
+    for (std::size_t obs = 0; obs < n_obs; obs++) {
+      std::size_t offset = obs * pattern_n_nbrs;
+      for (std::size_t local_col = 0; local_col < pattern_n_nbrs; local_col++) {
+        int col = checked_neighbor_index(pattern_nnt[offset + local_col], n_obs);
+        for (std::size_t local_row = 0; local_row < pattern_n_nbrs; local_row++) {
+          int row = checked_neighbor_index(pattern_nnt[offset + local_row], n_obs);
+          entries.push_back(WeightedEntry{col, row, 0.0, seq++});
+        }
       }
     }
   }
@@ -253,11 +270,13 @@ ltsa_triplet_assembly_components(const integers& pattern_nnt,
       pos++;
     }
 
-    if (out_i.size() >= max_int) {
-      stop("Too many non-zero slots for a dgCMatrix");
+    if (preserve_pattern || value != 0.0) {
+      if (out_i.size() >= max_int) {
+        stop("Too many non-zero slots for a dgCMatrix");
+      }
+      out_i.push_back(row);
+      out_x.push_back(value);
     }
-    out_i.push_back(row);
-    out_x.push_back(value);
   }
 
   while (static_cast<std::size_t>(current_col) < n_obs) {

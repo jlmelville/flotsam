@@ -12,6 +12,6 @@ nbrhood_triplets <- function(nnt, n_nbrs) {
   .Call(`_flotsam_nbrhood_triplets`, nnt, n_nbrs)
 }
 
-ltsa_triplet_assembly_components <- function(pattern_nnt, pattern_n_nbrs, value_nnt, weights, value_n_nbrs) {
-  .Call(`_flotsam_ltsa_triplet_assembly_components`, pattern_nnt, pattern_n_nbrs, value_nnt, weights, value_n_nbrs)
+ltsa_triplet_assembly_components <- function(pattern_nnt, pattern_n_nbrs, value_nnt, weights, value_n_nbrs, preserve_pattern) {
+  .Call(`_flotsam_ltsa_triplet_assembly_components`, pattern_nnt, pattern_n_nbrs, value_nnt, weights, value_n_nbrs, preserve_pattern)
 }
