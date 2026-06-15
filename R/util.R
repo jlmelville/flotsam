@@ -50,12 +50,14 @@ validate_ltsa_args <- function(
   n_neighbors,
   ndim,
   nn_method,
+  nn_idx,
   eig_method,
   include_self,
   normalize,
   ret_B,
   n_threads,
   n_assembly_threads,
+  copy_max_mib,
   verbose
 ) {
   if (!all(is.finite(X))) {
@@ -69,12 +71,18 @@ validate_ltsa_args <- function(
   }
 
   ndim <- check_whole_number(ndim, "ndim", min = 1)
-  n_neighbors <- check_whole_number(n_neighbors, "n_neighbors", min = 1)
+  if (!is.null(n_neighbors)) {
+    n_neighbors <- check_whole_number(n_neighbors, "n_neighbors", min = 1)
+  }
   n_threads <- check_whole_number(n_threads, "n_threads", min = 0)
   n_assembly_threads <- check_whole_number(
     n_assembly_threads,
     "n_assembly_threads",
     min = 1
+  )
+  copy_max_mib <- check_nonnegative_number(
+    copy_max_mib,
+    "copy_max_mib"
   )
 
   include_self <- check_scalar_logical(include_self, "include_self")
@@ -82,7 +90,11 @@ validate_ltsa_args <- function(
   ret_B <- check_scalar_logical(ret_B, "ret_B")
   verbose <- check_scalar_logical(verbose, "verbose")
 
-  nn_method <- check_choice(nn_method, c("exact", "nnd"), "nn_method")
+  nn_method <- check_choice(
+    nn_method,
+    c("exact", "nnd"),
+    "nn_method"
+  )
   eig_method <- check_choice(
     eig_method,
     c("rspectra", "irlba", "svdr", "fullsvd", "eig", "eigen"),
@@ -95,21 +107,34 @@ validate_ltsa_args <- function(
   if (ndim >= nrow(X)) {
     stop("ndim must be less than the number of observations", call. = FALSE)
   }
-  if (n_neighbors <= ndim) {
-    stop("n_neighbors must be greater than ndim", call. = FALSE)
+
+  if (is.null(nn_idx)) {
+    if (is.null(n_neighbors)) {
+      n_neighbors <- 15L
+    }
+  } else {
+    nn <- validate_ltsa_nn_idx(
+      nn_idx = nn_idx,
+      n_obs = nrow(X),
+      n_neighbors = n_neighbors,
+      ndim = ndim,
+      include_self = include_self
+    )
+    nn_idx <- nn$nn_idx
+    n_neighbors <- nn$n_neighbors
   }
 
-  max_neighbors <- if (include_self) nrow(X) else nrow(X) - 1
-  if (n_neighbors > max_neighbors) {
-    stop(
-      "n_neighbors is too large for the number of observations",
-      call. = FALSE
-    )
-  }
+  validate_ltsa_neighbor_count(
+    n_neighbors = n_neighbors,
+    ndim = ndim,
+    n_obs = nrow(X),
+    include_self = include_self
+  )
 
   list(
     X = X,
     n_neighbors = n_neighbors,
+    nn_idx = nn_idx,
     ndim = ndim,
     nn_method = nn_method,
     eig_method = eig_method,
@@ -118,8 +143,118 @@ validate_ltsa_args <- function(
     ret_B = ret_B,
     n_threads = n_threads,
     n_assembly_threads = n_assembly_threads,
+    copy_max_mib = copy_max_mib,
     verbose = verbose
   )
+}
+
+validate_ltsa_neighbor_count <- function(
+  n_neighbors,
+  ndim,
+  n_obs,
+  include_self
+) {
+  if (n_neighbors <= ndim) {
+    stop("n_neighbors must be greater than ndim", call. = FALSE)
+  }
+
+  max_neighbors <- if (include_self) n_obs else n_obs - 1L
+  if (n_neighbors > max_neighbors) {
+    stop(
+      "n_neighbors is too large for the number of observations",
+      call. = FALSE
+    )
+  }
+
+  invisible(n_neighbors)
+}
+
+validate_ltsa_nn_idx <- function(
+  nn_idx,
+  n_obs,
+  n_neighbors,
+  ndim,
+  include_self
+) {
+  if (!is.matrix(nn_idx)) {
+    stop(
+      "Precomputed nearest-neighbor graph must be a numeric matrix",
+      call. = FALSE
+    )
+  }
+  if (!is.numeric(nn_idx)) {
+    stop(
+      "Precomputed nearest-neighbor graph must be a numeric matrix",
+      call. = FALSE
+    )
+  }
+  if (nrow(nn_idx) != n_obs) {
+    stop(
+      "Precomputed nearest-neighbor graph must have one row per observation in X",
+      call. = FALSE
+    )
+  }
+  if (ncol(nn_idx) < 1L) {
+    stop(
+      "Precomputed nearest-neighbor graph must have at least one column",
+      call. = FALSE
+    )
+  }
+  if (anyNA(nn_idx) || !all(is.finite(nn_idx))) {
+    stop(
+      "Precomputed nearest-neighbor graph must contain only finite whole-number indices",
+      call. = FALSE
+    )
+  }
+  if (any(nn_idx != floor(nn_idx))) {
+    stop(
+      "Precomputed nearest-neighbor graph must contain only whole-number indices",
+      call. = FALSE
+    )
+  }
+  if (any(nn_idx < 1 | nn_idx > n_obs)) {
+    stop(
+      "Precomputed nearest-neighbor graph indices must be between 1 and nrow(X)",
+      call. = FALSE
+    )
+  }
+
+  inferred_n_neighbors <- if (include_self) ncol(nn_idx) else ncol(nn_idx) - 1L
+  if (is.null(n_neighbors)) {
+    n_neighbors <- as.integer(inferred_n_neighbors)
+  }
+
+  expected_ncol <- if (include_self) n_neighbors else n_neighbors + 1L
+  if (ncol(nn_idx) != expected_ncol) {
+    stop(
+      "ncol(nn_method) must match n_neighbors and include_self",
+      call. = FALSE
+    )
+  }
+
+  if (include_self) {
+    has_self <- vapply(
+      seq_len(n_obs),
+      function(i) any(nn_idx[i, ] == i),
+      logical(1)
+    )
+    if (!all(has_self)) {
+      stop(
+        "Each precomputed nearest-neighbor graph row must contain its own row ",
+        "index when include_self is TRUE",
+        call. = FALSE
+      )
+    }
+  } else if (!all(nn_idx[, 1L] == seq_len(n_obs))) {
+    stop(
+      "The first column of the precomputed nearest-neighbor graph must ",
+      "contain row self indices when include_self is FALSE",
+      call. = FALSE
+    )
+  }
+
+  storage.mode(nn_idx) <- "integer"
+  list(nn_idx = nn_idx, n_neighbors = as.integer(n_neighbors))
 }
 
 check_whole_number <- function(x, name, min = 0) {
@@ -135,6 +270,19 @@ check_whole_number <- function(x, name, min = 0) {
     stop(name, " must be a whole number >= ", min, call. = FALSE)
   }
   as.integer(x)
+}
+
+check_nonnegative_number <- function(x, name) {
+  if (
+    !is.numeric(x) ||
+      length(x) != 1 ||
+      is.na(x) ||
+      !is.finite(x) ||
+      x < 0
+  ) {
+    stop(name, " must be a finite number >= 0", call. = FALSE)
+  }
+  as.numeric(x)
 }
 
 check_scalar_logical <- function(x, name) {

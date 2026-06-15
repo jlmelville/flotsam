@@ -233,6 +233,66 @@ test_that("parallel assembly matches serial on high-p Gram route", {
   }
 })
 
+test_that("copy_max_mib controls optional row-major Gram copy", {
+  set.seed(101)
+  X <- matrix(rnorm(18L * 14L), nrow = 18L)
+  nn_idx <- exact_nn_idx(X, n_neighbors = 6L, include_self = TRUE)
+
+  serial_default <- flotsam:::assemble_ltsa_B(
+    X,
+    nn_idx,
+    ndim = 2L,
+    include_self = TRUE,
+    n_assembly_threads = 1L
+  )
+  serial_disabled <- flotsam:::assemble_ltsa_B(
+    X,
+    nn_idx,
+    ndim = 2L,
+    include_self = TRUE,
+    n_assembly_threads = 1L,
+    copy_max_mib = 0
+  )
+  parallel_default <- flotsam:::assemble_ltsa_B(
+    X,
+    nn_idx,
+    ndim = 2L,
+    include_self = TRUE,
+    n_assembly_threads = 3L
+  )
+  parallel_disabled <- flotsam:::assemble_ltsa_B(
+    X,
+    nn_idx,
+    ndim = 2L,
+    include_self = TRUE,
+    n_assembly_threads = 3L,
+    copy_max_mib = 0
+  )
+
+  expect_true(serial_default$diagnostics$row_major_used)
+  expect_false(serial_disabled$diagnostics$row_major_used)
+  expect_identical(
+    serial_disabled$diagnostics$row_major_fallback_reason,
+    "copy_size_exceeds_limit"
+  )
+  expect_true(parallel_default$diagnostics$row_major_used)
+  expect_false(parallel_disabled$diagnostics$row_major_used)
+  expect_identical(
+    parallel_disabled$diagnostics$row_major_fallback_reason,
+    "copy_size_exceeds_limit"
+  )
+  expect_sparse_equivalent(
+    serial_disabled$B,
+    serial_default$B,
+    tolerance = 1e-12
+  )
+  expect_sparse_equivalent(
+    parallel_disabled$B,
+    serial_default$B,
+    tolerance = 1e-12
+  )
+})
+
 test_that("parallel assembly matches serial on low-p SVD route", {
   set.seed(11)
   X <- matrix(rnorm(22L * 3L), nrow = 22L)

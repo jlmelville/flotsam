@@ -7,12 +7,24 @@
 #'   a data frame is supplied, non-numeric columns are ignored. At least one
 #'   numeric column is required.
 #' @param n_neighbors  The size of local neighborhood (in terms of number of
-#'   neighboring sample points) used for manifold approximation.
+#'   neighboring sample points) used for manifold approximation. If `NULL`, the
+#'   default is `15` when neighbors are computed, or inferred when a precomputed
+#'   graph is supplied as `nn_method`.
 #' @param ndim The dimension of the space to embed into.
-#' @param nn_method Method for finding nearest neighbors. Can be one of:
+#' @param nn_method Method for finding nearest neighbors, or a precomputed
+#'   nearest-neighbor graph. Can be one of:
 #'   * `"nnd"` Approximate nearest neighbors by Nearest Neighbor Descent.
 #'   * `"exact"` Exact nearest neighbors by exhaustively comparing all items.
 #'   Slow for large datasets.
+#'   * A precomputed nearest-neighbor index matrix.
+#'   * A nearest-neighbor result object with an `idx` matrix.
+#'
+#'   Precomputed index matrices should match the raw neighbor-search output used
+#'   by `rnndescent`: one row per observation and 1-based indices into `X`. When
+#'   `include_self = TRUE`, `ncol(nn_method)` must equal `n_neighbors` and each
+#'   row must contain its own row index. When `include_self = FALSE`,
+#'   `ncol(nn_method)` must equal `n_neighbors + 1` and the first column must
+#'   contain the row index, because that column is dropped before LTSA assembly.
 #' @param eig_method How to carry out the eigendecomposition. Possible values are:
 #'    * `"rspectra"` Use [RSpectra::eigs_sym()].
 #'    * `"irlba"` Use [irlba::irlba()].
@@ -39,8 +51,13 @@
 #'   alignment matrix `B` after nearest neighbors are computed. The default
 #'   `1` preserves the serial assembly path. Values greater than `1` opt into
 #'   parallel construction of `B`, which can be faster but may increase peak
-#'   memory use. This argument does not control nearest-neighbor search,
-#'   BLAS/LAPACK threading, or final eigensolver threading.
+#'   memory use.
+#' @param copy_max_mib Maximum size, in MiB, of the optional row-major dense
+#'   copy of `X` used to speed up high-dimensional local Gram assembly. If this
+#'   cap is exceeded, no row-major copy is made. The default is 256 MiB. Set to
+#'   `0` to disable this copy. This code path is only used when the number of
+#'   numeric columns in `X` is greater than the number of neighbors. Outside of
+#'   synthetic datasets, you are quite likely to hit this code path.
 #' @param verbose If `TRUE` log information about progress to the console.
 #' @param ... Extra arguments to be passed to the eigendecomposition method
 #' specified by `eig_method`. For `"rspectra"`, arguments are passed to the
@@ -100,7 +117,7 @@
 ltsa <-
   function(
     X,
-    n_neighbors = 15,
+    n_neighbors = NULL,
     ndim = 2,
     nn_method = "nnd",
     eig_method = "rspectra",
@@ -109,25 +126,35 @@ ltsa <-
     ret_B = FALSE,
     n_threads = 0,
     n_assembly_threads = 1,
+    copy_max_mib = 256,
     verbose = FALSE,
     ...
   ) {
     X <- x2m(X)
+    neighbor_args <- normalize_ltsa_neighbor_args(
+      nn_method = nn_method
+    )
+    nn_method <- neighbor_args$nn_method
+    nn_idx <- neighbor_args$nn_idx
+
     args <- validate_ltsa_args(
       X = X,
       n_neighbors = n_neighbors,
       ndim = ndim,
       nn_method = nn_method,
+      nn_idx = nn_idx,
       eig_method = eig_method,
       include_self = include_self,
       normalize = normalize,
       ret_B = ret_B,
       n_threads = n_threads,
       n_assembly_threads = n_assembly_threads,
+      copy_max_mib = copy_max_mib,
       verbose = verbose
     )
     X <- args$X
     k <- args$n_neighbors
+    nn_idx <- args$nn_idx
     ndim <- args$ndim
     nn_method <- args$nn_method
     eig_method <- args$eig_method
@@ -136,33 +163,28 @@ ltsa <-
     ret_B <- args$ret_B
     n_threads <- args$n_threads
     n_assembly_threads <- args$n_assembly_threads
+    copy_max_mib <- args$copy_max_mib
     verbose <- args$verbose
 
-    nn_fun <- switch(
-      nn_method,
-      exact = rnndescent::brute_force_knn,
-      nnd = rnndescent::nnd_knn
-    )
-    tsmessage("Finding nearest neighbors with method '", nn_method, "'")
-    nn_args <- list(
-      data = X,
-      k = ifelse(include_self, k, k + 1),
+    neighbors <- prepare_ltsa_neighbors(
+      X = X,
+      n_neighbors = k,
+      nn_method = nn_method,
+      nn_idx = nn_idx,
+      include_self = include_self,
       n_threads = n_threads,
-      verbose = FALSE
+      verbose = verbose
     )
-    nn <- do.call(nn_fun, nn_args)
-    nn$dist <- NULL
-    mode(nn$idx) <- "integer"
-
-    n <- nrow(X)
+    nn_idx <- neighbors$nn_idx
 
     tsmessage("Getting neighborhoods")
     assembly <- assemble_ltsa_B(
       X = X,
-      nn_idx = nn$idx,
+      nn_idx = nn_idx,
       ndim = ndim,
       include_self = include_self,
       n_assembly_threads = n_assembly_threads,
+      copy_max_mib = copy_max_mib,
       verbose = verbose
     )
     B <- assembly$B
@@ -299,381 +321,3 @@ ltsa <-
     tsmessage("Finished")
     out
   }
-
-assemble_ltsa_B <- function(
-  X,
-  nn_idx,
-  ndim,
-  include_self,
-  n_assembly_threads = 1L,
-  verbose = FALSE
-) {
-  assemble_ltsa_B_append(
-    X = X,
-    nn_idx = nn_idx,
-    ndim = ndim,
-    include_self = include_self,
-    n_assembly_threads = n_assembly_threads,
-    verbose = verbose
-  )
-}
-
-assemble_ltsa_B_append <- function(
-  X,
-  nn_idx,
-  ndim,
-  include_self,
-  n_assembly_threads = 1L,
-  verbose = FALSE
-) {
-  n_assembly_threads <- check_whole_number(
-    n_assembly_threads,
-    "n_assembly_threads",
-    min = 1
-  )
-
-  n <- nrow(X)
-  weight_idx <- ltsa_weight_neighborhoods(nn_idx, include_self)
-  k <- ncol(weight_idx)
-
-  if (verbose) {
-    tsmessage("Computing local weights and assembling sparse matrix")
-  }
-  value_nnt <- t(weight_idx)
-  components <- if (n_assembly_threads <= 1L) {
-    ltsa_assemble_local_weights(X, value_nnt, k, ndim)
-  } else {
-    ltsa_assemble_local_weights_parallel(
-      X,
-      value_nnt,
-      k,
-      ndim,
-      n_assembly_threads
-    )
-  }
-  log_ltsa_assembly_diagnostics(components, verbose)
-  B <- ltsa_components_to_dgCMatrix(components, n)
-
-  list(
-    B = B,
-    rank_deficient_count = components$rank_deficient_count,
-    min_local_rank = components$min_local_rank,
-    diagnostics = ltsa_assembly_diagnostics(components)
-  )
-}
-
-ltsa_assembly_diagnostics <- function(components) {
-  fields <- c(
-    "assembly_route",
-    "requested_assembly_threads",
-    "effective_assembly_threads",
-    "raw_entries_estimate",
-    "raw_bytes_estimate",
-    "duplicate_fallback_count",
-    "row_major_used",
-    "row_major_fallback_reason",
-    "parallel_fallback_reason"
-  )
-  components[intersect(fields, names(components))]
-}
-
-log_ltsa_assembly_diagnostics <- function(components, verbose) {
-  if (!verbose) {
-    return(invisible(NULL))
-  }
-
-  diagnostics <- ltsa_assembly_diagnostics(components)
-  tsmessage(
-    "LTSA assembly route: ",
-    diagnostics$assembly_route,
-    "; requested/effective assembly threads: ",
-    diagnostics$requested_assembly_threads,
-    "/",
-    diagnostics$effective_assembly_threads
-  )
-  tsmessage(
-    "LTSA raw staged entries estimate: ",
-    format(diagnostics$raw_entries_estimate, scientific = FALSE),
-    "; raw bytes estimate: ",
-    format(diagnostics$raw_bytes_estimate, scientific = FALSE)
-  )
-  tsmessage(
-    "LTSA duplicate-neighborhood fallback count: ",
-    diagnostics$duplicate_fallback_count,
-    "; row-major Gram used: ",
-    diagnostics$row_major_used
-  )
-  if (nzchar(diagnostics$row_major_fallback_reason)) {
-    tsmessage(
-      "LTSA row-major fallback reason: ",
-      diagnostics$row_major_fallback_reason
-    )
-  }
-  if (nzchar(diagnostics$parallel_fallback_reason)) {
-    tsmessage(
-      "LTSA parallel fallback reason: ",
-      diagnostics$parallel_fallback_reason
-    )
-  }
-  invisible(NULL)
-}
-
-ltsa_components_to_dgCMatrix <- function(components, n) {
-  n <- check_whole_number(n, "n", min = 0)
-  if (n >= .Machine$integer.max) {
-    stop("n is too large for a dgCMatrix", call. = FALSE)
-  }
-  if (!is.integer(components$i) || !is.integer(components$p)) {
-    stop("Invalid sparse component index type", call. = FALSE)
-  }
-  if (!is.numeric(components$x)) {
-    stop("Invalid sparse component value type", call. = FALSE)
-  }
-  if (length(components$p) != n + 1L) {
-    stop("Invalid sparse column pointer length", call. = FALSE)
-  }
-  if (length(components$i) != length(components$x)) {
-    stop("Invalid sparse index/value lengths", call. = FALSE)
-  }
-  if (length(components$i) > .Machine$integer.max) {
-    stop("Too many non-zero slots for a dgCMatrix", call. = FALSE)
-  }
-  if (any(components$p < 0L) || any(diff(components$p) < 0L)) {
-    stop("Invalid sparse column pointers", call. = FALSE)
-  }
-  if (components$p[[1L]] != 0L || components$p[[n + 1L]] != length(components$i)) {
-    stop("Invalid sparse column pointer bounds", call. = FALSE)
-  }
-  if (length(components$i) > 0L &&
-      (any(components$i < 0L) || any(components$i >= n))) {
-    stop("Invalid sparse row indices", call. = FALSE)
-  }
-
-  methods::new(
-    "dgCMatrix",
-    i = components$i,
-    p = components$p,
-    x = components$x,
-    Dim = as.integer(c(n, n))
-  )
-}
-
-ltsa_weight_neighborhoods <- function(nn_idx, include_self) {
-  if (include_self) {
-    nn_idx
-  } else {
-    nn_idx[, -1L, drop = FALSE]
-  }
-}
-
-ltsa_local_weights <- function(X, nni, ndim) {
-  ltsa_local_weights_cpp(X, nni, ndim)
-}
-
-ltsa_iterative_search_k <- function(ndim, n) {
-  base_k <- ndim + 1L
-  search_k <- max(ndim + 3L, 2L * base_k)
-  if (search_k >= 0.5 * n) {
-    return(base_k)
-  }
-  min(n - 1L, search_k)
-}
-
-# RSpectra sometimes fails to return the trivial constant vector, so we can't
-# blindly drop the first vector. We also want to make sure we have the
-# eigenvectors in the expected order. We fetch an "over-complete" set of
-# vectors and then sort them by their Rayleigh quotient on the original matrix.
-# A small Rayleigh quotient means the vector is close to a small-eigenvalue
-# direction of B.
-select_ltsa_embedding_vectors <- function(B, vectors, ndim) {
-  if (ncol(vectors) < ndim) {
-    stop("Can't find enough vectors", call. = FALSE)
-  }
-
-  rayleigh <- colSums(vectors * (B %*% vectors)) / colSums(vectors * vectors)
-  vectors <- vectors[, order(rayleigh), drop = FALSE]
-
-  first <- vectors[, 1L]
-  centered_norm <- sqrt(sum((first - mean(first))^2))
-  first_norm <- sqrt(sum(first^2))
-  drop_trivial <- first_norm > 0 && centered_norm <= 1e-4 * first_norm
-  start <- if (drop_trivial && ncol(vectors) > ndim) 2L else 1L
-  end <- start + ndim - 1L
-  if (end > ncol(vectors)) {
-    stop("Can't find enough vectors", call. = FALSE)
-  }
-
-  vectors[, start:end, drop = FALSE]
-}
-
-# get indices of the diagonal from the sparse matrix m
-diag_spm <- function(m) {
-  is <- m@i
-  ps <- m@p
-  n <- nrow(m)
-  sapply(
-    1:n,
-    function(i, is, ps) {
-      begin <- ps[i] + 1
-      end <- ps[i + 1]
-      begin + which(is[begin:end] == i - 1)
-    },
-    is,
-    ps
-  ) -
-    1
-}
-
-lsym_norm <- function(M, D) {
-  M@x <- spm_times_scalar(M@p, M@x, D)
-  D * M
-}
-
-# vI - m
-shift_lap <- function(m, v = 2.0) {
-  x <- m@x
-
-  x <- -x
-  ds <- diag_spm(m)
-  x[ds] <- x[ds] + v
-
-  m@x <- x
-  m
-}
-
-norm_and_shift_L <- function(L) {
-  Dinvs <- sqrt(1 / diag(L))
-  list(Lshift = shift_lap(lsym_norm(L, Dinvs), 2.0), Dinvs = Dinvs)
-}
-
-rs_opt <- function() {
-  list(
-    tol = 1e-6
-  )
-}
-
-# Avoid shift-invert here; near-zero LTSA/Laplacian eigenvalues can make sparse
-# factorizations hang or skip eigenvectors.
-# https://github.com/yixuan/spectra/issues/126
-rs_eig <-
-  function(X, k = ncol(X) - 1, ..., lambda_max = NULL, verbose = FALSE) {
-    varargs <- list(...)
-    if (is.null(lambda_max)) {
-      tsmessage("Finding largest eigenvalue")
-      args1 <- list(
-        A = X,
-        k = 1,
-        opts = list(retvec = FALSE)
-      )
-      lambda_max <- do.call(RSpectra::eigs_sym, args1)$values
-    }
-    lm2 <- 2.0 * lambda_max
-    X_shift <- shift_lap(X, lm2)
-
-    tsmessage("Decomposing shifted matrix")
-    args <-
-      list(
-        A = X_shift,
-        k = k,
-        which = "LM",
-        opts = rs_opt()
-      )
-    args$opts <- lmerge(args$opts, varargs)
-    do.call(RSpectra::eigs_sym, args)
-  }
-
-irlba_eig <-
-  function(X, k = ncol(X) - 1, ..., lambda_max = NULL, verbose = FALSE) {
-    varargs <- list(...)
-
-    if (is.null(lambda_max)) {
-      tsmessage("Finding largest eigenvalue")
-      args1 <- list(
-        A = X,
-        nv = 1,
-        nu = 0
-      )
-      lambda_max <- do.call(irlba::irlba, args1)$d
-    }
-    lm2 <- 2.0 * lambda_max
-    X_shift <- shift_lap(X, lm2)
-
-    tsmessage("Decomposing shifted matrix")
-    args <- lmerge(
-      list(
-        A = X_shift,
-        nv = k,
-        nu = 0
-      ),
-      varargs
-    )
-    res <- do.call(irlba::irlba, args)
-    res$v
-  }
-
-svdr_eig <- function(
-  X,
-  k = ncol(X) - 1,
-  ...,
-  lambda_max = NULL,
-  verbose = FALSE
-) {
-  varargs <- list(...)
-
-  if (is.null(lambda_max)) {
-    tsmessage("Finding largest eigenvalue")
-    args1 <- list(
-      x = X,
-      k = 1
-    )
-    lambda_max <- do.call(irlba::svdr, args1)$d
-  }
-  lm2 <- 2.0 * lambda_max
-  X_shift <- shift_lap(X, lm2)
-
-  tsmessage("Decomposing shifted matrix")
-  args <- lmerge(
-    list(
-      x = X_shift,
-      k = k
-    ),
-    varargs
-  )
-  res <- do.call(irlba::svdr, args)
-  res$v
-}
-
-svecs <- function(X, ndim = 2) {
-  max_rank <- min(dim(X))
-  ndim <- min(ndim, max_rank)
-
-  if (ndim < 0.5 * max_rank) {
-    res <- tryCatch(
-      suppressWarnings(irlba::irlba(X, nu = ndim, nv = 0)),
-      error = function(e) NULL
-    )
-    if (is.null(res)) {
-      res <- svd(X, nu = ndim, nv = 0)
-    }
-  } else {
-    res <- svd(X, nu = ndim, nv = 0)
-  }
-  rank <- numerical_rank(res$d, dim(X))
-  keep <- seq_len(min(ndim, length(res$d), ncol(res$u)))
-  keep <- keep[res$d[keep] > rank$tol]
-
-  list(
-    vectors = res$u[, keep, drop = FALSE],
-    rank = rank$rank,
-    tol = rank$tol
-  )
-}
-
-numerical_rank <- function(d, dims) {
-  if (length(d) == 0 || max(d) == 0) {
-    return(list(rank = 0L, tol = 0))
-  }
-  # standard conservative tolerance for numerical rank
-  tol <- max(dims) * max(d) * .Machine$double.eps
-  list(rank = sum(d > tol), tol = tol)
-}

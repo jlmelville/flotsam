@@ -6,7 +6,7 @@
 \usage{
 ltsa(
   X,
-  n_neighbors = 15,
+  n_neighbors = NULL,
   ndim = 2,
   nn_method = "nnd",
   eig_method = "rspectra",
@@ -15,6 +15,7 @@ ltsa(
   ret_B = FALSE,
   n_threads = 0,
   n_assembly_threads = 1,
+  copy_max_mib = 256,
   verbose = FALSE,
   ...
 )
@@ -25,16 +26,28 @@ a data frame is supplied, non-numeric columns are ignored. At least one
 numeric column is required.}
 
 \item{n_neighbors}{The size of local neighborhood (in terms of number of
-neighboring sample points) used for manifold approximation.}
+neighboring sample points) used for manifold approximation. If \code{NULL}, the
+default is \code{15} when neighbors are computed, or inferred when a precomputed
+graph is supplied as \code{nn_method}.}
 
 \item{ndim}{The dimension of the space to embed into.}
 
-\item{nn_method}{Method for finding nearest neighbors. Can be one of:
+\item{nn_method}{Method for finding nearest neighbors, or a precomputed
+nearest-neighbor graph. Can be one of:
 \itemize{
 \item \code{"nnd"} Approximate nearest neighbors by Nearest Neighbor Descent.
 \item \code{"exact"} Exact nearest neighbors by exhaustively comparing all items.
 Slow for large datasets.
-}}
+\item A precomputed nearest-neighbor index matrix.
+\item A nearest-neighbor result object with an \code{idx} matrix.
+}
+
+Precomputed index matrices should match the raw neighbor-search output used
+by \code{rnndescent}: one row per observation and 1-based indices into \code{X}. When
+\code{include_self = TRUE}, \code{ncol(nn_method)} must equal \code{n_neighbors} and each
+row must contain its own row index. When \code{include_self = FALSE},
+\code{ncol(nn_method)} must equal \code{n_neighbors + 1} and the first column must
+contain the row index, because that column is dropped before LTSA assembly.}
 
 \item{eig_method}{How to carry out the eigendecomposition. Possible values are:
 \itemize{
@@ -69,8 +82,14 @@ neighbor calculation.}
 alignment matrix \code{B} after nearest neighbors are computed. The default
 \code{1} preserves the serial assembly path. Values greater than \code{1} opt into
 parallel construction of \code{B}, which can be faster but may increase peak
-memory use. This argument does not control nearest-neighbor search,
-BLAS/LAPACK threading, or final eigensolver threading.}
+memory use.}
+
+\item{copy_max_mib}{Maximum size, in MiB, of the optional row-major dense
+copy of \code{X} used to speed up high-dimensional local Gram assembly. If this
+cap is exceeded, no row-major copy is made. The default is 256 MiB. Set to
+\code{0} to disable this copy. This code path is only used when the number of
+numeric columns in \code{X} is greater than the number of neighbors. Outside of
+synthetic datasets, you are quite likely to hit this code path.}
 
 \item{verbose}{If \code{TRUE} log information about progress to the console.}
 

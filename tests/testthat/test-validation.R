@@ -130,6 +130,22 @@ test_that("dimension and neighborhood arguments are validated", {
     ltsa(iris[1:10, ], n_assembly_threads = c(1, 2)),
     "n_assembly_threads"
   )
+  expect_error(
+    ltsa(iris[1:10, ], copy_max_mib = -1),
+    "copy_max_mib"
+  )
+  expect_error(
+    ltsa(iris[1:10, ], copy_max_mib = NA_real_),
+    "copy_max_mib"
+  )
+  expect_error(
+    ltsa(iris[1:10, ], copy_max_mib = Inf),
+    "copy_max_mib"
+  )
+  expect_error(
+    ltsa(iris[1:10, ], copy_max_mib = c(128, 256)),
+    "copy_max_mib"
+  )
 })
 
 test_that("logical arguments must be scalar TRUE or FALSE", {

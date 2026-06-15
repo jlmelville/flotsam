@@ -78,10 +78,6 @@ struct GramLocalWeightsWorkspace {
   std::vector<int> keep;
 };
 
-// row-major dense copy is capped at 256 MiB
-const std::size_t LTSA_ROW_MAJOR_COPY_MAX_BYTES =
-    static_cast<std::size_t>(256) * 1024 * 1024;
-
 std::size_t checked_triplet_count(std::size_t n_obs, std::size_t n_nbrs,
                                   const char* name);
 
@@ -93,6 +89,8 @@ void checked_append_output(int row, double value, std::vector<int>& out_i,
 void checked_ndim(int ndim);
 
 int checked_lapack_dim(std::size_t value, const char* name);
+
+std::size_t checked_row_major_copy_max_bytes(double max_bytes);
 
 std::vector<int> checked_neighbors(const integers& nni, std::size_t n_obs);
 
@@ -112,10 +110,6 @@ void fill_centered_neighborhood_ptr(const double* x_data, std::size_t n_obs,
                                     const std::vector<int>& nni,
                                     std::vector<double>& centered,
                                     std::size_t n_dim);
-
-bool try_make_row_major_copy(const double* x_data, std::size_t n_obs,
-                             std::size_t n_dim,
-                             std::vector<double>& row_major);
 
 void fill_centered_neighborhood_row_major(
     const std::vector<double>& row_major, const std::vector<int>& nni,
@@ -436,6 +430,20 @@ int checked_lapack_dim(std::size_t value, const char* name) {
   return static_cast<int>(value);
 }
 
+std::size_t checked_row_major_copy_max_bytes(double max_bytes) {
+  if (!std::isfinite(max_bytes) || max_bytes < 0.0) {
+    stop("copy_max_mib must be a finite number >= 0");
+  }
+
+  const double max_size =
+      static_cast<double>(std::numeric_limits<std::size_t>::max());
+  if (max_bytes > max_size) {
+    stop("copy_max_mib is too large");
+  }
+
+  return static_cast<std::size_t>(std::floor(max_bytes));
+}
+
 int query_dsyev_workspace(int n, std::vector<double>& gram,
                           std::vector<double>& values) {
   char jobz = 'V';
@@ -574,7 +582,8 @@ void fill_centered_neighborhood_ptr(const double* x_data, std::size_t n_obs,
   }
 }
 
-bool row_major_copy_within_limit(std::size_t n_obs, std::size_t n_dim) {
+bool row_major_copy_within_limit(std::size_t n_obs, std::size_t n_dim,
+                                 std::size_t max_bytes) {
   const std::size_t max_values =
       std::numeric_limits<std::size_t>::max() / sizeof(double);
   if (n_obs != 0 && n_dim > max_values / n_obs) {
@@ -582,7 +591,7 @@ bool row_major_copy_within_limit(std::size_t n_obs, std::size_t n_dim) {
   }
 
   const std::size_t n_values = n_obs * n_dim;
-  return n_values * sizeof(double) <= LTSA_ROW_MAJOR_COPY_MAX_BYTES;
+  return n_values * sizeof(double) <= max_bytes;
 }
 
 void make_row_major_copy(const double* x_data, std::size_t n_obs,
@@ -594,25 +603,6 @@ void make_row_major_copy(const double* x_data, std::size_t n_obs,
       row_major[row * n_dim + col] = col_ptr[row];
     }
   }
-}
-
-bool try_make_row_major_copy(const double* x_data, std::size_t n_obs,
-                             std::size_t n_dim,
-                             std::vector<double>& row_major) {
-  // Keep the row-major fast path internal and conservative. The copy is a
-  // clear win for tested 6k image-shaped inputs, but large dense matrices can
-  // already be memory-bound during sparse staging.
-  if (!row_major_copy_within_limit(n_obs, n_dim)) {
-    return false;
-  }
-
-  try {
-    make_row_major_copy(x_data, n_obs, n_dim, row_major);
-  } catch (const std::bad_alloc&) {
-    row_major.clear();
-    return false;
-  }
-  return true;
 }
 
 void fill_centered_neighborhood_row_major(
@@ -1611,8 +1601,11 @@ LtsaTripletAssemblyBuilder* checked_ltsa_triplet_builder(SEXP builder_xptr) {
 [[cpp11::register]] list ltsa_assemble_local_weights(const doubles_matrix<>& x,
                                                      const integers& value_nnt,
                                                      std::size_t value_n_nbrs,
-                                                     int ndim) {
+                                                     int ndim,
+                                                     double row_major_copy_max_bytes) {
   checked_ndim(ndim);
+  const std::size_t row_major_copy_max =
+      checked_row_major_copy_max_bytes(row_major_copy_max_bytes);
   if (value_nnt.size() == 0 || value_n_nbrs == 0) {
     stop("Value neighborhoods must not be empty");
   }
@@ -1644,7 +1637,8 @@ LtsaTripletAssemblyBuilder* checked_ltsa_triplet_builder(SEXP builder_xptr) {
   std::unique_ptr<GramLocalWeightsWorkspace> gram_workspace;
   if (use_gram_workspace) {
     row_major_within_limit =
-        row_major_copy_within_limit(n_obs, static_cast<std::size_t>(x.ncol()));
+        row_major_copy_within_limit(n_obs, static_cast<std::size_t>(x.ncol()),
+                                    row_major_copy_max);
     if (row_major_within_limit) {
       try {
         make_row_major_copy(x_data, n_obs, static_cast<std::size_t>(x.ncol()),
@@ -1717,8 +1711,11 @@ LtsaTripletAssemblyBuilder* checked_ltsa_triplet_builder(SEXP builder_xptr) {
 ltsa_assemble_local_weights_parallel(const doubles_matrix<>& x,
                                      const integers& value_nnt,
                                      std::size_t value_n_nbrs, int ndim,
-                                     int requested_threads) {
+                                     int requested_threads,
+                                     double row_major_copy_max_bytes) {
   checked_ndim(ndim);
+  const std::size_t row_major_copy_max =
+      checked_row_major_copy_max_bytes(row_major_copy_max_bytes);
   if (requested_threads < 1) {
     stop("n_assembly_threads must be positive");
   }
@@ -1762,7 +1759,8 @@ ltsa_assemble_local_weights_parallel(const doubles_matrix<>& x,
   bool row_major_within_limit = false;
   if (!use_svd_route) {
     row_major_within_limit =
-        row_major_copy_within_limit(n_obs, static_cast<std::size_t>(x.ncol()));
+        row_major_copy_within_limit(n_obs, static_cast<std::size_t>(x.ncol()),
+                                    row_major_copy_max);
     if (row_major_within_limit) {
       try {
         make_row_major_copy(x_data, n_obs, static_cast<std::size_t>(x.ncol()),
