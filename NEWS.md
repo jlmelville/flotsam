@@ -15,6 +15,9 @@
   append/finalize C++ builder. Now modestly faster and slightly less peak
   memory usage.
 * More robust eigenanalysis convergence.
+* Eigenanalysis now extracts more eigenvectors than requested and uses
+  Rayleigh-Ritz polishing on the subspace to attempt a better final result.
+  `verbose = TRUE` reports residual, rank, and boundary-gap diagnostics.
 * Better argument validation and eigenanalysis error reporting.
 * Updated GitHub Actions.
 

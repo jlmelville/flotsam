@@ -74,13 +74,46 @@ ltsa_ritz_residuals <- function(B, vectors, values, lambda_max) {
   BV <- as.matrix(B %*% vectors)
   residual <- BV - sweep(vectors, 2L, values, "*")
   absolute_residual <- sqrt(colSums(residual * residual))
-  residual_scale <- max(lambda_max, 1)
+  residual_scale <- ltsa_residual_scale(lambda_max)
 
   list(
     absolute_residuals = absolute_residual,
     scaled_residuals = absolute_residual / residual_scale,
     residual_scale = residual_scale
   )
+}
+
+ltsa_residual_scale <- function(lambda_max) {
+  if (
+    is.null(lambda_max) ||
+      length(lambda_max) < 1L ||
+      !is.finite(lambda_max[[1L]])
+  ) {
+    return(1)
+  }
+
+  max(as.numeric(lambda_max[[1L]]), 1)
+}
+
+ltsa_default_null_vector <- function(n) {
+  rep(1, n)
+}
+
+ltsa_normalize_null_vector <- function(nullvec, n) {
+  if (length(nullvec) != n || any(!is.finite(nullvec))) {
+    stop("LTSA null vector must be finite and match the matrix dimension", call. = FALSE)
+  }
+
+  null_norm <- sqrt(sum(nullvec * nullvec))
+  if (!is.finite(null_norm) || null_norm <= 0) {
+    stop("LTSA null vector must have positive norm", call. = FALSE)
+  }
+
+  nullvec / null_norm
+}
+
+ltsa_near_zero_tol <- function(lambda_max, tol = sqrt(.Machine$double.eps)) {
+  tol * ltsa_residual_scale(lambda_max)
 }
 
 ltsa_validate_lambda_max <- function(lambda_max, B) {
@@ -168,31 +201,307 @@ dense_ltsa_eig <- function(B, eig_k, backend = "dense_eigen") {
   )
 }
 
-# RSpectra sometimes fails to return the trivial constant vector, so we can't
-# blindly drop the first vector. We also want to make sure we have the
-# eigenvectors in the expected order. We fetch an "over-complete" set of
-# vectors and then sort them by their Rayleigh quotient on the original matrix.
-# A small Rayleigh quotient means the vector is close to a small-eigenvalue
-# direction of B.
-select_ltsa_embedding_vectors <- function(B, vectors, ndim) {
+ltsa_ritz_select <- function(B,
+                             vectors,
+                             ndim,
+                             nullvec = ltsa_default_null_vector(nrow(B)),
+                             lambda_max = NULL,
+                             drop_tol = 1e-8,
+                             rank_tol = 1e-10,
+                             near_zero_tol = ltsa_near_zero_tol(lambda_max)) {
+  vectors <- as.matrix(vectors)
+  n <- nrow(B)
+  ndim <- as.integer(ndim)
+  if (length(ndim) != 1L || is.na(ndim) || ndim < 1L) {
+    stop("ndim must be a positive integer", call. = FALSE)
+  }
+  if (nrow(B) != ncol(B)) {
+    stop("LTSA matrix must be square", call. = FALSE)
+  }
+  if (nrow(vectors) != n) {
+    stop("LTSA candidate vectors must match the matrix dimension", call. = FALSE)
+  }
   if (ncol(vectors) < ndim) {
-    stop("Can't find enough vectors", call. = FALSE)
+    stop("Can't find enough LTSA candidate vectors", call. = FALSE)
   }
 
-  rayleigh <- ltsa_rayleigh_values(B, vectors)
-  vectors <- vectors[, order(rayleigh), drop = FALSE]
+  nullvec <- ltsa_normalize_null_vector(nullvec, n)
+  projected <- vectors - nullvec %*% crossprod(nullvec, vectors)
+  original_norms <- sqrt(colSums(vectors * vectors))
+  projected_norms <- sqrt(colSums(projected * projected))
+  keep <- projected_norms > drop_tol * pmax(1, original_norms)
+  projected <- projected[, keep, drop = FALSE]
 
-  first <- vectors[, 1L]
-  centered_norm <- sqrt(sum((first - mean(first))^2))
-  first_norm <- sqrt(sum(first^2))
-  drop_trivial <- first_norm > 0 && centered_norm <= 1e-4 * first_norm
-  start <- if (drop_trivial && ncol(vectors) > ndim) 2L else 1L
-  end <- start + ndim - 1L
-  if (end > ncol(vectors)) {
-    stop("Can't find enough vectors", call. = FALSE)
+  dropped_null_columns <- sum(!keep)
+  if (ncol(projected) == 0L) {
+    rank_after_null <- 0L
+  } else {
+    qrp <- qr(projected, tol = rank_tol)
+    rank_after_null <- qrp$rank
+  }
+  if (rank_after_null < ndim) {
+    stop(
+      "LTSA candidate subspace rank after null projection is ",
+      rank_after_null,
+      ", less than ndim = ",
+      ndim,
+      call. = FALSE
+    )
   }
 
-  vectors[, start:end, drop = FALSE]
+  Q <- qr.Q(qrp)[, seq_len(rank_after_null), drop = FALSE]
+  BQ <- as.matrix(B %*% Q)
+  H <- as.matrix(crossprod(Q, BQ))
+  H <- 0.5 * (H + t(H))
+
+  eig <- eigen(H, symmetric = TRUE)
+  ord <- order(eig$values)
+  values_all <- eig$values[ord]
+  coef_all <- eig$vectors[, ord, drop = FALSE]
+  vectors_all <- Q %*% coef_all
+  residuals_all <- ltsa_ritz_residuals(B, vectors_all, values_all, lambda_max)
+
+  if (length(values_all) > ndim) {
+    boundary_gap <- values_all[[ndim + 1L]] - values_all[[ndim]]
+    boundary_gap_scale <- max(
+      abs(values_all[[ndim + 1L]]),
+      abs(values_all[[ndim]]),
+      ltsa_residual_scale(lambda_max)
+    )
+    boundary_gap_relative <- boundary_gap / boundary_gap_scale
+  } else {
+    boundary_gap <- NA_real_
+    boundary_gap_relative <- NA_real_
+  }
+
+  take <- seq_len(ndim)
+  near_zero_nonconstant_count <- sum(abs(values_all) <= near_zero_tol)
+
+  list(
+    vectors = vectors_all[, take, drop = FALSE],
+    values = values_all[take],
+    all_vectors = vectors_all,
+    all_values = values_all,
+    absolute_residuals = residuals_all$absolute_residuals[take],
+    scaled_residuals = residuals_all$scaled_residuals[take],
+    all_absolute_residuals = residuals_all$absolute_residuals,
+    all_scaled_residuals = residuals_all$scaled_residuals,
+    residual_scale = residuals_all$residual_scale,
+    rank_after_null = rank_after_null,
+    dropped_null_columns = dropped_null_columns,
+    boundary_gap = boundary_gap,
+    boundary_gap_relative = boundary_gap_relative,
+    near_zero_nonconstant_count = near_zero_nonconstant_count,
+    near_zero_tol = near_zero_tol,
+    kept_candidate_columns = sum(keep)
+  )
+}
+
+select_ltsa_embedding_vectors <- function(B,
+                                          vectors,
+                                          ndim,
+                                          nullvec = ltsa_default_null_vector(nrow(B)),
+                                          lambda_max = NULL,
+                                          ...) {
+  rr <- ltsa_ritz_select(
+    B = B,
+    vectors = vectors,
+    ndim = ndim,
+    nullvec = nullvec,
+    lambda_max = lambda_max,
+    ...
+  )
+  rr$vectors
+}
+
+ltsa_initial_ritz_candidate_k <- function(ndim, n, initial_extra = 4L) {
+  min(n - 1L, 1L + ndim + 1L + initial_extra)
+}
+
+ltsa_max_ritz_candidate_k <- function(ndim, n, max_extra = 40L) {
+  min(n - 1L, 1L + ndim + 1L + max_extra)
+}
+
+ltsa_next_ritz_candidate_k <- function(eig_k, max_k) {
+  min(max_k, max(eig_k + 2L, as.integer(ceiling(1.5 * eig_k))))
+}
+
+accept_ltsa_ritz <- function(rr,
+                             ndim,
+                             lambda_max,
+                             resid_tol = 1e-5,
+                             gap_tol = 1e-4,
+                             require_gap = TRUE) {
+  max_scaled_residual <- max(rr$scaled_residuals)
+  rank_ok <- rr$rank_after_null >= ndim &&
+    (!require_gap || rr$rank_after_null >= ndim + 1L)
+  resid_ok <- is.finite(max_scaled_residual) && max_scaled_residual <= resid_tol
+  gap_ok <- !require_gap ||
+    (is.finite(rr$boundary_gap_relative) && rr$boundary_gap_relative >= gap_tol)
+
+  list(
+    ok = rank_ok && resid_ok && gap_ok,
+    rank_ok = rank_ok,
+    resid_ok = resid_ok,
+    gap_ok = gap_ok,
+    rel_gap = rr$boundary_gap_relative,
+    max_scaled_residual = max_scaled_residual,
+    resid_tol = resid_tol,
+    gap_tol = gap_tol,
+    lambda_max = lambda_max,
+    require_gap = require_gap
+  )
+}
+
+ltsa_with_ritz <- function(eig_res, rr, acceptance, attempts) {
+  eig_res$candidate_vectors <- eig_res$vectors
+  eig_res$candidate_values <- eig_res$values
+  eig_res$vectors <- rr$vectors
+  eig_res$values <- rr$values
+  eig_res$ritz <- rr
+  eig_res$acceptance <- acceptance
+  eig_res$attempts <- attempts
+  eig_res$absolute_residuals <- rr$absolute_residuals
+  eig_res$scaled_residuals <- rr$scaled_residuals
+  eig_res$residual_scale <- rr$residual_scale
+  eig_res$rank_after_null <- rr$rank_after_null
+  eig_res$boundary_gap <- rr$boundary_gap
+  eig_res$boundary_gap_relative <- rr$boundary_gap_relative
+  eig_res$near_zero_nonconstant_count <- rr$near_zero_nonconstant_count
+  eig_res
+}
+
+ltsa_rspectra_ritz_eig <- function(B,
+                                   ndim,
+                                   ...,
+                                   nullvec = ltsa_default_null_vector(nrow(B)),
+                                   initial_extra = 4L,
+                                   max_extra = 40L,
+                                   resid_tol = 1e-5,
+                                   gap_tol = 1e-4,
+                                   verbose = FALSE) {
+  n <- nrow(B)
+  eig_k <- ltsa_initial_ritz_candidate_k(ndim, n, initial_extra)
+  max_k <- ltsa_max_ritz_candidate_k(ndim, n, max_extra)
+  lambda_max <- NULL
+  attempts <- list()
+  best <- NULL
+  last_error <- NULL
+
+  repeat {
+    eig_res <- tryCatch(
+      rs_eig(B, k = eig_k, ..., lambda_max = lambda_max, verbose = verbose),
+      error = function(e) e
+    )
+    if (inherits(eig_res, "error")) {
+      last_error <- conditionMessage(eig_res)
+      attempts[[length(attempts) + 1L]] <- list(
+        eig_k = eig_k,
+        error = last_error
+      )
+    } else {
+      lambda_max <- eig_res$lambda_max
+      rr <- tryCatch(
+        ltsa_ritz_select(
+          B = eig_res$matrix,
+          vectors = eig_res$vectors,
+          ndim = ndim,
+          nullvec = nullvec,
+          lambda_max = lambda_max
+        ),
+        error = function(e) e
+      )
+
+      if (inherits(rr, "error")) {
+        last_error <- conditionMessage(rr)
+        attempts[[length(attempts) + 1L]] <- list(
+          eig_k = eig_k,
+          nconv = eig_res$nconv,
+          error = last_error
+        )
+      } else {
+        acceptance <- accept_ltsa_ritz(
+          rr = rr,
+          ndim = ndim,
+          lambda_max = lambda_max,
+          resid_tol = resid_tol,
+          gap_tol = gap_tol,
+          require_gap = max_k > ndim
+        )
+        attempts[[length(attempts) + 1L]] <- list(
+          eig_k = eig_k,
+          nconv = eig_res$nconv,
+          rank_after_null = rr$rank_after_null,
+          max_scaled_residual = acceptance$max_scaled_residual,
+          boundary_gap_relative = rr$boundary_gap_relative,
+          near_zero_nonconstant_count = rr$near_zero_nonconstant_count,
+          accepted = acceptance$ok
+        )
+        tsmessage(
+          "Rayleigh-Ritz LTSA postprocess: post-null rank = ",
+          rr$rank_after_null,
+          ", max selected scaled residual = ",
+          signif(acceptance$max_scaled_residual, 4),
+          ", relative boundary gap = ",
+          signif(rr$boundary_gap_relative, 4),
+          ", near-zero nonconstant modes = ",
+          rr$near_zero_nonconstant_count
+        )
+        best <- ltsa_with_ritz(eig_res, rr, acceptance, attempts)
+
+        if (acceptance$ok) {
+          return(best)
+        }
+      }
+    }
+
+    if (eig_k >= max_k) {
+      break
+    }
+    eig_k <- ltsa_next_ritz_candidate_k(eig_k, max_k)
+  }
+
+  if (is.null(best)) {
+    stop(
+      "LTSA Rayleigh-Ritz selection failed after requesting up to ",
+      max_k,
+      " candidate vectors: ",
+      last_error %||% "no usable candidate subspace",
+      call. = FALSE
+    )
+  }
+
+  if (!best$acceptance$rank_ok) {
+    stop(
+      "LTSA Rayleigh-Ritz selection did not find enough post-null rank after ",
+      "requesting up to ",
+      best$eig_k,
+      " candidate vectors",
+      call. = FALSE
+    )
+  }
+  if (!best$acceptance$resid_ok) {
+    warning(
+      "LTSA Rayleigh-Ritz residuals remain above tolerance after requesting ",
+      best$eig_k,
+      " candidate vectors: max scaled residual = ",
+      signif(best$acceptance$max_scaled_residual, 4),
+      ", tolerance = ",
+      signif(resid_tol, 4),
+      call. = FALSE
+    )
+  } else if (!best$acceptance$gap_ok) {
+    tsmessage(
+      "LTSA Ritz boundary gap remains below tolerance after requesting ",
+      best$eig_k,
+      " candidate vectors: relative gap = ",
+      signif(best$acceptance$rel_gap, 4),
+      ", tolerance = ",
+      signif(gap_tol, 4)
+    )
+  }
+
+  best
 }
 
 rs_opt <- function(eig_k = NULL, n = NULL) {

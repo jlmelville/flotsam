@@ -281,13 +281,8 @@ ltsa <-
             eig_method,
             rspectra = {
               tsmessage("Calling rspectra")
-              eig_k <- ltsa_iterative_search_k(ndim, ncol(B))
-              eig_res <- rs_eig(B, k = eig_k, ..., verbose = verbose)
-              res <- eig_res$vectors
-              if (ncol(res) < ndim) {
-                stop("Can't find enough vectors")
-              }
-              select_ltsa_embedding_vectors(eig_res$matrix, res, ndim)
+              eig_res <- ltsa_rspectra_ritz_eig(B, ndim = ndim, ..., verbose = verbose)
+              eig_res$vectors
             },
             irlba = {
               eig_k <- ltsa_iterative_search_k(ndim, ncol(B))
