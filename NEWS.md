@@ -14,6 +14,7 @@
 * Replaced the old sparse slot-search LTSA assembly path with the serial
   append/finalize C++ builder. Now modestly faster and slightly less peak
   memory usage.
+* More robust eigenanalysis convergence.
 * Better argument validation and eigenanalysis error reporting.
 * Updated GitHub Actions.
 

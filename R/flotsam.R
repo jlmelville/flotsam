@@ -281,23 +281,39 @@ ltsa <-
             eig_method,
             rspectra = {
               tsmessage("Calling rspectra")
-              k_search <- ltsa_iterative_search_k(ndim, ncol(B))
-              res <-
-                rs_eig(B, k = k_search, ..., verbose = verbose)$vectors
+              eig_k <- ltsa_iterative_search_k(ndim, ncol(B))
+              eig_res <- rs_eig(B, k = eig_k, ..., verbose = verbose)
+              res <- eig_res$vectors
               if (ncol(res) < ndim) {
                 stop("Can't find enough vectors")
               }
-              select_ltsa_embedding_vectors(B, res, ndim)
+              select_ltsa_embedding_vectors(eig_res$matrix, res, ndim)
             },
             irlba = {
-              k_search <- ltsa_iterative_search_k(ndim, ncol(B))
-              res <- irlba_eig(B, k = k_search, ...)
-              select_ltsa_embedding_vectors(B, res, ndim)
+              eig_k <- ltsa_iterative_search_k(ndim, ncol(B))
+              B_sym <- symmetrize_ltsa_matrix(B)
+              eig_args <- list(...)
+              if (length(eig_args) == 0L && ltsa_use_dense_eig(ncol(B_sym), eig_k)) {
+                tsmessage("Using dense eigenvalue decomposition")
+                eig_res <- dense_ltsa_eig(B_sym, eig_k)
+                res <- eig_res$vectors
+              } else {
+                res <- do.call(irlba_eig, c(list(X = B_sym, k = eig_k), eig_args))
+              }
+              select_ltsa_embedding_vectors(B_sym, res, ndim)
             },
             svdr = {
-              k_search <- ltsa_iterative_search_k(ndim, ncol(B))
-              res <- svdr_eig(B, k = k_search, ...)
-              select_ltsa_embedding_vectors(B, res, ndim)
+              eig_k <- ltsa_iterative_search_k(ndim, ncol(B))
+              B_sym <- symmetrize_ltsa_matrix(B)
+              eig_args <- list(...)
+              if (length(eig_args) == 0L && ltsa_use_dense_eig(ncol(B_sym), eig_k)) {
+                tsmessage("Using dense eigenvalue decomposition")
+                eig_res <- dense_ltsa_eig(B_sym, eig_k)
+                res <- eig_res$vectors
+              } else {
+                res <- do.call(svdr_eig, c(list(X = B_sym, k = eig_k), eig_args))
+              }
+              select_ltsa_embedding_vectors(B_sym, res, ndim)
             },
             fullsvd = {
               tsmessage("Using full SVD")

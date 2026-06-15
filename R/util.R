@@ -1,3 +1,11 @@
+`%||%` <- function(x, y) {
+  if (is.null(x)) {
+    y
+  } else {
+    x
+  }
+}
+
 stime <- function() {
   format(Sys.time(), "%T")
 }
