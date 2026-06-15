@@ -48,15 +48,23 @@ extern "C" SEXP _flotsam_ltsa_assemble_local_weights(SEXP x, SEXP value_nnt, SEX
     return cpp11::as_sexp(ltsa_assemble_local_weights(cpp11::as_cpp<cpp11::decay_t<const doubles_matrix<>&>>(x), cpp11::as_cpp<cpp11::decay_t<const integers&>>(value_nnt), cpp11::as_cpp<cpp11::decay_t<std::size_t>>(value_n_nbrs), cpp11::as_cpp<cpp11::decay_t<int>>(ndim)));
   END_CPP11
 }
+// flotsam.cpp
+list ltsa_assemble_local_weights_parallel(const doubles_matrix<>& x, const integers& value_nnt, std::size_t value_n_nbrs, int ndim, int requested_threads);
+extern "C" SEXP _flotsam_ltsa_assemble_local_weights_parallel(SEXP x, SEXP value_nnt, SEXP value_n_nbrs, SEXP ndim, SEXP requested_threads) {
+  BEGIN_CPP11
+    return cpp11::as_sexp(ltsa_assemble_local_weights_parallel(cpp11::as_cpp<cpp11::decay_t<const doubles_matrix<>&>>(x), cpp11::as_cpp<cpp11::decay_t<const integers&>>(value_nnt), cpp11::as_cpp<cpp11::decay_t<std::size_t>>(value_n_nbrs), cpp11::as_cpp<cpp11::decay_t<int>>(ndim), cpp11::as_cpp<cpp11::decay_t<int>>(requested_threads)));
+  END_CPP11
+}
 
 extern "C" {
 static const R_CallMethodDef CallEntries[] = {
-    {"_flotsam_ltsa_assemble_local_weights",   (DL_FUNC) &_flotsam_ltsa_assemble_local_weights,   4},
-    {"_flotsam_ltsa_local_weights_cpp",        (DL_FUNC) &_flotsam_ltsa_local_weights_cpp,        3},
-    {"_flotsam_ltsa_triplet_builder_append",   (DL_FUNC) &_flotsam_ltsa_triplet_builder_append,   3},
-    {"_flotsam_ltsa_triplet_builder_create",   (DL_FUNC) &_flotsam_ltsa_triplet_builder_create,   2},
-    {"_flotsam_ltsa_triplet_builder_finalize", (DL_FUNC) &_flotsam_ltsa_triplet_builder_finalize, 1},
-    {"_flotsam_spm_times_scalar",              (DL_FUNC) &_flotsam_spm_times_scalar,              3},
+    {"_flotsam_ltsa_assemble_local_weights",          (DL_FUNC) &_flotsam_ltsa_assemble_local_weights,          4},
+    {"_flotsam_ltsa_assemble_local_weights_parallel", (DL_FUNC) &_flotsam_ltsa_assemble_local_weights_parallel, 5},
+    {"_flotsam_ltsa_local_weights_cpp",               (DL_FUNC) &_flotsam_ltsa_local_weights_cpp,               3},
+    {"_flotsam_ltsa_triplet_builder_append",          (DL_FUNC) &_flotsam_ltsa_triplet_builder_append,          3},
+    {"_flotsam_ltsa_triplet_builder_create",          (DL_FUNC) &_flotsam_ltsa_triplet_builder_create,          2},
+    {"_flotsam_ltsa_triplet_builder_finalize",        (DL_FUNC) &_flotsam_ltsa_triplet_builder_finalize,        1},
+    {"_flotsam_spm_times_scalar",                     (DL_FUNC) &_flotsam_spm_times_scalar,                     3},
     {NULL, NULL, 0}
 };
 }

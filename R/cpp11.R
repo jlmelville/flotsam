@@ -23,3 +23,7 @@ ltsa_local_weights_cpp <- function(x, nni, ndim) {
 ltsa_assemble_local_weights <- function(x, value_nnt, value_n_nbrs, ndim) {
   .Call(`_flotsam_ltsa_assemble_local_weights`, x, value_nnt, value_n_nbrs, ndim)
 }
+
+ltsa_assemble_local_weights_parallel <- function(x, value_nnt, value_n_nbrs, ndim, requested_threads) {
+  .Call(`_flotsam_ltsa_assemble_local_weights_parallel`, x, value_nnt, value_n_nbrs, ndim, requested_threads)
+}

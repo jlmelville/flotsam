@@ -55,6 +55,7 @@ validate_ltsa_args <- function(
   normalize,
   ret_B,
   n_threads,
+  n_assembly_threads,
   verbose
 ) {
   if (!all(is.finite(X))) {
@@ -70,6 +71,11 @@ validate_ltsa_args <- function(
   ndim <- check_whole_number(ndim, "ndim", min = 1)
   n_neighbors <- check_whole_number(n_neighbors, "n_neighbors", min = 1)
   n_threads <- check_whole_number(n_threads, "n_threads", min = 0)
+  n_assembly_threads <- check_whole_number(
+    n_assembly_threads,
+    "n_assembly_threads",
+    min = 1
+  )
 
   include_self <- check_scalar_logical(include_self, "include_self")
   normalize <- check_scalar_logical(normalize, "normalize")
@@ -111,6 +117,7 @@ validate_ltsa_args <- function(
     normalize = normalize,
     ret_B = ret_B,
     n_threads = n_threads,
+    n_assembly_threads = n_assembly_threads,
     verbose = verbose
   )
 }
@@ -122,7 +129,8 @@ check_whole_number <- function(x, name, min = 0) {
       is.na(x) ||
       !is.finite(x) ||
       x < min ||
-      x != floor(x)
+      x != floor(x) ||
+      x > .Machine$integer.max
   ) {
     stop(name, " must be a whole number >= ", min, call. = FALSE)
   }

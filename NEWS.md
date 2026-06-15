@@ -1,5 +1,7 @@
 # flotsam 0.0.0.9001
 
+* New parameter: `n_assembly_threads` to control number of threads to construct
+  the `B` matrix.
 * LTSA matrix construction is improved for high-dimensional inputs by using
   row-major centered Gram (if the matrix isn't too large) and a triangular
   matrix taking advantage of B matrix symmetry.

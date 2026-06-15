@@ -14,6 +14,7 @@ ltsa(
   normalize = FALSE,
   ret_B = FALSE,
   n_threads = 0,
+  n_assembly_threads = 1,
   verbose = FALSE,
   ...
 )
@@ -63,6 +64,13 @@ is mainly useful for diagnostic purposes if eigendecomposition is failing.}
 
 \item{n_threads}{Number of threads to use. Applies only to the nearest
 neighbor calculation.}
+
+\item{n_assembly_threads}{Number of threads to use when constructing the LTSA
+alignment matrix \code{B} after nearest neighbors are computed. The default
+\code{1} preserves the serial assembly path. Values greater than \code{1} opt into
+parallel construction of \code{B}, which can be faster but may increase peak
+memory use. This argument does not control nearest-neighbor search,
+BLAS/LAPACK threading, or final eigensolver threading.}
 
 \item{verbose}{If \code{TRUE} log information about progress to the console.}
 

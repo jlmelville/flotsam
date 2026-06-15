@@ -35,6 +35,12 @@
 #'   is mainly useful for diagnostic purposes if eigendecomposition is failing.
 #' @param n_threads Number of threads to use. Applies only to the nearest
 #'   neighbor calculation.
+#' @param n_assembly_threads Number of threads to use when constructing the LTSA
+#'   alignment matrix `B` after nearest neighbors are computed. The default
+#'   `1` preserves the serial assembly path. Values greater than `1` opt into
+#'   parallel construction of `B`, which can be faster but may increase peak
+#'   memory use. This argument does not control nearest-neighbor search,
+#'   BLAS/LAPACK threading, or final eigensolver threading.
 #' @param verbose If `TRUE` log information about progress to the console.
 #' @param ... Extra arguments to be passed to the eigendecomposition method
 #' specified by `eig_method`. For `"rspectra"`, arguments are passed to the
@@ -102,6 +108,7 @@ ltsa <-
     normalize = FALSE,
     ret_B = FALSE,
     n_threads = 0,
+    n_assembly_threads = 1,
     verbose = FALSE,
     ...
   ) {
@@ -116,6 +123,7 @@ ltsa <-
       normalize = normalize,
       ret_B = ret_B,
       n_threads = n_threads,
+      n_assembly_threads = n_assembly_threads,
       verbose = verbose
     )
     X <- args$X
@@ -127,6 +135,7 @@ ltsa <-
     normalize <- args$normalize
     ret_B <- args$ret_B
     n_threads <- args$n_threads
+    n_assembly_threads <- args$n_assembly_threads
     verbose <- args$verbose
 
     nn_fun <- switch(
@@ -153,6 +162,7 @@ ltsa <-
       nn_idx = nn$idx,
       ndim = ndim,
       include_self = include_self,
+      n_assembly_threads = n_assembly_threads,
       verbose = verbose
     )
     B <- assembly$B
@@ -295,6 +305,7 @@ assemble_ltsa_B <- function(
   nn_idx,
   ndim,
   include_self,
+  n_assembly_threads = 1L,
   verbose = FALSE
 ) {
   assemble_ltsa_B_append(
@@ -302,6 +313,7 @@ assemble_ltsa_B <- function(
     nn_idx = nn_idx,
     ndim = ndim,
     include_self = include_self,
+    n_assembly_threads = n_assembly_threads,
     verbose = verbose
   )
 }
@@ -311,8 +323,15 @@ assemble_ltsa_B_append <- function(
   nn_idx,
   ndim,
   include_self,
+  n_assembly_threads = 1L,
   verbose = FALSE
 ) {
+  n_assembly_threads <- check_whole_number(
+    n_assembly_threads,
+    "n_assembly_threads",
+    min = 1
+  )
+
   n <- nrow(X)
   weight_idx <- ltsa_weight_neighborhoods(nn_idx, include_self)
   k <- ncol(weight_idx)
@@ -320,17 +339,116 @@ assemble_ltsa_B_append <- function(
   if (verbose) {
     tsmessage("Computing local weights and assembling sparse matrix")
   }
-  components <- ltsa_assemble_local_weights(X, t(weight_idx), k, ndim)
+  value_nnt <- t(weight_idx)
+  components <- if (n_assembly_threads <= 1L) {
+    ltsa_assemble_local_weights(X, value_nnt, k, ndim)
+  } else {
+    ltsa_assemble_local_weights_parallel(
+      X,
+      value_nnt,
+      k,
+      ndim,
+      n_assembly_threads
+    )
+  }
+  log_ltsa_assembly_diagnostics(components, verbose)
   B <- ltsa_components_to_dgCMatrix(components, n)
 
   list(
     B = B,
     rank_deficient_count = components$rank_deficient_count,
-    min_local_rank = components$min_local_rank
+    min_local_rank = components$min_local_rank,
+    diagnostics = ltsa_assembly_diagnostics(components)
   )
 }
 
+ltsa_assembly_diagnostics <- function(components) {
+  fields <- c(
+    "assembly_route",
+    "requested_assembly_threads",
+    "effective_assembly_threads",
+    "raw_entries_estimate",
+    "raw_bytes_estimate",
+    "duplicate_fallback_count",
+    "row_major_used",
+    "row_major_fallback_reason",
+    "parallel_fallback_reason"
+  )
+  components[intersect(fields, names(components))]
+}
+
+log_ltsa_assembly_diagnostics <- function(components, verbose) {
+  if (!verbose) {
+    return(invisible(NULL))
+  }
+
+  diagnostics <- ltsa_assembly_diagnostics(components)
+  tsmessage(
+    "LTSA assembly route: ",
+    diagnostics$assembly_route,
+    "; requested/effective assembly threads: ",
+    diagnostics$requested_assembly_threads,
+    "/",
+    diagnostics$effective_assembly_threads
+  )
+  tsmessage(
+    "LTSA raw staged entries estimate: ",
+    format(diagnostics$raw_entries_estimate, scientific = FALSE),
+    "; raw bytes estimate: ",
+    format(diagnostics$raw_bytes_estimate, scientific = FALSE)
+  )
+  tsmessage(
+    "LTSA duplicate-neighborhood fallback count: ",
+    diagnostics$duplicate_fallback_count,
+    "; row-major Gram used: ",
+    diagnostics$row_major_used
+  )
+  if (nzchar(diagnostics$row_major_fallback_reason)) {
+    tsmessage(
+      "LTSA row-major fallback reason: ",
+      diagnostics$row_major_fallback_reason
+    )
+  }
+  if (nzchar(diagnostics$parallel_fallback_reason)) {
+    tsmessage(
+      "LTSA parallel fallback reason: ",
+      diagnostics$parallel_fallback_reason
+    )
+  }
+  invisible(NULL)
+}
+
 ltsa_components_to_dgCMatrix <- function(components, n) {
+  n <- check_whole_number(n, "n", min = 0)
+  if (n >= .Machine$integer.max) {
+    stop("n is too large for a dgCMatrix", call. = FALSE)
+  }
+  if (!is.integer(components$i) || !is.integer(components$p)) {
+    stop("Invalid sparse component index type", call. = FALSE)
+  }
+  if (!is.numeric(components$x)) {
+    stop("Invalid sparse component value type", call. = FALSE)
+  }
+  if (length(components$p) != n + 1L) {
+    stop("Invalid sparse column pointer length", call. = FALSE)
+  }
+  if (length(components$i) != length(components$x)) {
+    stop("Invalid sparse index/value lengths", call. = FALSE)
+  }
+  if (length(components$i) > .Machine$integer.max) {
+    stop("Too many non-zero slots for a dgCMatrix", call. = FALSE)
+  }
+  if (any(components$p < 0L) || any(diff(components$p) < 0L)) {
+    stop("Invalid sparse column pointers", call. = FALSE)
+  }
+  if (components$p[[1L]] != 0L || components$p[[n + 1L]] != length(components$i)) {
+    stop("Invalid sparse column pointer bounds", call. = FALSE)
+  }
+  if (length(components$i) > 0L &&
+      (any(components$i < 0L) || any(components$i >= n))) {
+    stop("Invalid sparse row indices", call. = FALSE)
+  }
+
   methods::new(
     "dgCMatrix",
     i = components$i,

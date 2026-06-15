@@ -110,6 +110,26 @@ test_that("dimension and neighborhood arguments are validated", {
     ltsa(iris[1:10, ], n_threads = 1.5),
     "n_threads"
   )
+  expect_error(
+    ltsa(iris[1:10, ], n_assembly_threads = 0),
+    "n_assembly_threads"
+  )
+  expect_error(
+    ltsa(iris[1:10, ], n_assembly_threads = -1),
+    "n_assembly_threads"
+  )
+  expect_error(
+    ltsa(iris[1:10, ], n_assembly_threads = 1.5),
+    "n_assembly_threads"
+  )
+  expect_error(
+    ltsa(iris[1:10, ], n_assembly_threads = NA_real_),
+    "n_assembly_threads"
+  )
+  expect_error(
+    ltsa(iris[1:10, ], n_assembly_threads = c(1, 2)),
+    "n_assembly_threads"
+  )
 })
 
 test_that("logical arguments must be scalar TRUE or FALSE", {
