@@ -85,6 +85,60 @@ assemble_ltsa_B_r_triplet_reference <- function(X, nn_idx, ndim, include_self) {
   )
 }
 
+test_that("triangular builder expands symmetric local weights to full CSC", {
+  neighborhoods <- matrix(
+    c(
+      3L, 1L, 4L, 2L,
+      2L, 4L, 1L, 3L,
+      4L, 3L, 2L, 1L,
+      1L, 2L, 3L, 4L
+    ),
+    nrow = 4L,
+    byrow = TRUE
+  )
+  k <- ncol(neighborhoods)
+  W <- matrix(seq_len(k * k), k, k)
+  W <- W + t(W)
+  diag(W) <- seq_len(k)
+  storage.mode(W) <- "double"
+
+  builder <- flotsam:::ltsa_triplet_builder_create(
+    value_nnt = as.integer(t(neighborhoods)),
+    value_n_nbrs = k
+  )
+  rows <- integer(nrow(neighborhoods) * k * k)
+  cols <- integer(nrow(neighborhoods) * k * k)
+  vals <- numeric(nrow(neighborhoods) * k * k)
+
+  for (obs in seq_len(nrow(neighborhoods))) {
+    nni <- neighborhoods[obs, ]
+    flotsam:::ltsa_triplet_builder_append(
+      builder,
+      nni = nni,
+      weights = as.vector(W)
+    )
+
+    idx <- ((obs - 1L) * k * k + 1L):(obs * k * k)
+    rows[idx] <- rep.int(nni, times = k)
+    cols[idx] <- rep(nni, each = k)
+    vals[idx] <- as.vector(W)
+  }
+
+  candidate <- flotsam:::ltsa_components_to_dgCMatrix(
+    flotsam:::ltsa_triplet_builder_finalize(builder),
+    n = nrow(neighborhoods)
+  )
+  reference <- Matrix::sparseMatrix(
+    i = rows,
+    j = cols,
+    x = vals,
+    dims = rep(nrow(neighborhoods), 2L),
+    giveCsparse = TRUE
+  )
+
+  expect_sparse_equivalent(candidate, reference, tolerance = 0)
+})
+
 test_that("append/finalize assembly matches R triplet reference", {
   X <- as.matrix(iris[seq_len(20L), seq_len(4L)])
 
@@ -143,6 +197,47 @@ test_that("append/finalize assembly Gram path matches R triplet reference", {
   expect_equal(sum(candidate$B@x == 0), 0)
 })
 
+test_that("triangular production assembly matches R reference on shuffled neighborhoods", {
+  set.seed(3)
+  X <- matrix(rnorm(8L * 10L), nrow = 8L)
+  nn_idx <- matrix(
+    c(
+      4L, 1L, 7L, 2L,
+      6L, 2L, 8L, 3L,
+      1L, 5L, 3L, 8L,
+      7L, 4L, 2L, 6L,
+      2L, 8L, 5L, 1L,
+      3L, 6L, 4L, 7L,
+      8L, 7L, 1L, 5L,
+      5L, 3L, 6L, 4L
+    ),
+    nrow = 8L,
+    byrow = TRUE
+  )
+  storage.mode(nn_idx) <- "integer"
+  expect_gt(ncol(X), ncol(nn_idx))
+
+  reference <- assemble_ltsa_B_r_triplet_reference(
+    X,
+    nn_idx,
+    ndim = 2L,
+    include_self = TRUE
+  )
+  candidate <- flotsam:::assemble_ltsa_B(
+    X,
+    nn_idx,
+    ndim = 2L,
+    include_self = TRUE
+  )
+
+  expect_sparse_equivalent(candidate$B, reference$B, tolerance = 1e-11)
+  expect_identical(
+    candidate$rank_deficient_count,
+    reference$rank_deficient_count
+  )
+  expect_identical(candidate$min_local_rank, reference$min_local_rank)
+})
+
 test_that("append/finalize assembly Gram path preserves rank deficiency", {
   X <- outer(seq_len(18L), seq_len(12L))
   nn_idx <- exact_nn_idx(X, n_neighbors = 5L, include_self = TRUE)
@@ -169,6 +264,63 @@ test_that("append/finalize assembly Gram path preserves rank deficiency", {
   expect_identical(candidate$min_local_rank, reference$min_local_rank)
   expect_identical(candidate$rank_deficient_count, nrow(X))
   expect_identical(candidate$min_local_rank, 1L)
+})
+
+test_that("triangular assembly preserves low-p rank deficiency", {
+  x <- seq_len(16L)
+  X <- cbind(x, 2 * x, -3 * x)
+  nn_idx <- exact_nn_idx(X, n_neighbors = 6L, include_self = TRUE)
+
+  reference <- assemble_ltsa_B_r_triplet_reference(
+    X,
+    nn_idx,
+    ndim = 2L,
+    include_self = TRUE
+  )
+  candidate <- flotsam:::assemble_ltsa_B(
+    X,
+    nn_idx,
+    ndim = 2L,
+    include_self = TRUE
+  )
+
+  expect_sparse_equivalent(candidate$B, reference$B, tolerance = 1e-11)
+  expect_identical(
+    candidate$rank_deficient_count,
+    reference$rank_deficient_count
+  )
+  expect_identical(candidate$min_local_rank, reference$min_local_rank)
+  expect_identical(candidate$rank_deficient_count, nrow(X))
+  expect_identical(candidate$min_local_rank, 1L)
+})
+
+test_that("centered high-p Gram path is stable on hostile large-offset data", {
+  set.seed(1)
+  n <- 200L
+  p <- 100L
+  X <- matrix(rnorm(n * p, sd = 1e-3), n, p) + 1e6
+  nn_idx <- exact_nn_idx(X, n_neighbors = 8L, include_self = TRUE)
+  expect_gt(ncol(X), ncol(nn_idx))
+
+  reference <- assemble_ltsa_B_r_triplet_reference(
+    X,
+    nn_idx,
+    ndim = 2L,
+    include_self = TRUE
+  )
+  candidate <- flotsam:::assemble_ltsa_B(
+    X,
+    nn_idx,
+    ndim = 2L,
+    include_self = TRUE
+  )
+
+  expect_sparse_equivalent(candidate$B, reference$B, tolerance = 1e-5)
+  expect_identical(
+    candidate$rank_deficient_count,
+    reference$rank_deficient_count
+  )
+  expect_identical(candidate$min_local_rank, reference$min_local_rank)
 })
 
 test_that("C++ local weights match exact R SVD reference", {
@@ -208,6 +360,24 @@ test_that("ltsa ret_B uses append/finalize assembly", {
   )
 
   expect_sparse_equivalent(candidate, reference$B)
+  expect_equal(sum(candidate@x == 0), 0)
+})
+
+test_that("ret_B returns the unchanged full dgCMatrix class", {
+  X <- as.matrix(iris[seq_len(18L), seq_len(4L)])
+
+  candidate <- ltsa(
+    X,
+    n_neighbors = 6L,
+    ndim = 2L,
+    nn_method = "exact",
+    include_self = TRUE,
+    ret_B = TRUE
+  )
+
+  expect_s4_class(candidate, "dgCMatrix")
+  expect_false(methods::is(candidate, "dsCMatrix"))
+  expect_true(Matrix::isSymmetric(candidate))
   expect_equal(sum(candidate@x == 0), 0)
 })
 
