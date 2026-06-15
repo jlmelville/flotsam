@@ -371,7 +371,10 @@ void fill_centered_neighborhood(const doubles_matrix<>& x,
                                 std::vector<double>& centered) {
   const std::size_t n_nbrs = nni.size();
   const std::size_t n_dim = x.ncol();
-  centered.assign(n_nbrs * n_dim, 0.0);
+  const std::size_t n_values = n_nbrs * n_dim;
+  if (centered.size() != n_values) {
+    centered.resize(n_values);
+  }
 
   for (std::size_t col = 0; col < n_dim; col++) {
     double mean = 0.0;
@@ -410,7 +413,10 @@ void fill_centered_neighborhood_ptr(const double* x_data, std::size_t n_obs,
 void fill_weights_from_basis(std::size_t n_nbrs, const std::vector<int>& keep,
                              const std::vector<double>& basis,
                              std::vector<double>& weights) {
-  weights.assign(n_nbrs * n_nbrs, 0.0);
+  const std::size_t n_weights = n_nbrs * n_nbrs;
+  if (weights.size() != n_weights) {
+    weights.resize(n_weights);
+  }
   const double constant = 1.0 / static_cast<double>(n_nbrs);
 
   for (std::size_t col = 0; col < n_nbrs; col++) {
