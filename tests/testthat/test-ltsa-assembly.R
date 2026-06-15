@@ -55,8 +55,11 @@ expect_ltsa_assembly_parallel_matches <- function(
   invisible(parallel)
 }
 
-expect_embedding_subspace_equivalent <- function(candidate, reference,
-                                                tolerance = 1e-8) {
+expect_embedding_subspace_equivalent <- function(
+  candidate,
+  reference,
+  tolerance = 1e-8
+) {
   candidate_q <- qr.Q(qr(candidate))
   reference_q <- qr.Q(qr(reference))
   expect_equal(
@@ -337,6 +340,7 @@ test_that("parallel assembly preserves rank-deficient Gram and SVD metadata", {
 test_that("parallel assembly preserves duplicate-neighborhood fallback", {
   set.seed(12)
   X <- matrix(rnorm(8L * 10L), nrow = 8L)
+  # fmt: skip
   nn_idx <- matrix(
     c(
       1L, 1L, 2L, 3L,
@@ -453,6 +457,7 @@ test_that("ltsa ret_B and embedding paths agree between serial and parallel asse
 })
 
 test_that("triangular builder expands symmetric local weights to full CSC", {
+  # fmt: skip
   neighborhoods <- matrix(
     c(
       3L, 1L, 4L, 2L,
@@ -567,6 +572,7 @@ test_that("append/finalize assembly Gram path matches R triplet reference", {
 test_that("triangular production assembly matches R reference on shuffled neighborhoods", {
   set.seed(3)
   X <- matrix(rnorm(8L * 10L), nrow = 8L)
+  # fmt: skip
   nn_idx <- matrix(
     c(
       4L, 1L, 7L, 2L,

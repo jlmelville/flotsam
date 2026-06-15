@@ -26,6 +26,7 @@ capture_ltsa_messages <- function(...) {
   capture.output(invisible(ltsa(...)), type = "message")
 }
 
+# fmt: skip
 duplicate_nn_idx <- function() {
   matrix(
     c(

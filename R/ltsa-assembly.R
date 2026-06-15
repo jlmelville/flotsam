@@ -165,10 +165,14 @@ ltsa_thousands_sep <- function() {
 
 ltsa_decimal_mark <- function() {
   mark <- getOption("OutDec", ".")
-  if (!is.character(mark) || length(mark) != 1L || is.na(mark) || !nzchar(mark)) {
+  if (
+    !is.character(mark) || length(mark) != 1L || is.na(mark) || !nzchar(mark)
+  ) {
     mark <- Sys.localeconv()[["decimal_point"]]
   }
-  if (!is.character(mark) || length(mark) != 1L || is.na(mark) || !nzchar(mark)) {
+  if (
+    !is.character(mark) || length(mark) != 1L || is.na(mark) || !nzchar(mark)
+  ) {
     mark <- "."
   }
   mark
@@ -197,11 +201,15 @@ ltsa_components_to_dgCMatrix <- function(components, n) {
   if (any(components$p < 0L) || any(diff(components$p) < 0L)) {
     stop("Invalid sparse column pointers", call. = FALSE)
   }
-  if (components$p[[1L]] != 0L || components$p[[n + 1L]] != length(components$i)) {
+  if (
+    components$p[[1L]] != 0L || components$p[[n + 1L]] != length(components$i)
+  ) {
     stop("Invalid sparse column pointer bounds", call. = FALSE)
   }
-  if (length(components$i) > 0L &&
-      (any(components$i < 0L) || any(components$i >= n))) {
+  if (
+    length(components$i) > 0L &&
+      (any(components$i < 0L) || any(components$i >= n))
+  ) {
     stop("Invalid sparse row indices", call. = FALSE)
   }
 
