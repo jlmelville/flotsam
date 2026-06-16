@@ -167,9 +167,14 @@ ltsa_format_named_counts <- function(counts) {
 }
 
 ltsa_validate_lambda_max <- function(lambda_max, B) {
+  ltsa_validate_backend_lambda_max(lambda_max, B, backend = "RSpectra")
+}
+
+ltsa_validate_backend_lambda_max <- function(lambda_max, B, backend) {
   if (length(lambda_max) < 1L || !is.finite(lambda_max[[1L]])) {
     stop(
-      "RSpectra largest-eigenvalue probe returned a non-finite value",
+      backend,
+      " largest-eigenvalue probe returned a non-finite value",
       call. = FALSE
     )
   }
@@ -177,7 +182,8 @@ ltsa_validate_lambda_max <- function(lambda_max, B) {
   lambda_max <- max(0, as.numeric(lambda_max[[1L]]))
   if (lambda_max <= 0 && !ltsa_matrix_is_effectively_zero(B)) {
     stop(
-      "RSpectra largest-eigenvalue probe returned a non-positive value for ",
+      backend,
+      " largest-eigenvalue probe returned a non-positive value for ",
       "a nonzero LTSA matrix",
       call. = FALSE
     )
@@ -368,6 +374,308 @@ ltsa_rspectra_candidate_provider <- function(
     backend = res$backend %||% "rspectra",
     lambda_max = lambda_max,
     convergence_known = TRUE
+  )
+}
+
+ltsa_irlba_strict_rescue_args <- function(
+  varargs,
+  strict_rescue_tol,
+  strict_rescue_maxit
+) {
+  strict_args <- varargs
+  if (is.null(strict_args$tol)) {
+    strict_args$tol <- strict_rescue_tol
+  } else {
+    strict_args$tol <- min(strict_args$tol, strict_rescue_tol)
+  }
+  if (is.null(strict_args$maxit)) {
+    strict_args$maxit <- strict_rescue_maxit
+  } else {
+    strict_args$maxit <- max(strict_args$maxit, strict_rescue_maxit)
+  }
+  strict_args
+}
+
+ltsa_svdr_strict_rescue_args <- function(
+  varargs,
+  strict_rescue_tol,
+  strict_rescue_it
+) {
+  strict_args <- varargs
+  if (is.null(strict_args$tol)) {
+    strict_args$tol <- strict_rescue_tol
+  } else {
+    strict_args$tol <- min(strict_args$tol, strict_rescue_tol)
+  }
+  if (is.null(strict_args$it)) {
+    strict_args$it <- strict_rescue_it
+  } else {
+    strict_args$it <- max(strict_args$it, strict_rescue_it)
+  }
+  strict_args
+}
+
+ltsa_irlba_lambda_max_probe <- function(B) {
+  args <- list(
+    A = B,
+    nv = 1L,
+    nu = 0L
+  )
+  probe <- do.call(irlba::irlba, args)
+  lambda_max <- ltsa_validate_backend_lambda_max(probe$d, B, backend = "irlba")
+
+  list(
+    value = lambda_max,
+    niter = probe$iter %||% NA_integer_,
+    mprod = probe$mprod %||% NA_integer_,
+    opts = args
+  )
+}
+
+ltsa_svdr_lambda_max_probe <- function(B) {
+  args <- list(
+    x = B,
+    k = 1L
+  )
+  probe <- do.call(irlba::svdr, args)
+  lambda_max <- ltsa_validate_backend_lambda_max(probe$d, B, backend = "svdr")
+
+  list(
+    value = lambda_max,
+    mprod = probe$mprod %||% NA_integer_,
+    opts = args
+  )
+}
+
+ltsa_validate_candidate_eig_k <- function(eig_k, n) {
+  eig_k <- as.integer(eig_k)
+  if (length(eig_k) != 1L || is.na(eig_k) || eig_k < 1L || eig_k >= n) {
+    stop(
+      "eig_k must be a positive integer less than the matrix dimension",
+      call. = FALSE
+    )
+  }
+  eig_k
+}
+
+ltsa_shifted_candidate_result <- function(
+  B,
+  vectors,
+  eig_k,
+  backend,
+  lambda_max,
+  lambda_probe,
+  shift,
+  shift_eps,
+  shifted_values = NULL,
+  niter = NA_integer_,
+  nops = NA_integer_,
+  mprod = NA_integer_,
+  opts = NULL,
+  returned_columns = ncol(as.matrix(vectors))
+) {
+  if (is.null(vectors) || ncol(vectors) < eig_k) {
+    stop(
+      backend,
+      " returned fewer LTSA candidate vectors than requested",
+      call. = FALSE
+    )
+  }
+
+  vectors <- as.matrix(vectors[, seq_len(eig_k), drop = FALSE])
+  values <- ltsa_rayleigh_values(B, vectors)
+  ord <- order(values)
+  values <- values[ord]
+  vectors <- vectors[, ord, drop = FALSE]
+  if (!is.null(shifted_values) && length(shifted_values) >= eig_k) {
+    shifted_values <- shifted_values[seq_len(eig_k)][ord]
+  }
+  residuals <- ltsa_ritz_residuals(B, vectors, values, lambda_max)
+  tsmessage(
+    backend,
+    " returned ",
+    eig_k,
+    " LTSA candidate vectors; max scaled residual = ",
+    signif(max(residuals$scaled_residuals), 4)
+  )
+
+  candidate <- ltsa_candidate_result(
+    vectors = vectors,
+    values = values,
+    shifted_values = shifted_values,
+    backend = backend,
+    eig_k = eig_k,
+    matrix = B,
+    lambda_max = lambda_max,
+    lambda_probe = lambda_probe,
+    nconv = NA_integer_,
+    niter = niter,
+    nops = nops,
+    mprod = mprod,
+    opts = opts,
+    convergence_known = FALSE,
+    returned_columns = returned_columns,
+    converged_columns = NA_integer_
+  )
+  candidate$absolute_residuals <- residuals$absolute_residuals
+  candidate$scaled_residuals <- residuals$scaled_residuals
+  candidate$residual_scale <- residuals$residual_scale
+  candidate$shift <- shift
+  candidate$shift_eps <- shift_eps
+  candidate$shift_policy <- "lambda_max_plus_margin"
+  candidate$solve_which <- "largest_singular"
+  candidate
+}
+
+ltsa_irlba_candidate_provider <- function(
+  B,
+  eig_k,
+  ...,
+  lambda_max = NULL,
+  verbose = FALSE,
+  shift_eps = 1e-6,
+  dense_n = 100L,
+  dense_fraction = 0.5
+) {
+  varargs <- list(...)
+  B <- symmetrize_ltsa_matrix(B)
+  n <- ncol(B)
+  eig_k <- ltsa_validate_candidate_eig_k(eig_k, n)
+
+  if (
+    length(varargs) == 0L &&
+      ltsa_use_dense_eig(
+        n,
+        eig_k,
+        dense_n = dense_n,
+        dense_fraction = dense_fraction
+      )
+  ) {
+    tsmessage("Using dense eigenvalue decomposition")
+    return(ltsa_as_candidate_result(
+      dense_ltsa_eig(B, eig_k),
+      B = B,
+      eig_k = eig_k,
+      backend = "dense_eigen",
+      convergence_known = TRUE
+    ))
+  }
+
+  lambda_probe <- NULL
+  if (is.null(lambda_max)) {
+    tsmessage("Finding largest eigenvalue")
+    lambda_probe <- ltsa_irlba_lambda_max_probe(B)
+    lambda_max <- lambda_probe$value
+  } else {
+    lambda_max <- ltsa_validate_backend_lambda_max(
+      lambda_max,
+      B,
+      backend = "irlba"
+    )
+  }
+  shift <- lambda_max + ltsa_shift_margin(lambda_max, shift_eps)
+  X_shift <- ltsa_shift_for_smallest(B, shift)
+
+  tsmessage("Decomposing shifted matrix")
+  args <- lmerge(
+    list(
+      A = X_shift,
+      nv = eig_k,
+      nu = 0L
+    ),
+    varargs
+  )
+  res <- do.call(irlba::irlba, args)
+
+  ltsa_shifted_candidate_result(
+    B = B,
+    vectors = res$v,
+    eig_k = eig_k,
+    backend = "irlba",
+    lambda_max = lambda_max,
+    lambda_probe = lambda_probe,
+    shift = shift,
+    shift_eps = shift_eps,
+    shifted_values = res$d,
+    niter = res$iter %||% NA_integer_,
+    mprod = res$mprod %||% NA_integer_,
+    opts = args,
+    returned_columns = ncol(res$v)
+  )
+}
+
+ltsa_svdr_candidate_provider <- function(
+  B,
+  eig_k,
+  ...,
+  lambda_max = NULL,
+  verbose = FALSE,
+  shift_eps = 1e-6,
+  dense_n = 100L,
+  dense_fraction = 0.5
+) {
+  varargs <- list(...)
+  B <- symmetrize_ltsa_matrix(B)
+  n <- ncol(B)
+  eig_k <- ltsa_validate_candidate_eig_k(eig_k, n)
+
+  if (
+    length(varargs) == 0L &&
+      ltsa_use_dense_eig(
+        n,
+        eig_k,
+        dense_n = dense_n,
+        dense_fraction = dense_fraction
+      )
+  ) {
+    tsmessage("Using dense eigenvalue decomposition")
+    return(ltsa_as_candidate_result(
+      dense_ltsa_eig(B, eig_k),
+      B = B,
+      eig_k = eig_k,
+      backend = "dense_eigen",
+      convergence_known = TRUE
+    ))
+  }
+
+  lambda_probe <- NULL
+  if (is.null(lambda_max)) {
+    tsmessage("Finding largest eigenvalue")
+    lambda_probe <- ltsa_svdr_lambda_max_probe(B)
+    lambda_max <- lambda_probe$value
+  } else {
+    lambda_max <- ltsa_validate_backend_lambda_max(
+      lambda_max,
+      B,
+      backend = "svdr"
+    )
+  }
+  shift <- lambda_max + ltsa_shift_margin(lambda_max, shift_eps)
+  X_shift <- ltsa_shift_for_smallest(B, shift)
+
+  tsmessage("Decomposing shifted matrix")
+  args <- lmerge(
+    list(
+      x = X_shift,
+      k = eig_k
+    ),
+    varargs
+  )
+  res <- do.call(irlba::svdr, args)
+
+  ltsa_shifted_candidate_result(
+    B = B,
+    vectors = res$v,
+    eig_k = eig_k,
+    backend = "svdr",
+    lambda_max = lambda_max,
+    lambda_probe = lambda_probe,
+    shift = shift,
+    shift_eps = shift_eps,
+    shifted_values = res$d,
+    mprod = res$mprod %||% NA_integer_,
+    opts = args,
+    returned_columns = ncol(res$v)
   )
 }
 
@@ -1315,6 +1623,118 @@ ltsa_rspectra_ritz_eig <- function(
   )
 }
 
+ltsa_irlba_ritz_eig <- function(
+  B,
+  ndim,
+  ...,
+  nullvec = ltsa_default_null_vector(nrow(B)),
+  initial_extra = 4L,
+  max_extra = 40L,
+  resid_tol = 1e-5,
+  gap_tol = 1e-4,
+  gap_expansion_steps = 2L,
+  strict_rescue = TRUE,
+  strict_rescue_tol = 1e-10,
+  strict_rescue_maxit = 5000L,
+  strict_rescue_extra = 5L,
+  verbose = FALSE
+) {
+  strict_rescue_maxit <- as.integer(strict_rescue_maxit)
+  if (
+    length(strict_rescue_maxit) != 1L ||
+      is.na(strict_rescue_maxit) ||
+      strict_rescue_maxit < 1L
+  ) {
+    stop("strict_rescue_maxit must be a positive integer", call. = FALSE)
+  }
+  if (
+    length(strict_rescue_tol) != 1L ||
+      is.na(strict_rescue_tol) ||
+      !is.finite(strict_rescue_tol) ||
+      strict_rescue_tol <= 0
+  ) {
+    stop("strict_rescue_tol must be positive", call. = FALSE)
+  }
+
+  ltsa_adaptive_ritz_eig(
+    B = B,
+    ndim = ndim,
+    provider = ltsa_irlba_candidate_provider,
+    provider_args = list(...),
+    nullvec = nullvec,
+    initial_extra = initial_extra,
+    max_extra = max_extra,
+    resid_tol = resid_tol,
+    gap_tol = gap_tol,
+    gap_expansion_steps = gap_expansion_steps,
+    strict_rescue = strict_rescue,
+    strict_rescue_arg_mapper = ltsa_irlba_strict_rescue_args,
+    strict_rescue_controls = list(
+      strict_rescue_tol = strict_rescue_tol,
+      strict_rescue_maxit = strict_rescue_maxit
+    ),
+    strict_rescue_extra = strict_rescue_extra,
+    bank_backend = "irlba_bank",
+    verbose = verbose
+  )
+}
+
+ltsa_svdr_ritz_eig <- function(
+  B,
+  ndim,
+  ...,
+  nullvec = ltsa_default_null_vector(nrow(B)),
+  initial_extra = 4L,
+  max_extra = 40L,
+  resid_tol = 1e-5,
+  gap_tol = 1e-4,
+  gap_expansion_steps = 2L,
+  strict_rescue = TRUE,
+  strict_rescue_tol = 1e-10,
+  strict_rescue_it = 5000L,
+  strict_rescue_extra = 5L,
+  verbose = FALSE
+) {
+  strict_rescue_it <- as.integer(strict_rescue_it)
+  if (
+    length(strict_rescue_it) != 1L ||
+      is.na(strict_rescue_it) ||
+      strict_rescue_it < 1L
+  ) {
+    stop("strict_rescue_it must be a positive integer", call. = FALSE)
+  }
+  if (
+    length(strict_rescue_tol) != 1L ||
+      is.na(strict_rescue_tol) ||
+      !is.finite(strict_rescue_tol) ||
+      strict_rescue_tol <= 0
+  ) {
+    stop("strict_rescue_tol must be positive", call. = FALSE)
+  }
+
+  ltsa_adaptive_ritz_eig(
+    B = B,
+    ndim = ndim,
+    provider = ltsa_svdr_candidate_provider,
+    provider_args = list(...),
+    nullvec = nullvec,
+    initial_extra = initial_extra,
+    max_extra = max_extra,
+    resid_tol = resid_tol,
+    gap_tol = gap_tol,
+    gap_expansion_steps = gap_expansion_steps,
+    strict_rescue = strict_rescue,
+    strict_rescue_arg_mapper = ltsa_svdr_strict_rescue_args,
+    strict_rescue_controls = list(
+      strict_rescue_tol = strict_rescue_tol,
+      strict_rescue_it = strict_rescue_it
+    ),
+    strict_rescue_extra = strict_rescue_extra,
+    bank_backend = "svdr_bank",
+    verbose = verbose
+  )
+}
+
 rs_opt <- function(eig_k = NULL, n = NULL) {
   opts <- list(tol = 1e-6)
   if (!is.null(eig_k) && !is.null(n)) {
@@ -1446,31 +1866,13 @@ rs_eig <-
 
 irlba_eig <-
   function(X, k = ncol(X) - 1, ..., lambda_max = NULL, verbose = FALSE) {
-    varargs <- list(...)
-
-    if (is.null(lambda_max)) {
-      tsmessage("Finding largest eigenvalue")
-      args1 <- list(
-        A = X,
-        nv = 1,
-        nu = 0
-      )
-      lambda_max <- do.call(irlba::irlba, args1)$d
-    }
-    lm2 <- 2.0 * lambda_max
-    X_shift <- shift_lap(X, lm2)
-
-    tsmessage("Decomposing shifted matrix")
-    args <- lmerge(
-      list(
-        A = X_shift,
-        nv = k,
-        nu = 0
-      ),
-      varargs
-    )
-    res <- do.call(irlba::irlba, args)
-    res$v
+    ltsa_irlba_candidate_provider(
+      B = X,
+      eig_k = k,
+      ...,
+      lambda_max = lambda_max,
+      verbose = verbose
+    )$vectors
   }
 
 svdr_eig <- function(
@@ -1480,27 +1882,11 @@ svdr_eig <- function(
   lambda_max = NULL,
   verbose = FALSE
 ) {
-  varargs <- list(...)
-
-  if (is.null(lambda_max)) {
-    tsmessage("Finding largest eigenvalue")
-    args1 <- list(
-      x = X,
-      k = 1
-    )
-    lambda_max <- do.call(irlba::svdr, args1)$d
-  }
-  lm2 <- 2.0 * lambda_max
-  X_shift <- shift_lap(X, lm2)
-
-  tsmessage("Decomposing shifted matrix")
-  args <- lmerge(
-    list(
-      x = X_shift,
-      k = k
-    ),
-    varargs
-  )
-  res <- do.call(irlba::svdr, args)
-  res$v
+  ltsa_svdr_candidate_provider(
+    B = X,
+    eig_k = k,
+    ...,
+    lambda_max = lambda_max,
+    verbose = verbose
+  )$vectors
 }

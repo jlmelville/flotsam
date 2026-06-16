@@ -348,6 +348,38 @@ test_that("RSpectra candidate provider returns backend-neutral fields", {
   expect_s4_class(res$matrix, "dgCMatrix")
 })
 
+test_that("irlba and svdr candidate providers return backend-neutral fields", {
+  B <- Matrix::Diagonal(x = seq(0, 29))
+  providers <- list(
+    irlba = list(
+      provider = flotsam:::ltsa_irlba_candidate_provider,
+      args = list(dense_n = 0L, tol = 1e-10, maxit = 1000L)
+    ),
+    svdr = list(
+      provider = flotsam:::ltsa_svdr_candidate_provider,
+      args = list(dense_n = 0L, tol = 1e-10, it = 1000L)
+    )
+  )
+
+  for (backend in names(providers)) {
+    set.seed(11)
+    res <- do.call(
+      providers[[backend]]$provider,
+      c(list(B = B, eig_k = 6L), providers[[backend]]$args)
+    )
+
+    expect_identical(res$backend, backend)
+    expect_identical(res$eig_k, 6L)
+    expect_false(res$convergence_known)
+    expect_true(is.na(res$nconv))
+    expect_true(is.na(res$converged_columns))
+    expect_true(is.finite(res$mprod))
+    expect_equal(res$values, seq(0, 5), tolerance = 1e-8)
+    expect_equal(ncol(res$vectors), 6L)
+    expect_s4_class(res$matrix, "dgCMatrix")
+  }
+})
+
 test_that("generic adaptive Ritz driver consumes the RSpectra provider", {
   B <- synthetic_ltsa_matrix(c(0, 0.1, 0.2, 1, 3, 5, 8, 13))
   dense <- eigen(B, symmetric = TRUE)
@@ -371,6 +403,47 @@ test_that("generic adaptive Ritz driver consumes the RSpectra provider", {
   expect_equal(res$values, dense$values[ord[2:3]], tolerance = 1e-8)
   expect_same_subspace(res$vectors, reference, tolerance = 1e-7)
   expect_lt(max(res$scaled_residuals), 1e-8)
+})
+
+test_that("adaptive irlba and svdr paths agree with dense reference subspaces", {
+  # fmt: skip
+  B <- synthetic_ltsa_matrix(c(
+    0, 0.1, 0.2, 1, 3, 5, 8, 13, 21, 34,
+    55, 89, 144, 233, 377, 610, 987, 1597, 2584, 4181
+  ))
+  dense <- eigen(B, symmetric = TRUE)
+  ord <- order(dense$values)
+  reference <- dense$vectors[, ord[2:3], drop = FALSE]
+  backends <- list(
+    irlba = list(
+      eig = flotsam:::ltsa_irlba_ritz_eig,
+      args = list(dense_n = 0L, tol = 1e-10, maxit = 5000L)
+    ),
+    svdr = list(
+      eig = flotsam:::ltsa_svdr_ritz_eig,
+      args = list(dense_n = 0L, tol = 1e-10, it = 5000L, extra = 12L)
+    )
+  )
+
+  for (backend in names(backends)) {
+    set.seed(42)
+    res <- do.call(
+      backends[[backend]]$eig,
+      c(
+        list(
+          B = Matrix::Matrix(B, sparse = TRUE),
+          ndim = 2L,
+          strict_rescue = FALSE
+        ),
+        backends[[backend]]$args
+      )
+    )
+
+    expect_identical(res$backend, backend)
+    expect_equal(res$values, dense$values[ord[2:3]], tolerance = 1e-6)
+    expect_same_subspace(res$vectors, reference, tolerance = 1e-5)
+    expect_lt(max(res$scaled_residuals), 1e-6)
+  }
 })
 
 test_that("adaptive Ritz driver handles rotated normalized null vectors", {

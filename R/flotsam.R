@@ -210,7 +210,7 @@ ltsa <-
     Dinvs <- NULL
     normalized_nullvec <- NULL
     if (normalize) {
-      if (eig_method == "rspectra") {
+      if (eig_method %in% c("rspectra", "irlba", "svdr")) {
         tsmessage("Forming normalized Lsym")
         nres <- norm_lsym_L(B)
         Dinvs <- nres$Dinvs
@@ -232,29 +232,26 @@ ltsa <-
           switch(
             eig_method,
             irlba = {
-              eig_args <- lmerge(
-                list(
-                  A = B,
-                  nv = ndim + 1,
-                  nu = 0
-                ),
-                list(...)
-              )
               tsmessage("Calling irlba")
-              res <-
-                do.call(irlba::irlba, eig_args)$v[, 2:(ndim + 1)]
+              eig_res <- ltsa_irlba_ritz_eig(
+                B,
+                ndim = ndim,
+                ...,
+                nullvec = normalized_nullvec,
+                verbose = verbose
+              )
+              res <- eig_res$vectors
             },
             svdr = {
-              eig_args <- lmerge(
-                list(
-                  x = B,
-                  k = ndim + 1
-                ),
-                list(...)
-              )
               tsmessage("Calling irlba svdr")
-              res <-
-                do.call(irlba::svdr, eig_args)$v[, 2:(ndim + 1)]
+              eig_res <- ltsa_svdr_ritz_eig(
+                B,
+                ndim = ndim,
+                ...,
+                nullvec = normalized_nullvec,
+                verbose = verbose
+              )
+              res <- eig_res$vectors
             },
             rspectra = {
               tsmessage("Calling rspectra")
@@ -292,40 +289,24 @@ ltsa <-
               eig_res$vectors
             },
             irlba = {
-              eig_k <- ltsa_iterative_search_k(ndim, ncol(B))
-              B_sym <- symmetrize_ltsa_matrix(B)
-              eig_args <- list(...)
-              if (
-                length(eig_args) == 0L && ltsa_use_dense_eig(ncol(B_sym), eig_k)
-              ) {
-                tsmessage("Using dense eigenvalue decomposition")
-                eig_res <- dense_ltsa_eig(B_sym, eig_k)
-                res <- eig_res$vectors
-              } else {
-                res <- do.call(
-                  irlba_eig,
-                  c(list(X = B_sym, k = eig_k), eig_args)
-                )
-              }
-              select_ltsa_embedding_vectors(B_sym, res, ndim)
+              tsmessage("Calling irlba")
+              eig_res <- ltsa_irlba_ritz_eig(
+                B,
+                ndim = ndim,
+                ...,
+                verbose = verbose
+              )
+              eig_res$vectors
             },
             svdr = {
-              eig_k <- ltsa_iterative_search_k(ndim, ncol(B))
-              B_sym <- symmetrize_ltsa_matrix(B)
-              eig_args <- list(...)
-              if (
-                length(eig_args) == 0L && ltsa_use_dense_eig(ncol(B_sym), eig_k)
-              ) {
-                tsmessage("Using dense eigenvalue decomposition")
-                eig_res <- dense_ltsa_eig(B_sym, eig_k)
-                res <- eig_res$vectors
-              } else {
-                res <- do.call(
-                  svdr_eig,
-                  c(list(X = B_sym, k = eig_k), eig_args)
-                )
-              }
-              select_ltsa_embedding_vectors(B_sym, res, ndim)
+              tsmessage("Calling irlba svdr")
+              eig_res <- ltsa_svdr_ritz_eig(
+                B,
+                ndim = ndim,
+                ...,
+                verbose = verbose
+              )
+              eig_res$vectors
             },
             fullsvd = {
               tsmessage("Using full SVD")
