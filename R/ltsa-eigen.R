@@ -101,7 +101,10 @@ ltsa_default_null_vector <- function(n) {
 
 ltsa_normalize_null_vector <- function(nullvec, n) {
   if (length(nullvec) != n || any(!is.finite(nullvec))) {
-    stop("LTSA null vector must be finite and match the matrix dimension", call. = FALSE)
+    stop(
+      "LTSA null vector must be finite and match the matrix dimension",
+      call. = FALSE
+    )
   }
 
   null_norm <- sqrt(sum(nullvec * nullvec))
@@ -137,9 +140,13 @@ ltsa_near_zero_thresholds <- function(lambda_max) {
 ltsa_near_zero_counts <- function(values, thresholds) {
   values <- as.numeric(values)
   stats::setNames(
-    vapply(thresholds, function(threshold) {
-      as.integer(sum(abs(values) <= threshold))
-    }, integer(1)),
+    vapply(
+      thresholds,
+      function(threshold) {
+        as.integer(sum(abs(values) <= threshold))
+      },
+      integer(1)
+    ),
     names(thresholds)
   )
 }
@@ -161,7 +168,10 @@ ltsa_format_named_counts <- function(counts) {
 
 ltsa_validate_lambda_max <- function(lambda_max, B) {
   if (length(lambda_max) < 1L || !is.finite(lambda_max[[1L]])) {
-    stop("RSpectra largest-eigenvalue probe returned a non-finite value", call. = FALSE)
+    stop(
+      "RSpectra largest-eigenvalue probe returned a non-finite value",
+      call. = FALSE
+    )
   }
 
   lambda_max <- max(0, as.numeric(lambda_max[[1L]]))
@@ -244,15 +254,17 @@ dense_ltsa_eig <- function(B, eig_k, backend = "dense_eigen") {
   )
 }
 
-ltsa_ritz_select <- function(B,
-                             vectors,
-                             ndim,
-                             nullvec = ltsa_default_null_vector(nrow(B)),
-                             lambda_max = NULL,
-                             drop_tol = 1e-8,
-                             rank_tol = 1e-10,
-                             near_zero_tol = ltsa_near_zero_tol(lambda_max),
-                             zero_tol = ltsa_gap_zero_tol(lambda_max)) {
+ltsa_ritz_select <- function(
+  B,
+  vectors,
+  ndim,
+  nullvec = ltsa_default_null_vector(nrow(B)),
+  lambda_max = NULL,
+  drop_tol = 1e-8,
+  rank_tol = 1e-10,
+  near_zero_tol = ltsa_near_zero_tol(lambda_max),
+  zero_tol = ltsa_gap_zero_tol(lambda_max)
+) {
   vectors <- as.matrix(vectors)
   n <- nrow(B)
   ndim <- as.integer(ndim)
@@ -263,7 +275,10 @@ ltsa_ritz_select <- function(B,
     stop("LTSA matrix must be square", call. = FALSE)
   }
   if (nrow(vectors) != n) {
-    stop("LTSA candidate vectors must match the matrix dimension", call. = FALSE)
+    stop(
+      "LTSA candidate vectors must match the matrix dimension",
+      call. = FALSE
+    )
   }
   if (ncol(vectors) < ndim) {
     stop("Can't find enough LTSA candidate vectors", call. = FALSE)
@@ -308,11 +323,12 @@ ltsa_ritz_select <- function(B,
   if (length(values_all) > ndim) {
     boundary_gap <- values_all[[ndim + 1L]] - values_all[[ndim]]
     global_gap <- boundary_gap / ltsa_residual_scale(lambda_max)
-    local_gap <- boundary_gap / max(
-      abs(values_all[[ndim + 1L]]),
-      abs(values_all[[ndim]]),
-      zero_tol
-    )
+    local_gap <- boundary_gap /
+      max(
+        abs(values_all[[ndim + 1L]]),
+        abs(values_all[[ndim]]),
+        zero_tol
+      )
   } else {
     boundary_gap <- NA_real_
     global_gap <- NA_real_
@@ -354,12 +370,14 @@ ltsa_ritz_select <- function(B,
   )
 }
 
-select_ltsa_embedding_vectors <- function(B,
-                                          vectors,
-                                          ndim,
-                                          nullvec = ltsa_default_null_vector(nrow(B)),
-                                          lambda_max = NULL,
-                                          ...) {
+select_ltsa_embedding_vectors <- function(
+  B,
+  vectors,
+  ndim,
+  nullvec = ltsa_default_null_vector(nrow(B)),
+  lambda_max = NULL,
+  ...
+) {
   rr <- ltsa_ritz_select(
     B = B,
     vectors = vectors,
@@ -383,12 +401,14 @@ ltsa_next_ritz_candidate_k <- function(eig_k, max_k) {
   min(max_k, max(eig_k + 2L, as.integer(ceiling(1.5 * eig_k))))
 }
 
-accept_ltsa_ritz <- function(rr,
-                             ndim,
-                             lambda_max,
-                             resid_tol = 1e-5,
-                             gap_tol = 1e-4,
-                             require_gap = FALSE) {
+accept_ltsa_ritz <- function(
+  rr,
+  ndim,
+  lambda_max,
+  resid_tol = 1e-5,
+  gap_tol = 1e-4,
+  require_gap = FALSE
+) {
   max_scaled_residual <- max(rr$scaled_residuals)
   gap <- rr$global_gap %||% rr$boundary_gap_relative
   rank_ok <- rr$rank_after_null >= ndim
@@ -469,13 +489,19 @@ ltsa_rescue_candidate <- function(candidate, incumbent, ndim) {
   if (is.null(candidate)) {
     return(incumbent)
   }
-  if (!isTRUE(candidate$acceptance$rank_ok) || !isTRUE(candidate$acceptance$resid_ok)) {
+  if (
+    !isTRUE(candidate$acceptance$rank_ok) ||
+      !isTRUE(candidate$acceptance$resid_ok)
+  ) {
     return(incumbent)
   }
   if (is.null(incumbent)) {
     return(candidate)
   }
-  if (!isTRUE(incumbent$acceptance$rank_ok) || !isTRUE(incumbent$acceptance$resid_ok)) {
+  if (
+    !isTRUE(incumbent$acceptance$rank_ok) ||
+      !isTRUE(incumbent$acceptance$resid_ok)
+  ) {
     return(candidate)
   }
   if (ltsa_energy_better(candidate, incumbent, ndim)) {
@@ -497,7 +523,13 @@ ltsa_strict_rescue_needed <- function(res, ndim) {
   near_zero_count > 0L && near_zero_count < ndim
 }
 
-ltsa_rs_eig_call <- function(B, eig_k, varargs, lambda_max = NULL, verbose = FALSE) {
+ltsa_rs_eig_call <- function(
+  B,
+  eig_k,
+  varargs,
+  lambda_max = NULL,
+  verbose = FALSE
+) {
   do.call(
     rs_eig,
     c(
@@ -507,9 +539,11 @@ ltsa_rs_eig_call <- function(B, eig_k, varargs, lambda_max = NULL, verbose = FAL
   )
 }
 
-ltsa_strict_rescue_args <- function(varargs,
-                                    strict_rescue_tol,
-                                    strict_rescue_maxitr) {
+ltsa_strict_rescue_args <- function(
+  varargs,
+  strict_rescue_tol,
+  strict_rescue_maxitr
+) {
   strict_args <- varargs
   if (is.null(strict_args$tol)) {
     strict_args$tol <- strict_rescue_tol
@@ -529,20 +563,21 @@ ltsa_attempt_eig_ks <- function(attempts) {
     return(integer())
   }
 
-  eig_ks <- vapply(attempts, function(attempt) {
-    eig_k <- attempt$eig_k %||% NA_integer_
-    if (length(eig_k) != 1L || is.na(eig_k)) {
-      return(NA_integer_)
-    }
-    as.integer(eig_k)
-  }, integer(1))
+  eig_ks <- vapply(
+    attempts,
+    function(attempt) {
+      eig_k <- attempt$eig_k %||% NA_integer_
+      if (length(eig_k) != 1L || is.na(eig_k)) {
+        return(NA_integer_)
+      }
+      as.integer(eig_k)
+    },
+    integer(1)
+  )
   eig_ks[!is.na(eig_ks) & eig_ks > 0L]
 }
 
-ltsa_strict_rescue_eig_k <- function(selected,
-                                     ndim,
-                                     n,
-                                     strict_rescue_extra) {
+ltsa_strict_rescue_eig_k <- function(selected, ndim, n, strict_rescue_extra) {
   candidates <- c(
     selected$eig_k %||% NA_integer_,
     selected$acceptance$diagnostic_final_eig_k %||% NA_integer_,
@@ -555,12 +590,14 @@ ltsa_strict_rescue_eig_k <- function(selected,
   min(n - 1L, max(candidates))
 }
 
-ltsa_attempt_summary <- function(eig_k,
-                                 eig_res,
-                                 rr,
-                                 acceptance,
-                                 strict_rescue = FALSE,
-                                 bank = FALSE) {
+ltsa_attempt_summary <- function(
+  eig_k,
+  eig_res,
+  rr,
+  acceptance,
+  strict_rescue = FALSE,
+  bank = FALSE
+) {
   list(
     eig_k = eig_k,
     nconv = eig_res$nconv,
@@ -592,7 +629,10 @@ ltsa_with_attempt <- function(eig_res, rr, acceptance, attempts, attempt) {
 ltsa_bank_eig_result <- function(strict_eig_res, bank_vectors, lambda_max) {
   bank_eig_res <- strict_eig_res
   bank_eig_res$vectors <- bank_vectors
-  bank_eig_res$values <- ltsa_rayleigh_values(strict_eig_res$matrix, bank_vectors)
+  bank_eig_res$values <- ltsa_rayleigh_values(
+    strict_eig_res$matrix,
+    bank_vectors
+  )
   bank_eig_res$backend <- "rspectra_bank"
   bank_eig_res$eig_k <- ncol(bank_vectors)
   bank_eig_res$returned_columns <- ncol(bank_vectors)
@@ -610,18 +650,20 @@ ltsa_bank_eig_result <- function(strict_eig_res, bank_vectors, lambda_max) {
   bank_eig_res
 }
 
-ltsa_maybe_strict_rescue <- function(B,
-                                     selected,
-                                     ndim,
-                                     nullvec,
-                                     lambda_max,
-                                     varargs,
-                                     resid_tol,
-                                     gap_tol,
-                                     strict_rescue_tol,
-                                     strict_rescue_maxitr,
-                                     strict_rescue_extra,
-                                     verbose = FALSE) {
+ltsa_maybe_strict_rescue <- function(
+  B,
+  selected,
+  ndim,
+  nullvec,
+  lambda_max,
+  varargs,
+  resid_tol,
+  gap_tol,
+  strict_rescue_tol,
+  strict_rescue_maxitr,
+  strict_rescue_extra,
+  verbose = FALSE
+) {
   if (!ltsa_strict_rescue_needed(selected, ndim)) {
     return(selected)
   }
@@ -762,20 +804,22 @@ ltsa_with_ritz <- function(eig_res, rr, acceptance, attempts) {
   eig_res
 }
 
-ltsa_rspectra_ritz_eig <- function(B,
-                                   ndim,
-                                   ...,
-                                   nullvec = ltsa_default_null_vector(nrow(B)),
-                                   initial_extra = 4L,
-                                   max_extra = 40L,
-                                   resid_tol = 1e-5,
-                                   gap_tol = 1e-4,
-                                   gap_expansion_steps = 2L,
-                                   strict_rescue = TRUE,
-                                   strict_rescue_tol = 1e-10,
-                                   strict_rescue_maxitr = 5000L,
-                                   strict_rescue_extra = 5L,
-                                   verbose = FALSE) {
+ltsa_rspectra_ritz_eig <- function(
+  B,
+  ndim,
+  ...,
+  nullvec = ltsa_default_null_vector(nrow(B)),
+  initial_extra = 4L,
+  max_extra = 40L,
+  resid_tol = 1e-5,
+  gap_tol = 1e-4,
+  gap_expansion_steps = 2L,
+  strict_rescue = TRUE,
+  strict_rescue_tol = 1e-10,
+  strict_rescue_maxitr = 5000L,
+  strict_rescue_extra = 5L,
+  verbose = FALSE
+) {
   n <- nrow(B)
   varargs <- list(...)
   eig_k <- ltsa_initial_ritz_candidate_k(ndim, n, initial_extra)
@@ -955,7 +999,8 @@ ltsa_rspectra_ritz_eig <- function(B,
             } else {
               tsmessage(
                 "LTSA Ritz boundary gap ",
-                if (acceptance$gap_available) "remains below tolerance" else "is unavailable",
+                if (acceptance$gap_available) "remains below tolerance" else
+                  "is unavailable",
                 " after diagnostic expansion to ",
                 eig_k,
                 " candidates; returning residual-good, rank-good Ritz vectors."
@@ -1024,7 +1069,8 @@ ltsa_rspectra_ritz_eig <- function(B,
   } else if (!best$acceptance$gap_ok) {
     tsmessage(
       "LTSA Ritz boundary gap ",
-      if (best$acceptance$gap_available) "remains below tolerance" else "is unavailable",
+      if (best$acceptance$gap_available) "remains below tolerance" else
+        "is unavailable",
       " after requesting ",
       best$eig_k,
       " candidates: global gap = ",
@@ -1052,25 +1098,35 @@ rs_opt <- function(eig_k = NULL, n = NULL) {
 # factorizations hang or skip eigenvectors.
 # https://github.com/yixuan/spectra/issues/126
 rs_eig <-
-  function(X,
-           k = ncol(X) - 1,
-           ...,
-           lambda_max = NULL,
-           verbose = FALSE,
-           shift_eps = 1e-6,
-           dense_n = 100L,
-           dense_fraction = 0.5) {
+  function(
+    X,
+    k = ncol(X) - 1,
+    ...,
+    lambda_max = NULL,
+    verbose = FALSE,
+    shift_eps = 1e-6,
+    dense_n = 100L,
+    dense_fraction = 0.5
+  ) {
     varargs <- list(...)
     B <- symmetrize_ltsa_matrix(X)
     n <- ncol(B)
     eig_k <- as.integer(k)
     if (length(eig_k) != 1L || is.na(eig_k) || eig_k < 1L || eig_k >= n) {
-      stop("eig_k must be a positive integer less than the matrix dimension", call. = FALSE)
+      stop(
+        "eig_k must be a positive integer less than the matrix dimension",
+        call. = FALSE
+      )
     }
 
     if (
       length(varargs) == 0L &&
-        ltsa_use_dense_eig(n, eig_k, dense_n = dense_n, dense_fraction = dense_fraction)
+        ltsa_use_dense_eig(
+          n,
+          eig_k,
+          dense_n = dense_n,
+          dense_fraction = dense_fraction
+        )
     ) {
       tsmessage("Using dense eigenvalue decomposition")
       return(dense_ltsa_eig(B, eig_k))
@@ -1109,7 +1165,10 @@ rs_eig <-
       )
     }
     if (is.null(res$vectors) || ncol(res$vectors) < eig_k) {
-      stop("RSpectra returned fewer LTSA candidate vectors than requested", call. = FALSE)
+      stop(
+        "RSpectra returned fewer LTSA candidate vectors than requested",
+        call. = FALSE
+      )
     }
 
     vectors <- as.matrix(res$vectors[, seq_len(eig_k), drop = FALSE])

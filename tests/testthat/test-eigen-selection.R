@@ -30,7 +30,10 @@ expect_same_subspace <- function(actual, expected, tolerance = 1e-10) {
   q_expected <- orthonormalize_test_basis(expected)
   sv <- svd(crossprod(q_actual, q_expected), nu = 0, nv = 0)$d
   sv <- pmax(0, pmin(1, sv))
-  projection_distance <- sqrt(max(0, ncol(q_actual) + ncol(q_expected) - 2 * sum(sv^2)))
+  projection_distance <- sqrt(max(
+    0,
+    ncol(q_actual) + ncol(q_expected) - 2 * sum(sv^2)
+  ))
 
   expect_equal(ncol(q_actual), ncol(q_expected))
   expect_lt(projection_distance, tolerance)
@@ -86,6 +89,7 @@ test_that("Ritz selection is invariant to rotations in the candidate subspace", 
   B <- selection_test_matrix(basis)
   target <- cbind(basis$v1, basis$v2)
   candidate_space <- cbind(basis$u, target, basis$v3)
+  # fmt: skip
   rotation <- qr.Q(qr(matrix(c(
     1, 2, 0, 1,
     -1, 1, 2, 0,
@@ -164,7 +168,11 @@ test_that("Ritz residual diagnostics use the scaled residual convention", {
 
   expect_equal(rr$values, c(0.25, 0.5), tolerance = 1e-12)
   expect_lt(max(rr$absolute_residuals), 1e-12)
-  expect_equal(rr$scaled_residuals, rr$absolute_residuals / 8, tolerance = 1e-15)
+  expect_equal(
+    rr$scaled_residuals,
+    rr$absolute_residuals / 8,
+    tolerance = 1e-15
+  )
 })
 
 test_that("Ritz gap diagnostics report global and local scales", {
@@ -180,9 +188,21 @@ test_that("Ritz gap diagnostics report global and local scales", {
   )
 
   expect_equal(unname(rr$boundary_gap), 4.5e-7, tolerance = 1e-8)
-  expect_equal(unname(rr$global_gap), unname(rr$boundary_gap), tolerance = 1e-12)
-  expect_equal(unname(rr$boundary_gap_relative), unname(rr$global_gap), tolerance = 1e-12)
-  expect_equal(unname(rr$zero_tol), sqrt(.Machine$double.eps), tolerance = 1e-15)
+  expect_equal(
+    unname(rr$global_gap),
+    unname(rr$boundary_gap),
+    tolerance = 1e-12
+  )
+  expect_equal(
+    unname(rr$boundary_gap_relative),
+    unname(rr$global_gap),
+    tolerance = 1e-12
+  )
+  expect_equal(
+    unname(rr$zero_tol),
+    sqrt(.Machine$double.eps),
+    tolerance = 1e-15
+  )
   expect_equal(unname(rr$local_gap), 0.9, tolerance = 1e-8)
   expect_gt(abs(rr$local_gap - rr$global_gap), 0.1)
 })
@@ -217,6 +237,7 @@ test_that("small Ritz-selected cases agree with dense eigen reference subspaces"
   lambda_max <- max(dense$values)
   reference <- dense$vectors[, ord[2:3], drop = FALSE]
   candidates <- dense$vectors[, ord[seq_len(5L)], drop = FALSE]
+  # fmt: skip
   candidates <- candidates %*% qr.Q(qr(matrix(c(
     1, 0, 2, 0, -1,
     0, 1, 1, -1, 0,
@@ -332,10 +353,12 @@ test_that("strict rescue trigger is limited to partial near-zero selected blocks
 })
 
 test_that("strict rescue result ranking prefers lower selected block energy", {
-  fake_result <- function(values,
-                          near_zero_count,
-                          rank_ok = TRUE,
-                          resid_ok = TRUE) {
+  fake_result <- function(
+    values,
+    near_zero_count,
+    rank_ok = TRUE,
+    resid_ok = TRUE
+  ) {
     list(
       values = values,
       near_zero_nonconstant_count = near_zero_count,
@@ -434,6 +457,7 @@ test_that("strict rescue candidate count includes expanded diagnostic attempts",
 })
 
 test_that("weak-gap-only adaptive expansion stops before max_extra", {
+  # fmt: skip
   B <- synthetic_ltsa_matrix(c(
     0, 0.1, 0.2, 0.200001, 1, 2, 3, 5, 8, 13,
     21, 34, 55, 89, 144, 233, 377, 610, 987, 1597
@@ -472,7 +496,10 @@ test_that("weak-gap-only adaptive expansion stops before max_extra", {
   expect_true(res$acceptance$rank_ok)
   expect_true(res$acceptance$ok)
   expect_false(res$acceptance$gap_ok)
-  expect_identical(res$acceptance$return_reason, "weak_first_residual_rank_good")
+  expect_identical(
+    res$acceptance$return_reason,
+    "weak_first_residual_rank_good"
+  )
   expect_equal(res$acceptance$diagnostic_final_eig_k, 18L)
 })
 
@@ -495,11 +522,14 @@ test_that("high selected Ritz residual keeps expanding to the hard cap", {
   )
 
   requested <- vapply(res$attempts, `[[`, integer(1), "eig_k")
-  expect_equal(max(requested), flotsam:::ltsa_max_ritz_candidate_k(
-    2L,
-    nrow(B),
-    max_extra = 8L
-  ))
+  expect_equal(
+    max(requested),
+    flotsam:::ltsa_max_ritz_candidate_k(
+      2L,
+      nrow(B),
+      max_extra = 8L
+    )
+  )
   expect_false(res$acceptance$resid_ok)
   expect_false(tail(res$attempts, 1L)[[1L]]$accepted)
 })

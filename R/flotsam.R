@@ -281,19 +281,29 @@ ltsa <-
             eig_method,
             rspectra = {
               tsmessage("Calling rspectra")
-              eig_res <- ltsa_rspectra_ritz_eig(B, ndim = ndim, ..., verbose = verbose)
+              eig_res <- ltsa_rspectra_ritz_eig(
+                B,
+                ndim = ndim,
+                ...,
+                verbose = verbose
+              )
               eig_res$vectors
             },
             irlba = {
               eig_k <- ltsa_iterative_search_k(ndim, ncol(B))
               B_sym <- symmetrize_ltsa_matrix(B)
               eig_args <- list(...)
-              if (length(eig_args) == 0L && ltsa_use_dense_eig(ncol(B_sym), eig_k)) {
+              if (
+                length(eig_args) == 0L && ltsa_use_dense_eig(ncol(B_sym), eig_k)
+              ) {
                 tsmessage("Using dense eigenvalue decomposition")
                 eig_res <- dense_ltsa_eig(B_sym, eig_k)
                 res <- eig_res$vectors
               } else {
-                res <- do.call(irlba_eig, c(list(X = B_sym, k = eig_k), eig_args))
+                res <- do.call(
+                  irlba_eig,
+                  c(list(X = B_sym, k = eig_k), eig_args)
+                )
               }
               select_ltsa_embedding_vectors(B_sym, res, ndim)
             },
@@ -301,12 +311,17 @@ ltsa <-
               eig_k <- ltsa_iterative_search_k(ndim, ncol(B))
               B_sym <- symmetrize_ltsa_matrix(B)
               eig_args <- list(...)
-              if (length(eig_args) == 0L && ltsa_use_dense_eig(ncol(B_sym), eig_k)) {
+              if (
+                length(eig_args) == 0L && ltsa_use_dense_eig(ncol(B_sym), eig_k)
+              ) {
                 tsmessage("Using dense eigenvalue decomposition")
                 eig_res <- dense_ltsa_eig(B_sym, eig_k)
                 res <- eig_res$vectors
               } else {
-                res <- do.call(svdr_eig, c(list(X = B_sym, k = eig_k), eig_args))
+                res <- do.call(
+                  svdr_eig,
+                  c(list(X = B_sym, k = eig_k), eig_args)
+                )
               }
               select_ltsa_embedding_vectors(B_sym, res, ndim)
             },
