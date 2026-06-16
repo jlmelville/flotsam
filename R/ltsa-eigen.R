@@ -984,6 +984,68 @@ ltsa_strict_rescue_needed <- function(res, ndim) {
   near_zero_count > 0L && near_zero_count < ndim
 }
 
+ltsa_spectral_ambiguity_issues <- function(res, ndim) {
+  if (
+    is.null(res) ||
+      !isTRUE(res$acceptance$rank_ok) ||
+      !isTRUE(res$acceptance$resid_ok)
+  ) {
+    return(character())
+  }
+
+  issues <- character()
+  near_zero_count <- res$near_zero_nonconstant_count %||% 0L
+  if (near_zero_count > ndim) {
+    issues <- c(
+      issues,
+      paste0(
+        near_zero_count,
+        " near-zero nonconstant modes were found for ndim = ",
+        ndim
+      )
+    )
+  }
+
+  if (
+    isTRUE(res$acceptance$gap_available) &&
+      !isTRUE(res$acceptance$gap_ok)
+  ) {
+    issues <- c(
+      issues,
+      paste0(
+        "the boundary gap after ndim is weak: global gap = ",
+        signif(res$acceptance$global_gap %||% NA_real_, 4),
+        ", local gap = ",
+        signif(res$acceptance$local_gap %||% NA_real_, 4),
+        ", tolerance = ",
+        signif(res$acceptance$gap_tol %||% NA_real_, 4)
+      )
+    )
+  }
+
+  issues
+}
+
+ltsa_maybe_warn_spectral_ambiguity <- function(res, ndim) {
+  issues <- ltsa_spectral_ambiguity_issues(res, ndim)
+  if (length(issues) == 0L) {
+    return(res)
+  }
+
+  warning(
+    "LTSA eigenanalysis found an ambiguous low-energy eigenspace; ",
+    "embedding may not be unique up to only rotation/sign. Diagnostics: ",
+    paste(issues, collapse = "; "),
+    ". This can happen when the neighborhood graph is disconnected or ",
+    "weakly connected, n_neighbors is too small, or ndim cuts through a ",
+    "low-energy eigenspace.",
+    call. = FALSE
+  )
+  res$acceptance$spectral_ambiguity_warning <- TRUE
+  res$acceptance$spectral_ambiguity_issues <- issues
+  res
+}
+
 ltsa_rs_eig_call <- function(
   B,
   eig_k,
@@ -1435,6 +1497,7 @@ ltsa_adaptive_ritz_eig <- function(
               verbose = verbose
             )
           }
+          best <- ltsa_maybe_warn_spectral_ambiguity(best, ndim)
           return(best)
         }
         if (acceptance$gap_issue_only) {
@@ -1476,6 +1539,7 @@ ltsa_adaptive_ritz_eig <- function(
                 "]"
               )
             } else {
+              selected <- ltsa_maybe_warn_spectral_ambiguity(selected, ndim)
               tsmessage(
                 "LTSA Ritz boundary gap ",
                 if (acceptance$gap_available) "remains below tolerance" else
@@ -1484,6 +1548,9 @@ ltsa_adaptive_ritz_eig <- function(
                 eig_k,
                 " candidates; returning residual-good, rank-good Ritz vectors."
               )
+            }
+            if (isTRUE(selected$acceptance$strict_rescue_used)) {
+              selected <- ltsa_maybe_warn_spectral_ambiguity(selected, ndim)
             }
             return(selected)
           }
@@ -1537,6 +1604,7 @@ ltsa_adaptive_ritz_eig <- function(
       verbose = verbose
     )
   }
+  best <- ltsa_maybe_warn_spectral_ambiguity(best, ndim)
   if (!best$acceptance$resid_ok) {
     warning(
       "LTSA Rayleigh-Ritz residuals remain above tolerance after requesting ",

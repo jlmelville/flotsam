@@ -8,11 +8,15 @@ test_that("default RSpectra path unfolds a swiss roll", {
     z = stats::runif(n, max = 10)
   )
 
-  swiss_ltsa <- ltsa(
-    swiss_roll,
-    nn_method = "exact",
-    eig_method = "rspectra",
-    n_threads = 0
+  swiss_ltsa <- NULL
+  expect_warning(
+    swiss_ltsa <- ltsa(
+      swiss_roll,
+      nn_method = "exact",
+      eig_method = "rspectra",
+      n_threads = 0
+    ),
+    "ambiguous low-energy eigenspace"
   )
 
   truth <- scale(cbind(phi = phi, z = swiss_roll$z))

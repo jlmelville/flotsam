@@ -644,6 +644,41 @@ test_that("strict rescue candidate count includes expanded diagnostic attempts",
   )
 })
 
+test_that("extra near-zero nonconstant modes warn about spectral ambiguity", {
+  B <- synthetic_ltsa_matrix(c(0, 1e-9, 2e-9, 3e-9, 4e-9, 1))
+  dense <- eigen(B, symmetric = TRUE)
+  ord <- order(dense$values)
+  provider <- function(B, eig_k, lambda_max = NULL, verbose = FALSE) {
+    flotsam:::ltsa_candidate_result(
+      vectors = dense$vectors[, ord[seq_len(eig_k)], drop = FALSE],
+      backend = "synthetic",
+      eig_k = eig_k,
+      matrix = B,
+      lambda_max = 1,
+      convergence_known = FALSE,
+      returned_columns = eig_k
+    )
+  }
+
+  res <- NULL
+  expect_warning(
+    res <- flotsam:::ltsa_adaptive_ritz_eig(
+      B,
+      ndim = 2L,
+      provider = provider,
+      strict_rescue = TRUE
+    ),
+    "near-zero nonconstant modes"
+  )
+
+  expect_true(res$acceptance$spectral_ambiguity_warning)
+  expect_gt(res$near_zero_nonconstant_count, 2L)
+  expect_true(any(grepl(
+    "near-zero nonconstant modes",
+    res$acceptance$spectral_ambiguity_issues
+  )))
+})
+
 test_that("weak-gap-only adaptive expansion stops before max_extra", {
   # fmt: skip
   B <- synthetic_ltsa_matrix(c(
@@ -652,20 +687,24 @@ test_that("weak-gap-only adaptive expansion stops before max_extra", {
   ))
 
   messages <- character()
-  res <- withCallingHandlers(
-    flotsam:::ltsa_rspectra_ritz_eig(
-      Matrix::Matrix(B, sparse = TRUE),
-      ndim = 2L,
-      dense_n = 0L,
-      tol = 1e-10,
-      maxitr = 5000L,
-      gap_expansion_steps = 2L,
-      verbose = TRUE
+  res <- NULL
+  expect_warning(
+    res <- withCallingHandlers(
+      flotsam:::ltsa_rspectra_ritz_eig(
+        Matrix::Matrix(B, sparse = TRUE),
+        ndim = 2L,
+        dense_n = 0L,
+        tol = 1e-10,
+        maxitr = 5000L,
+        gap_expansion_steps = 2L,
+        verbose = TRUE
+      ),
+      message = function(m) {
+        messages <<- c(messages, conditionMessage(m))
+        invokeRestart("muffleMessage")
+      }
     ),
-    message = function(m) {
-      messages <<- c(messages, conditionMessage(m))
-      invokeRestart("muffleMessage")
-    }
+    "boundary gap after ndim is weak"
   )
   expect_true(any(grepl(
     paste0(
@@ -684,6 +723,7 @@ test_that("weak-gap-only adaptive expansion stops before max_extra", {
   expect_true(res$acceptance$rank_ok)
   expect_true(res$acceptance$ok)
   expect_false(res$acceptance$gap_ok)
+  expect_true(res$acceptance$spectral_ambiguity_warning)
   expect_identical(
     res$acceptance$return_reason,
     "weak_first_residual_rank_good"
