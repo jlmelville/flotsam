@@ -49,16 +49,27 @@ row must contain its own row index. When \code{include_self = FALSE},
 \code{ncol(nn_method)} must equal \code{n_neighbors + 1} and the first column must
 contain the row index, because that column is dropped before LTSA assembly.}
 
-\item{eig_method}{How to carry out the eigendecomposition. Possible values are:
+\item{eig_method}{How to carry out the final eigendecomposition. Possible
+values are:
 \itemize{
-\item \code{"rspectra"} Use \code{\link[RSpectra:eigs_sym]{RSpectra::eigs_sym()}}.
-\item \code{"irlba"} Use \code{\link[irlba:irlba]{irlba::irlba()}}.
-\item \code{"svdr"} Use \code{\link[irlba:svdr]{irlba::svdr()}}.
-\item \code{"fullsvd"} Use the \code{\link[base:svd]{base::svd()}} function. This is only feasible for small
-datasets and should be used for diagnostic purposes only.
+\item \code{"rspectra"} Use \code{\link[RSpectra:eigs_sym]{RSpectra::eigs_sym()}} to generate candidate vectors,
+then apply null-aware Rayleigh-Ritz postprocessing. This is the default
+and can report hard backend convergence failures through RSpectra's
+\code{nconv} metadata.
+\item \code{"irlba"} Use \code{\link[irlba:irlba]{irlba::irlba()}} to generate candidate vectors, then apply
+the same null-aware Rayleigh-Ritz postprocessing. This backend does not
+report RSpectra-style convergence counts, so convergence issues are
+detected with post-hoc residual diagnostics.
+\item \code{"svdr"} Use \code{\link[irlba:svdr]{irlba::svdr()}} to generate candidate vectors, then apply
+the same null-aware Rayleigh-Ritz postprocessing. This backend does not
+report RSpectra-style convergence counts, so convergence issues are
+detected with post-hoc residual diagnostics.
+\item \code{"fullsvd"} Use the \code{\link[base:svd]{base::svd()}} function. This is only feasible for
+small datasets and should be used for diagnostic purposes only.
 \item \code{"eig"} or \code{"eigen"} Use the \code{\link[base:eigen]{base::eigen()}} function. This is only
 feasible for small datasets and should be used for diagnostic purposes
-only.
+only. Dense \code{"eig"} is the better diagnostic reference when algebraic
+eigenvalue ordering matters.
 }}
 
 \item{include_self}{Should an item be part of its own neighborhood? This has
@@ -67,10 +78,14 @@ suggests that this is in effect the main difference between LTSA and the
 Hessian Locally Linear Embedding (HLLE) method, so setting this to \code{FALSE}
 may allow emulating the HLLE method.}
 
-\item{normalize}{If \code{TRUE} calculate the eigendecomposition on a normalized
-version of the Laplacian. This may be slightly easier to converge while
-giving similar results to the un-normalized case. It may also have suitable
-better properties if clustering is to be carried out on the eigenvectors.}
+\item{normalize}{If \code{TRUE}, calculate the final decomposition on a normalized
+version of the LTSA alignment matrix. For iterative methods (\code{"rspectra"},
+\code{"irlba"}, and \code{"svdr"}), the normalized operator uses the same null-aware
+Rayleigh-Ritz selection as the unnormalized path, then transforms the
+selected vectors back to output coordinates. This may be slightly easier to
+converge while giving similar results to the unnormalized case. It may also
+have better properties if clustering is to be carried out on the
+eigenvectors.}
 
 \item{ret_B}{If \code{TRUE}, return the matrix instead of the eigenvectors. This
 is mainly useful for diagnostic purposes if eigendecomposition is failing.}
@@ -95,26 +110,34 @@ synthetic datasets, you are quite likely to hit this code path.}
 
 \item{...}{Extra arguments to be passed to the eigendecomposition method
 specified by \code{eig_method}. For \code{"rspectra"}, arguments are passed to the
-\code{opts} list. Suitable parameters include:
+\code{opts} list used by \code{\link[RSpectra:eigs_sym]{RSpectra::eigs_sym()}}. Suitable parameters include:
 \itemize{
-\item \code{ncv} Number of Lanzcos vectors to use.
+\item \code{ncv} Number of Lanczos vectors to use.
 \item \code{tol} Tolerance.
 \item \code{maxitr} Maximum number of iterations.
 }
 
-For \code{"irlba"} suitable arguments are:
+For \code{"irlba"}, arguments are passed to \code{\link[irlba:irlba]{irlba::irlba()}}. Suitable arguments
+include:
 \itemize{
 \item \code{work} Working subspace dimension size.
 \item \code{tol} Tolerance.
 \item \code{maxit} Maximum number of iterations.
+\item \code{reorth} Whether to use full reorthogonalization.
 }
 
-For \code{"svdr"} suitable arguments are:
+For \code{"svdr"}, arguments are passed to \code{\link[irlba:svdr]{irlba::svdr()}}. Suitable arguments
+include:
 \itemize{
 \item \code{extra} Number of extra vectors to use.
 \item \code{tol} Tolerance.
 \item \code{it}  Maximum number of iterations.
 }
+
+The iterative methods all use shared Rayleigh-Ritz postprocessing, residual
+diagnostics, and adaptive candidate expansion. However, only RSpectra reports
+explicit convergence counts; \code{"irlba"} and \code{"svdr"} rely on post-hoc residual
+diagnostics instead.
 
 For more details see the documentation for \code{\link[RSpectra:eigs_sym]{RSpectra::eigs_sym()}},
 \code{\link[irlba:irlba]{irlba::irlba()}} and \code{\link[irlba:svdr]{irlba::svdr()}} functions, respectively. Don't pass

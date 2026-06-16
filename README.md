@@ -76,8 +76,8 @@ Laplacian eigenmaps or diffusion maps.
 ## Current Status
 
 *June 16 2026*: Version 0.0.0.9001 uses C++ local-weight construction,
-triangular sparse matrix assembly, and a more robust default RSpectra
-postprocessing path for the unnormalized LTSA alignment matrix.
+triangular sparse matrix assembly, and more robust postprocessing for
+iterative final eigenanalysis.
 
 Still experimental, but now less accurately described as only "Finicky". Its
 speed relies on the interaction of:
@@ -91,8 +91,10 @@ use direct SVD.
 * Using triangular sparse assembly in C++, with optional parallel construction
 controlled by `n_assembly_threads`.
 * Using [RSpectra](https://cran.r-project.org/package=RSpectra) by default to
-recover the small-eigenvalue directions of `B`, followed by null-vector
-projection and Rayleigh-Ritz postprocessing.
+recover the small-eigenvalue directions of `B`. The iterative backends
+(`"rspectra"`, `"irlba"`, and `"svdr"`) then use null-vector projection,
+Rayleigh-Ritz postprocessing, adaptive candidate expansion, and residual
+diagnostics before returning embedding vectors.
 
 It's not a great idea to use large values of `k` to define the neighborhoods:
 you will get something that approaches a "global" SVD/PCA at much greater
@@ -115,16 +117,17 @@ export MKL_THREADING_LAYER=GNU
 export MKL_NUM_THREADS=1
 ```
 
-RSpectra is fast when it works, but there are a variety of failure states:
+Iterative eigenanalysis is fast when it works, but there are a variety of
+failure states:
 
 * The solver doesn't converge. You'll see an `Eigenanalysis failed: ...` error
 that keeps the underlying solver message. This can be due to a bad choice of
 options, like `tol` (the tolerance), `ncv` (the number of Lanczos basis vectors
 for RSpectra), or equivalent controls for the selected solver.
-* RSpectra converges, but the candidate subspace has weak residuals or a weak
-gap after the requested embedding block. Some `B` matrices have several
-directions with very similar low eigenvalues, so the returned raw columns are
-not always meaningful on their own.
+* The candidate subspace has weak residuals or a weak gap after the requested
+embedding block. Some `B` matrices have several directions with very similar
+low eigenvalues, so the returned raw columns are not always meaningful on their
+own.
 * Shift-invert sparse factorizations can hang or skip vectors near zero. The
 default path avoids shift-invert and solves a shifted largest-algebraic problem
 instead.
@@ -132,11 +135,11 @@ instead.
 If you use `eig_method = "irlba"` or `eig_method = "svdr"` then different
 functions in irlba will be used instead of RSpectra. These are more likely to
 finish under circumstances where RSpectra stalls, but they do not expose the
-same convergence metadata as RSpectra and may require more work to give
-similarly converged results. For small diagnostic cases, `eig_method = "eig"`
-and `eig_method = "eigen"` are synonyms for base `eigen()`, and
-`eig_method = "fullsvd"` uses base `svd()`. Dense `eig` is the better
-diagnostic reference when algebraic eigenvalue ordering matters.
+same convergence metadata as RSpectra, so they rely on post-hoc residual
+diagnostics rather than hard backend convergence counts. For small diagnostic
+cases, `eig_method = "eig"` and `eig_method = "eigen"` are synonyms for base
+`eigen()`, and `eig_method = "fullsvd"` uses base `svd()`. Dense `eig` is the
+better diagnostic reference when algebraic eigenvalue ordering matters.
 
 ## See Also
 
