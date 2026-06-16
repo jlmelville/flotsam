@@ -116,6 +116,49 @@ ltsa_near_zero_tol <- function(lambda_max, tol = sqrt(.Machine$double.eps)) {
   tol * ltsa_residual_scale(lambda_max)
 }
 
+ltsa_gap_zero_tol <- function(lambda_max, tol = sqrt(.Machine$double.eps)) {
+  tol * ltsa_residual_scale(lambda_max)
+}
+
+ltsa_near_zero_threshold_scales <- function() {
+  c(
+    "1e-08" = 1e-8,
+    "1e-07" = 1e-7,
+    "1e-06" = 1e-6,
+    "1e-05" = 1e-5
+  )
+}
+
+ltsa_near_zero_thresholds <- function(lambda_max) {
+  scales <- ltsa_near_zero_threshold_scales()
+  stats::setNames(scales * ltsa_residual_scale(lambda_max), names(scales))
+}
+
+ltsa_near_zero_counts <- function(values, thresholds) {
+  values <- as.numeric(values)
+  stats::setNames(
+    vapply(thresholds, function(threshold) {
+      as.integer(sum(abs(values) <= threshold))
+    }, integer(1)),
+    names(thresholds)
+  )
+}
+
+ltsa_format_ritz_values <- function(values, n = 10L) {
+  values <- as.numeric(values)
+  if (length(values) == 0L) {
+    return("")
+  }
+  paste(signif(values[seq_len(min(n, length(values)))], 4), collapse = ", ")
+}
+
+ltsa_format_named_counts <- function(counts) {
+  if (length(counts) == 0L) {
+    return("")
+  }
+  paste(paste0(names(counts), "=", as.integer(counts)), collapse = ", ")
+}
+
 ltsa_validate_lambda_max <- function(lambda_max, B) {
   if (length(lambda_max) < 1L || !is.finite(lambda_max[[1L]])) {
     stop("RSpectra largest-eigenvalue probe returned a non-finite value", call. = FALSE)
@@ -208,7 +251,8 @@ ltsa_ritz_select <- function(B,
                              lambda_max = NULL,
                              drop_tol = 1e-8,
                              rank_tol = 1e-10,
-                             near_zero_tol = ltsa_near_zero_tol(lambda_max)) {
+                             near_zero_tol = ltsa_near_zero_tol(lambda_max),
+                             zero_tol = ltsa_gap_zero_tol(lambda_max)) {
   vectors <- as.matrix(vectors)
   n <- nrow(B)
   ndim <- as.integer(ndim)
@@ -263,19 +307,26 @@ ltsa_ritz_select <- function(B,
 
   if (length(values_all) > ndim) {
     boundary_gap <- values_all[[ndim + 1L]] - values_all[[ndim]]
-    boundary_gap_scale <- max(
+    global_gap <- boundary_gap / ltsa_residual_scale(lambda_max)
+    local_gap <- boundary_gap / max(
       abs(values_all[[ndim + 1L]]),
       abs(values_all[[ndim]]),
-      ltsa_residual_scale(lambda_max)
+      zero_tol
     )
-    boundary_gap_relative <- boundary_gap / boundary_gap_scale
   } else {
     boundary_gap <- NA_real_
-    boundary_gap_relative <- NA_real_
+    global_gap <- NA_real_
+    local_gap <- NA_real_
   }
 
   take <- seq_len(ndim)
   near_zero_nonconstant_count <- sum(abs(values_all) <= near_zero_tol)
+  near_zero_thresholds <- ltsa_near_zero_thresholds(lambda_max)
+  near_zero_nonconstant_counts <- ltsa_near_zero_counts(
+    values_all,
+    near_zero_thresholds
+  )
+  reported_ritz_values <- values_all[seq_len(min(20L, length(values_all)))]
 
   list(
     vectors = vectors_all[, take, drop = FALSE],
@@ -290,9 +341,15 @@ ltsa_ritz_select <- function(B,
     rank_after_null = rank_after_null,
     dropped_null_columns = dropped_null_columns,
     boundary_gap = boundary_gap,
-    boundary_gap_relative = boundary_gap_relative,
+    global_gap = global_gap,
+    local_gap = local_gap,
+    zero_tol = zero_tol,
+    boundary_gap_relative = global_gap,
     near_zero_nonconstant_count = near_zero_nonconstant_count,
     near_zero_tol = near_zero_tol,
+    near_zero_thresholds = near_zero_thresholds,
+    near_zero_nonconstant_counts = near_zero_nonconstant_counts,
+    reported_ritz_values = reported_ritz_values,
     kept_candidate_columns = sum(keep)
   )
 }
@@ -331,20 +388,33 @@ accept_ltsa_ritz <- function(rr,
                              lambda_max,
                              resid_tol = 1e-5,
                              gap_tol = 1e-4,
-                             require_gap = TRUE) {
+                             require_gap = FALSE) {
   max_scaled_residual <- max(rr$scaled_residuals)
-  rank_ok <- rr$rank_after_null >= ndim &&
-    (!require_gap || rr$rank_after_null >= ndim + 1L)
+  gap <- rr$global_gap %||% rr$boundary_gap_relative
+  rank_ok <- rr$rank_after_null >= ndim
   resid_ok <- is.finite(max_scaled_residual) && max_scaled_residual <= resid_tol
-  gap_ok <- !require_gap ||
-    (is.finite(rr$boundary_gap_relative) && rr$boundary_gap_relative >= gap_tol)
+  gap_available <- is.finite(gap)
+  gap_ok <- gap_available && gap >= gap_tol
+  gap_status <- if (!gap_available) {
+    "unavailable"
+  } else if (gap_ok) {
+    "ok"
+  } else {
+    "weak"
+  }
 
   list(
-    ok = rank_ok && resid_ok && gap_ok,
+    ok = rank_ok && resid_ok && (!require_gap || gap_ok),
     rank_ok = rank_ok,
     resid_ok = resid_ok,
     gap_ok = gap_ok,
-    rel_gap = rr$boundary_gap_relative,
+    gap_available = gap_available,
+    gap_status = gap_status,
+    gap_issue_only = rank_ok && resid_ok && !gap_ok,
+    global_gap = gap,
+    local_gap = rr$local_gap %||% NA_real_,
+    zero_tol = rr$zero_tol %||% NA_real_,
+    rel_gap = gap,
     max_scaled_residual = max_scaled_residual,
     resid_tol = resid_tol,
     gap_tol = gap_tol,
@@ -366,8 +436,14 @@ ltsa_with_ritz <- function(eig_res, rr, acceptance, attempts) {
   eig_res$residual_scale <- rr$residual_scale
   eig_res$rank_after_null <- rr$rank_after_null
   eig_res$boundary_gap <- rr$boundary_gap
+  eig_res$global_gap <- rr$global_gap
+  eig_res$local_gap <- rr$local_gap
+  eig_res$zero_tol <- rr$zero_tol
   eig_res$boundary_gap_relative <- rr$boundary_gap_relative
   eig_res$near_zero_nonconstant_count <- rr$near_zero_nonconstant_count
+  eig_res$near_zero_thresholds <- rr$near_zero_thresholds
+  eig_res$near_zero_nonconstant_counts <- rr$near_zero_nonconstant_counts
+  eig_res$reported_ritz_values <- rr$reported_ritz_values
   eig_res
 }
 
@@ -379,14 +455,25 @@ ltsa_rspectra_ritz_eig <- function(B,
                                    max_extra = 40L,
                                    resid_tol = 1e-5,
                                    gap_tol = 1e-4,
+                                   gap_expansion_steps = 2L,
                                    verbose = FALSE) {
   n <- nrow(B)
   eig_k <- ltsa_initial_ritz_candidate_k(ndim, n, initial_extra)
   max_k <- ltsa_max_ritz_candidate_k(ndim, n, max_extra)
+  gap_expansion_steps <- as.integer(gap_expansion_steps)
+  if (
+    length(gap_expansion_steps) != 1L ||
+      is.na(gap_expansion_steps) ||
+      gap_expansion_steps < 0L
+  ) {
+    stop("gap_expansion_steps must be a non-negative integer", call. = FALSE)
+  }
   lambda_max <- NULL
   attempts <- list()
   best <- NULL
+  first_gap_good <- NULL
   last_error <- NULL
+  gap_expansions <- 0L
 
   repeat {
     eig_res <- tryCatch(
@@ -426,15 +513,21 @@ ltsa_rspectra_ritz_eig <- function(B,
           lambda_max = lambda_max,
           resid_tol = resid_tol,
           gap_tol = gap_tol,
-          require_gap = max_k > ndim
+          require_gap = FALSE
         )
         attempts[[length(attempts) + 1L]] <- list(
           eig_k = eig_k,
           nconv = eig_res$nconv,
           rank_after_null = rr$rank_after_null,
           max_scaled_residual = acceptance$max_scaled_residual,
+          global_gap = rr$global_gap,
+          local_gap = rr$local_gap,
+          zero_tol = rr$zero_tol,
           boundary_gap_relative = rr$boundary_gap_relative,
           near_zero_nonconstant_count = rr$near_zero_nonconstant_count,
+          near_zero_nonconstant_counts = rr$near_zero_nonconstant_counts,
+          first_ritz_values = rr$reported_ritz_values,
+          gap_status = acceptance$gap_status,
           accepted = acceptance$ok
         )
         tsmessage(
@@ -442,15 +535,53 @@ ltsa_rspectra_ritz_eig <- function(B,
           rr$rank_after_null,
           ", max selected scaled residual = ",
           signif(acceptance$max_scaled_residual, 4),
-          ", relative boundary gap = ",
-          signif(rr$boundary_gap_relative, 4),
+          ", global boundary gap = ",
+          signif(rr$global_gap, 4),
+          ", local boundary gap = ",
+          signif(rr$local_gap, 4),
+          ", zero_tol = ",
+          signif(rr$zero_tol, 4),
           ", near-zero nonconstant modes = ",
-          rr$near_zero_nonconstant_count
+          rr$near_zero_nonconstant_count,
+          ", threshold counts = [",
+          ltsa_format_named_counts(rr$near_zero_nonconstant_counts),
+          "], first Ritz values = [",
+          ltsa_format_ritz_values(rr$reported_ritz_values),
+          "]"
         )
         best <- ltsa_with_ritz(eig_res, rr, acceptance, attempts)
 
-        if (acceptance$ok) {
+        if (acceptance$rank_ok && acceptance$resid_ok && acceptance$gap_ok) {
+          best$acceptance$return_reason <- "residual_rank_gap_ok"
           return(best)
+        }
+        if (acceptance$gap_issue_only) {
+          if (is.null(first_gap_good)) {
+            first_gap_good <- best
+            first_gap_good$acceptance$return_reason <- "weak_first_residual_rank_good"
+            first_gap_good$acceptance$first_weak_gap_eig_k <- eig_k
+          }
+          if (gap_expansions >= gap_expansion_steps || eig_k >= max_k) {
+            selected <- first_gap_good %||% best
+            selected$attempts <- attempts
+            selected$acceptance$return_reason <- "weak_first_residual_rank_good"
+            selected$acceptance$gap_expansions <- gap_expansions
+            selected$acceptance$diagnostic_final_eig_k <- eig_k
+            tsmessage(
+              "LTSA Ritz boundary gap ",
+              if (acceptance$gap_available) "remains below tolerance" else "is unavailable",
+              "; returning the first residual-good, rank-good Ritz vectors ",
+              "from a weakly separated low-energy block after diagnostic ",
+              "expansion to ",
+              eig_k,
+              " candidates. solver quality: now mostly good; ",
+              "coordinate usefulness: still unresolved for weak-gap cases."
+            )
+            return(selected)
+          }
+
+          gap_expansions <- gap_expansions + 1L
+          attempts[[length(attempts)]]$weak_gap_expansion <- gap_expansions
         }
       }
     }
@@ -492,12 +623,19 @@ ltsa_rspectra_ritz_eig <- function(B,
     )
   } else if (!best$acceptance$gap_ok) {
     tsmessage(
-      "LTSA Ritz boundary gap remains below tolerance after requesting ",
+      "LTSA Ritz boundary gap ",
+      if (best$acceptance$gap_available) "remains below tolerance" else "is unavailable",
+      " after requesting ",
       best$eig_k,
-      " candidate vectors: relative gap = ",
+      " candidate vectors: global gap = ",
       signif(best$acceptance$rel_gap, 4),
+      ", local gap = ",
+      signif(best$acceptance$local_gap, 4),
       ", tolerance = ",
-      signif(gap_tol, 4)
+      signif(gap_tol, 4),
+      "; returning residual-good, rank-good Ritz vectors from a weakly ",
+      "separated low-energy block. solver quality: now mostly good; ",
+      "coordinate usefulness: still unresolved for weak-gap cases."
     )
   }
 

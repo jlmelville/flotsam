@@ -167,6 +167,49 @@ test_that("Ritz residual diagnostics use the scaled residual convention", {
   expect_equal(rr$scaled_residuals, rr$absolute_residuals / 8, tolerance = 1e-15)
 })
 
+test_that("Ritz gap diagnostics report global and local scales", {
+  B <- synthetic_ltsa_matrix(c(0, 5e-9, 5e-8, 5e-7, 5e-6, 1))
+  dense <- eigen(B, symmetric = TRUE)
+  ord <- order(dense$values)
+
+  rr <- flotsam:::ltsa_ritz_select(
+    B,
+    dense$vectors[, ord, drop = FALSE],
+    ndim = 2L,
+    lambda_max = 1
+  )
+
+  expect_equal(unname(rr$boundary_gap), 4.5e-7, tolerance = 1e-8)
+  expect_equal(unname(rr$global_gap), unname(rr$boundary_gap), tolerance = 1e-12)
+  expect_equal(unname(rr$boundary_gap_relative), unname(rr$global_gap), tolerance = 1e-12)
+  expect_equal(unname(rr$zero_tol), sqrt(.Machine$double.eps), tolerance = 1e-15)
+  expect_equal(unname(rr$local_gap), 0.9, tolerance = 1e-8)
+  expect_gt(abs(rr$local_gap - rr$global_gap), 0.1)
+})
+
+test_that("near-zero Ritz counts are reported at multiple thresholds", {
+  B <- synthetic_ltsa_matrix(c(0, 5e-9, 5e-8, 5e-7, 5e-6, 1))
+  dense <- eigen(B, symmetric = TRUE)
+  ord <- order(dense$values)
+
+  rr <- flotsam:::ltsa_ritz_select(
+    B,
+    dense$vectors[, ord, drop = FALSE],
+    ndim = 2L,
+    lambda_max = 1
+  )
+
+  expect_equal(
+    rr$near_zero_nonconstant_counts,
+    c("1e-08" = 1L, "1e-07" = 2L, "1e-06" = 3L, "1e-05" = 4L)
+  )
+  expect_equal(
+    rr$reported_ritz_values,
+    c(5e-9, 5e-8, 5e-7, 5e-6, 1),
+    tolerance = 1e-12
+  )
+})
+
 test_that("small Ritz-selected cases agree with dense eigen reference subspaces", {
   B <- synthetic_ltsa_matrix(c(0, 0.1, 0.2, 0.8, 1.5, 3))
   dense <- eigen(B, symmetric = TRUE)
@@ -264,6 +307,77 @@ test_that("adaptive RSpectra path returns Ritz-polished vectors", {
   expect_lt(max(res$scaled_residuals), 1e-8)
   expect_gte(res$rank_after_null, 3L)
   expect_true(is.finite(res$boundary_gap_relative))
+})
+
+test_that("weak-gap-only adaptive expansion stops before max_extra", {
+  B <- synthetic_ltsa_matrix(c(
+    0, 0.1, 0.2, 0.200001, 1, 2, 3, 5, 8, 13,
+    21, 34, 55, 89, 144, 233, 377, 610, 987, 1597
+  ))
+
+  messages <- character()
+  res <- withCallingHandlers(
+    flotsam:::ltsa_rspectra_ritz_eig(
+      Matrix::Matrix(B, sparse = TRUE),
+      ndim = 2L,
+      dense_n = 0L,
+      tol = 1e-10,
+      maxitr = 5000L,
+      gap_expansion_steps = 2L,
+      verbose = TRUE
+    ),
+    message = function(m) {
+      messages <<- c(messages, conditionMessage(m))
+      invokeRestart("muffleMessage")
+    }
+  )
+  expect_true(any(grepl(
+    paste0(
+      "returning the first residual-good, rank-good Ritz vectors.*",
+      "solver quality: now mostly good.*",
+      "coordinate usefulness: still unresolved"
+    ),
+    messages
+  )))
+
+  requested <- vapply(res$attempts, `[[`, integer(1), "eig_k")
+  expect_equal(requested, c(8L, 12L, 18L))
+  expect_equal(res$eig_k, 8L)
+  expect_lt(max(requested), flotsam:::ltsa_max_ritz_candidate_k(2L, nrow(B)))
+  expect_true(res$acceptance$resid_ok)
+  expect_true(res$acceptance$rank_ok)
+  expect_true(res$acceptance$ok)
+  expect_false(res$acceptance$gap_ok)
+  expect_identical(res$acceptance$return_reason, "weak_first_residual_rank_good")
+  expect_equal(res$acceptance$diagnostic_final_eig_k, 18L)
+})
+
+test_that("high selected Ritz residual keeps expanding to the hard cap", {
+  B <- synthetic_ltsa_matrix(c(0, 0.1, 0.2, 1, 3, 5, 8, 13, 21, 34, 55, 89))
+
+  res <- NULL
+  expect_warning(
+    res <- flotsam:::ltsa_rspectra_ritz_eig(
+      Matrix::Matrix(B, sparse = TRUE),
+      ndim = 2L,
+      dense_n = 0L,
+      tol = 1e-10,
+      maxitr = 5000L,
+      resid_tol = 1e-20,
+      max_extra = 8L,
+      gap_expansion_steps = 0L
+    ),
+    "residuals remain above tolerance"
+  )
+
+  requested <- vapply(res$attempts, `[[`, integer(1), "eig_k")
+  expect_equal(max(requested), flotsam:::ltsa_max_ritz_candidate_k(
+    2L,
+    nrow(B),
+    max_extra = 8L
+  ))
+  expect_false(res$acceptance$resid_ok)
+  expect_false(tail(res$attempts, 1L)[[1L]]$accepted)
 })
 
 test_that("RSpectra partial convergence is a hard LTSA error", {
