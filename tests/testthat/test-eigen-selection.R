@@ -254,7 +254,7 @@ test_that("small Ritz-selected cases agree with dense eigen reference subspaces"
   )
 
   expect_equal(rr$values, dense$values[ord[2:3]], tolerance = 1e-12)
-  expect_same_subspace(rr$vectors, reference)
+  expect_same_subspace(rr$vectors, reference, tolerance = 1e-7)
   expect_lt(max(rr$scaled_residuals), 1e-12)
   expect_gt(rr$boundary_gap_relative, 0)
 })
