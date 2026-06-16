@@ -208,11 +208,20 @@ ltsa <-
     }
 
     Dinvs <- NULL
+    normalized_nullvec <- NULL
     if (normalize) {
-      tsmessage("Forming shifted Lsym")
-      sres <- norm_and_shift_L(B)
-      Dinvs <- sres$Dinvs
-      B <- sres$Lshift
+      if (eig_method == "rspectra") {
+        tsmessage("Forming normalized Lsym")
+        nres <- norm_lsym_L(B)
+        Dinvs <- nres$Dinvs
+        normalized_nullvec <- nres$nullvec
+        B <- nres$Lsym
+      } else {
+        tsmessage("Forming shifted Lsym")
+        sres <- norm_and_shift_L(B)
+        Dinvs <- sres$Dinvs
+        B <- sres$Lshift
+      }
     }
 
     tsmessage("Performing eigenanalysis")
@@ -249,21 +258,14 @@ ltsa <-
             },
             rspectra = {
               tsmessage("Calling rspectra")
-
-              eig_args <- list(
-                A = B,
-                k = ndim + 1,
-                which = "LM",
-                opts = rs_opt()
+              eig_res <- ltsa_rspectra_ritz_eig(
+                B,
+                ndim = ndim,
+                ...,
+                nullvec = normalized_nullvec,
+                verbose = verbose
               )
-              eig_args$opts <- lmerge(eig_args$opts, list(...))
-
-              res <-
-                do.call(RSpectra::eigs_sym, eig_args)$vectors
-              if (ncol(res) != ndim + 1) {
-                stop("Can't find enough vectors")
-              }
-              res <- res[, 2:(ndim + 1)]
+              res <- eig_res$vectors
             },
             fullsvd = {
               tsmessage("Using full SVD")

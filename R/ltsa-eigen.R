@@ -270,7 +270,10 @@ ltsa_as_candidate_result <- function(
   convergence_known = FALSE
 ) {
   if (is.null(res$vectors)) {
-    stop("LTSA candidate provider did not return candidate vectors", call. = FALSE)
+    stop(
+      "LTSA candidate provider did not return candidate vectors",
+      call. = FALSE
+    )
   }
 
   matrix <- res$matrix %||% B

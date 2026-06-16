@@ -318,24 +318,27 @@ test_that("RSpectra candidate provider returns backend-neutral fields", {
     maxitr = 5000L
   )
 
-  expect_true(all(c(
-    "vectors",
-    "values",
-    "shifted_values",
-    "backend",
-    "eig_k",
-    "matrix",
-    "lambda_max",
-    "lambda_probe",
-    "nconv",
-    "niter",
-    "nops",
-    "mprod",
-    "opts",
-    "convergence_known",
-    "returned_columns",
-    "converged_columns"
-  ) %in% names(res)))
+  expect_true(all(
+    c(
+      "vectors",
+      "values",
+      "shifted_values",
+      "backend",
+      "eig_k",
+      "matrix",
+      "lambda_max",
+      "lambda_probe",
+      "nconv",
+      "niter",
+      "nops",
+      "mprod",
+      "opts",
+      "convergence_known",
+      "returned_columns",
+      "converged_columns"
+    ) %in%
+      names(res)
+  ))
   expect_identical(res$backend, "rspectra")
   expect_identical(res$eig_k, 6L)
   expect_true(res$convergence_known)
@@ -368,6 +371,55 @@ test_that("generic adaptive Ritz driver consumes the RSpectra provider", {
   expect_equal(res$values, dense$values[ord[2:3]], tolerance = 1e-8)
   expect_same_subspace(res$vectors, reference, tolerance = 1e-7)
   expect_lt(max(res$scaled_residuals), 1e-8)
+})
+
+test_that("adaptive Ritz driver handles rotated normalized null vectors", {
+  nullvec <- c(1, 2, 3, 2, 1, 4)
+  nullvec <- nullvec / sqrt(sum(nullvec * nullvec))
+  Z <- cbind(
+    c(1, -1, 0, 0, 0, 0),
+    c(0, 1, -1, 0, 0, 0),
+    c(0, 0, 1, -1, 0, 0),
+    c(0, 0, 0, 1, -1, 0),
+    c(0, 0, 0, 0, 1, -1)
+  )
+  Z <- Z - nullvec %*% crossprod(nullvec, Z)
+  Q <- qr.Q(qr(cbind(nullvec, Z)))
+  basis <- Q[, seq_len(6L), drop = FALSE]
+  B <- basis %*% diag(c(0, 0.1, 0.2, 1, 3, 5)) %*% t(basis)
+  candidates <- basis[, c(3L, 1L, 4L, 2L, 5L), drop = FALSE]
+  # fmt: skip
+  candidates <- candidates %*% qr.Q(qr(matrix(c(
+    1, 0, 2, 0, -1,
+    0, 1, 1, -1, 0,
+    1, -1, 0, 1, 2,
+    2, 0, -1, 0, 1,
+    0, 2, 0, 1, -1
+  ), nrow = 5L)))
+  provider <- function(B, eig_k, lambda_max = NULL, verbose = FALSE) {
+    flotsam:::ltsa_candidate_result(
+      vectors = candidates[, seq_len(eig_k), drop = FALSE],
+      backend = "synthetic",
+      eig_k = eig_k,
+      matrix = B,
+      lambda_max = 5,
+      convergence_known = FALSE,
+      returned_columns = eig_k
+    )
+  }
+
+  res <- flotsam:::ltsa_adaptive_ritz_eig(
+    B,
+    ndim = 2L,
+    provider = provider,
+    nullvec = nullvec,
+    strict_rescue = FALSE
+  )
+
+  expect_equal(res$values, c(0.1, 0.2), tolerance = 1e-12)
+  expect_same_subspace(res$vectors, basis[, 2:3], tolerance = 1e-10)
+  expect_lt(max(res$scaled_residuals), 1e-12)
+  expect_identical(res$backend, "synthetic")
 })
 
 test_that("adaptive RSpectra path returns Ritz-polished vectors", {

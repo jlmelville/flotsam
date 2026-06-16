@@ -34,6 +34,15 @@ shift_lap <- function(m, v = 2.0) {
 }
 
 norm_and_shift_L <- function(L) {
+  nres <- norm_lsym_L(L)
+  list(Lshift = shift_lap(nres$Lsym, 2.0), Dinvs = nres$Dinvs)
+}
+
+norm_lsym_L <- function(L) {
   Dinvs <- sqrt(1 / diag(L))
-  list(Lshift = shift_lap(lsym_norm(L, Dinvs), 2.0), Dinvs = Dinvs)
+  list(
+    Lsym = lsym_norm(L, Dinvs),
+    Dinvs = Dinvs,
+    nullvec = 1 / Dinvs
+  )
 }
