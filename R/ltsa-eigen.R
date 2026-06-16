@@ -218,6 +218,156 @@ ltsa_lambda_max_probe <- function(B, varargs) {
   )
 }
 
+ltsa_candidate_result <- function(
+  vectors,
+  values = NULL,
+  shifted_values = NULL,
+  backend,
+  eig_k,
+  matrix,
+  lambda_max = NULL,
+  lambda_probe = NULL,
+  nconv = NA_integer_,
+  niter = NA_integer_,
+  nops = NA_integer_,
+  mprod = NA_integer_,
+  opts = NULL,
+  convergence_known = FALSE,
+  returned_columns = ncol(as.matrix(vectors)),
+  converged_columns = ifelse(is.na(nconv), NA_integer_, nconv)
+) {
+  vectors <- as.matrix(vectors)
+  if (is.null(values)) {
+    values <- ltsa_rayleigh_values(matrix, vectors)
+  }
+
+  list(
+    vectors = vectors,
+    values = as.numeric(values),
+    shifted_values = shifted_values,
+    backend = backend,
+    eig_k = as.integer(eig_k),
+    matrix = matrix,
+    lambda_max = lambda_max,
+    lambda_probe = lambda_probe,
+    nconv = nconv,
+    niter = niter,
+    nops = nops,
+    mprod = mprod,
+    opts = opts,
+    convergence_known = isTRUE(convergence_known),
+    returned_columns = as.integer(returned_columns),
+    converged_columns = as.integer(converged_columns)
+  )
+}
+
+ltsa_as_candidate_result <- function(
+  res,
+  B,
+  eig_k,
+  backend = res$backend %||% "unknown",
+  lambda_max = NULL,
+  convergence_known = FALSE
+) {
+  if (is.null(res$vectors)) {
+    stop("LTSA candidate provider did not return candidate vectors", call. = FALSE)
+  }
+
+  matrix <- res$matrix %||% B
+  values <- res$values
+  if (is.null(values)) {
+    values <- ltsa_rayleigh_values(matrix, res$vectors)
+  }
+
+  candidate <- ltsa_candidate_result(
+    vectors = res$vectors,
+    values = values,
+    shifted_values = if ("shifted_values" %in% names(res)) {
+      res$shifted_values
+    } else {
+      NULL
+    },
+    backend = res$backend %||% backend,
+    eig_k = res$eig_k %||% eig_k,
+    matrix = matrix,
+    lambda_max = res$lambda_max %||% lambda_max,
+    lambda_probe = if ("lambda_probe" %in% names(res)) {
+      res$lambda_probe
+    } else {
+      NULL
+    },
+    nconv = res$nconv %||% NA_integer_,
+    niter = res$niter %||% NA_integer_,
+    nops = res$nops %||% NA_integer_,
+    mprod = res$mprod %||% NA_integer_,
+    opts = res$opts %||% NULL,
+    convergence_known = res$convergence_known %||% convergence_known,
+    returned_columns = res$returned_columns %||% ncol(as.matrix(res$vectors)),
+    converged_columns = res$converged_columns %||%
+      (res$nconv %||% NA_integer_)
+  )
+  extra_names <- setdiff(names(res), names(candidate))
+  candidate[extra_names] <- res[extra_names]
+  candidate
+}
+
+ltsa_call_candidate_provider <- function(
+  provider,
+  B,
+  eig_k,
+  provider_args = list(),
+  lambda_max = NULL,
+  verbose = FALSE
+) {
+  if (!is.function(provider)) {
+    stop("LTSA candidate provider must be a function", call. = FALSE)
+  }
+  if (is.null(provider_args)) {
+    provider_args <- list()
+  }
+  if (!is.list(provider_args)) {
+    stop("LTSA candidate provider arguments must be a list", call. = FALSE)
+  }
+
+  do.call(
+    provider,
+    c(
+      list(
+        B = B,
+        eig_k = eig_k,
+        lambda_max = lambda_max,
+        verbose = verbose
+      ),
+      provider_args
+    )
+  )
+}
+
+ltsa_rspectra_candidate_provider <- function(
+  B,
+  eig_k,
+  ...,
+  lambda_max = NULL,
+  verbose = FALSE
+) {
+  res <- do.call(
+    rs_eig,
+    c(
+      list(X = B, k = eig_k, lambda_max = lambda_max, verbose = verbose),
+      list(...)
+    )
+  )
+
+  ltsa_as_candidate_result(
+    res,
+    B = B,
+    eig_k = eig_k,
+    backend = res$backend %||% "rspectra",
+    lambda_max = lambda_max,
+    convergence_known = TRUE
+  )
+}
+
 dense_ltsa_eig <- function(B, eig_k, backend = "dense_eigen") {
   dense <- as.matrix(B)
   eig <- eigen(dense, symmetric = TRUE)
@@ -530,12 +680,13 @@ ltsa_rs_eig_call <- function(
   lambda_max = NULL,
   verbose = FALSE
 ) {
-  do.call(
-    rs_eig,
-    c(
-      list(X = B, k = eig_k, lambda_max = lambda_max, verbose = verbose),
-      varargs
-    )
+  ltsa_call_candidate_provider(
+    provider = ltsa_rspectra_candidate_provider,
+    B = B,
+    eig_k = eig_k,
+    provider_args = varargs,
+    lambda_max = lambda_max,
+    verbose = verbose
   )
 }
 
@@ -626,14 +777,20 @@ ltsa_with_attempt <- function(eig_res, rr, acceptance, attempts, attempt) {
   )
 }
 
-ltsa_bank_eig_result <- function(strict_eig_res, bank_vectors, lambda_max) {
+ltsa_bank_eig_result <- function(
+  strict_eig_res,
+  bank_vectors,
+  lambda_max,
+  bank_backend = NULL
+) {
   bank_eig_res <- strict_eig_res
   bank_eig_res$vectors <- bank_vectors
   bank_eig_res$values <- ltsa_rayleigh_values(
     strict_eig_res$matrix,
     bank_vectors
   )
-  bank_eig_res$backend <- "rspectra_bank"
+  bank_eig_res$backend <- bank_backend %||%
+    paste0(strict_eig_res$backend %||% "candidate", "_bank")
   bank_eig_res$eig_k <- ncol(bank_vectors)
   bank_eig_res$returned_columns <- ncol(bank_vectors)
   bank_eig_res$converged_columns <- ncol(bank_vectors)
@@ -656,12 +813,14 @@ ltsa_maybe_strict_rescue <- function(
   ndim,
   nullvec,
   lambda_max,
-  varargs,
+  provider,
+  provider_args,
+  strict_rescue_arg_mapper,
+  strict_rescue_controls,
   resid_tol,
   gap_tol,
-  strict_rescue_tol,
-  strict_rescue_maxitr,
   strict_rescue_extra,
+  bank_backend = NULL,
   verbose = FALSE
 ) {
   if (!ltsa_strict_rescue_needed(selected, ndim)) {
@@ -674,17 +833,17 @@ ltsa_maybe_strict_rescue <- function(
     n = nrow(B),
     strict_rescue_extra = strict_rescue_extra
   )
-  strict_args <- ltsa_strict_rescue_args(
-    varargs,
-    strict_rescue_tol = strict_rescue_tol,
-    strict_rescue_maxitr = strict_rescue_maxitr
+  strict_args <- do.call(
+    strict_rescue_arg_mapper,
+    c(list(provider_args), strict_rescue_controls)
   )
 
   strict_eig_res <- tryCatch(
-    ltsa_rs_eig_call(
+    ltsa_call_candidate_provider(
+      provider = provider,
       B = B,
       eig_k = strict_eig_k,
-      varargs = strict_args,
+      provider_args = strict_args,
       lambda_max = lambda_max,
       verbose = verbose
     ),
@@ -737,7 +896,8 @@ ltsa_maybe_strict_rescue <- function(
   bank_eig_res <- ltsa_bank_eig_result(
     strict_eig_res = strict_eig_res,
     bank_vectors = bank_vectors,
-    lambda_max = strict_eig_res$lambda_max
+    lambda_max = strict_eig_res$lambda_max,
+    bank_backend = bank_backend
   )
   bank_rr <- ltsa_ritz_select(
     B = bank_eig_res$matrix,
@@ -804,10 +964,11 @@ ltsa_with_ritz <- function(eig_res, rr, acceptance, attempts) {
   eig_res
 }
 
-ltsa_rspectra_ritz_eig <- function(
+ltsa_adaptive_ritz_eig <- function(
   B,
   ndim,
-  ...,
+  provider,
+  provider_args = list(),
   nullvec = ltsa_default_null_vector(nrow(B)),
   initial_extra = 4L,
   max_extra = 40L,
@@ -815,13 +976,31 @@ ltsa_rspectra_ritz_eig <- function(
   gap_tol = 1e-4,
   gap_expansion_steps = 2L,
   strict_rescue = TRUE,
-  strict_rescue_tol = 1e-10,
-  strict_rescue_maxitr = 5000L,
+  strict_rescue_arg_mapper = function(provider_args, ...) provider_args,
+  strict_rescue_controls = list(),
   strict_rescue_extra = 5L,
+  bank_backend = NULL,
   verbose = FALSE
 ) {
   n <- nrow(B)
-  varargs <- list(...)
+  if (!is.function(provider)) {
+    stop("LTSA candidate provider must be a function", call. = FALSE)
+  }
+  if (is.null(provider_args)) {
+    provider_args <- list()
+  }
+  if (!is.list(provider_args)) {
+    stop("LTSA candidate provider arguments must be a list", call. = FALSE)
+  }
+  if (!is.function(strict_rescue_arg_mapper)) {
+    stop("LTSA strict-rescue argument mapper must be a function", call. = FALSE)
+  }
+  if (is.null(strict_rescue_controls)) {
+    strict_rescue_controls <- list()
+  }
+  if (!is.list(strict_rescue_controls)) {
+    stop("LTSA strict-rescue controls must be a list", call. = FALSE)
+  }
   eig_k <- ltsa_initial_ritz_candidate_k(ndim, n, initial_extra)
   max_k <- ltsa_max_ritz_candidate_k(ndim, n, max_extra)
   gap_expansion_steps <- as.integer(gap_expansion_steps)
@@ -836,14 +1015,6 @@ ltsa_rspectra_ritz_eig <- function(
   if (length(strict_rescue) != 1L || is.na(strict_rescue)) {
     stop("strict_rescue must be TRUE or FALSE", call. = FALSE)
   }
-  strict_rescue_maxitr <- as.integer(strict_rescue_maxitr)
-  if (
-    length(strict_rescue_maxitr) != 1L ||
-      is.na(strict_rescue_maxitr) ||
-      strict_rescue_maxitr < 1L
-  ) {
-    stop("strict_rescue_maxitr must be a positive integer", call. = FALSE)
-  }
   strict_rescue_extra <- as.integer(strict_rescue_extra)
   if (
     length(strict_rescue_extra) != 1L ||
@@ -851,14 +1022,6 @@ ltsa_rspectra_ritz_eig <- function(
       strict_rescue_extra < 1L
   ) {
     stop("strict_rescue_extra must be a positive integer", call. = FALSE)
-  }
-  if (
-    length(strict_rescue_tol) != 1L ||
-      is.na(strict_rescue_tol) ||
-      !is.finite(strict_rescue_tol) ||
-      strict_rescue_tol <= 0
-  ) {
-    stop("strict_rescue_tol must be positive", call. = FALSE)
   }
   lambda_max <- NULL
   attempts <- list()
@@ -869,10 +1032,11 @@ ltsa_rspectra_ritz_eig <- function(
 
   repeat {
     eig_res <- tryCatch(
-      ltsa_rs_eig_call(
+      ltsa_call_candidate_provider(
+        provider = provider,
         B = B,
         eig_k = eig_k,
-        varargs = varargs,
+        provider_args = provider_args,
         lambda_max = lambda_max,
         verbose = verbose
       ),
@@ -949,12 +1113,14 @@ ltsa_rspectra_ritz_eig <- function(
               ndim = ndim,
               nullvec = nullvec,
               lambda_max = lambda_max,
-              varargs = varargs,
+              provider = provider,
+              provider_args = provider_args,
+              strict_rescue_arg_mapper = strict_rescue_arg_mapper,
+              strict_rescue_controls = strict_rescue_controls,
               resid_tol = resid_tol,
               gap_tol = gap_tol,
-              strict_rescue_tol = strict_rescue_tol,
-              strict_rescue_maxitr = strict_rescue_maxitr,
               strict_rescue_extra = strict_rescue_extra,
+              bank_backend = bank_backend,
               verbose = verbose
             )
           }
@@ -979,12 +1145,14 @@ ltsa_rspectra_ritz_eig <- function(
                 ndim = ndim,
                 nullvec = nullvec,
                 lambda_max = lambda_max,
-                varargs = varargs,
+                provider = provider,
+                provider_args = provider_args,
+                strict_rescue_arg_mapper = strict_rescue_arg_mapper,
+                strict_rescue_controls = strict_rescue_controls,
                 resid_tol = resid_tol,
                 gap_tol = gap_tol,
-                strict_rescue_tol = strict_rescue_tol,
-                strict_rescue_maxitr = strict_rescue_maxitr,
                 strict_rescue_extra = strict_rescue_extra,
+                bank_backend = bank_backend,
                 verbose = verbose
               )
             }
@@ -1047,12 +1215,14 @@ ltsa_rspectra_ritz_eig <- function(
       ndim = ndim,
       nullvec = nullvec,
       lambda_max = best$lambda_max %||% lambda_max,
-      varargs = varargs,
+      provider = provider,
+      provider_args = provider_args,
+      strict_rescue_arg_mapper = strict_rescue_arg_mapper,
+      strict_rescue_controls = strict_rescue_controls,
       resid_tol = resid_tol,
       gap_tol = gap_tol,
-      strict_rescue_tol = strict_rescue_tol,
-      strict_rescue_maxitr = strict_rescue_maxitr,
       strict_rescue_extra = strict_rescue_extra,
+      bank_backend = bank_backend,
       verbose = verbose
     )
   }
@@ -1084,6 +1254,62 @@ ltsa_rspectra_ritz_eig <- function(
   }
 
   best
+}
+
+ltsa_rspectra_ritz_eig <- function(
+  B,
+  ndim,
+  ...,
+  nullvec = ltsa_default_null_vector(nrow(B)),
+  initial_extra = 4L,
+  max_extra = 40L,
+  resid_tol = 1e-5,
+  gap_tol = 1e-4,
+  gap_expansion_steps = 2L,
+  strict_rescue = TRUE,
+  strict_rescue_tol = 1e-10,
+  strict_rescue_maxitr = 5000L,
+  strict_rescue_extra = 5L,
+  verbose = FALSE
+) {
+  strict_rescue_maxitr <- as.integer(strict_rescue_maxitr)
+  if (
+    length(strict_rescue_maxitr) != 1L ||
+      is.na(strict_rescue_maxitr) ||
+      strict_rescue_maxitr < 1L
+  ) {
+    stop("strict_rescue_maxitr must be a positive integer", call. = FALSE)
+  }
+  if (
+    length(strict_rescue_tol) != 1L ||
+      is.na(strict_rescue_tol) ||
+      !is.finite(strict_rescue_tol) ||
+      strict_rescue_tol <= 0
+  ) {
+    stop("strict_rescue_tol must be positive", call. = FALSE)
+  }
+
+  ltsa_adaptive_ritz_eig(
+    B = B,
+    ndim = ndim,
+    provider = ltsa_rspectra_candidate_provider,
+    provider_args = list(...),
+    nullvec = nullvec,
+    initial_extra = initial_extra,
+    max_extra = max_extra,
+    resid_tol = resid_tol,
+    gap_tol = gap_tol,
+    gap_expansion_steps = gap_expansion_steps,
+    strict_rescue = strict_rescue,
+    strict_rescue_arg_mapper = ltsa_strict_rescue_args,
+    strict_rescue_controls = list(
+      strict_rescue_tol = strict_rescue_tol,
+      strict_rescue_maxitr = strict_rescue_maxitr
+    ),
+    strict_rescue_extra = strict_rescue_extra,
+    bank_backend = "rspectra_bank",
+    verbose = verbose
+  )
 }
 
 rs_opt <- function(eig_k = NULL, n = NULL) {

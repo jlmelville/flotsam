@@ -307,6 +307,69 @@ test_that("RSpectra path uses shifted largest-algebraic solve with residual meta
   expect_s4_class(res$matrix, "dgCMatrix")
 })
 
+test_that("RSpectra candidate provider returns backend-neutral fields", {
+  B <- Matrix::Diagonal(x = seq(0, 29))
+
+  res <- flotsam:::ltsa_rspectra_candidate_provider(
+    B,
+    eig_k = 6L,
+    dense_n = 0L,
+    tol = 1e-10,
+    maxitr = 5000L
+  )
+
+  expect_true(all(c(
+    "vectors",
+    "values",
+    "shifted_values",
+    "backend",
+    "eig_k",
+    "matrix",
+    "lambda_max",
+    "lambda_probe",
+    "nconv",
+    "niter",
+    "nops",
+    "mprod",
+    "opts",
+    "convergence_known",
+    "returned_columns",
+    "converged_columns"
+  ) %in% names(res)))
+  expect_identical(res$backend, "rspectra")
+  expect_identical(res$eig_k, 6L)
+  expect_true(res$convergence_known)
+  expect_gte(res$nconv, 6L)
+  expect_equal(res$values, seq(0, 5), tolerance = 1e-8)
+  expect_equal(ncol(res$vectors), 6L)
+  expect_s4_class(res$matrix, "dgCMatrix")
+})
+
+test_that("generic adaptive Ritz driver consumes the RSpectra provider", {
+  B <- synthetic_ltsa_matrix(c(0, 0.1, 0.2, 1, 3, 5, 8, 13))
+  dense <- eigen(B, symmetric = TRUE)
+  ord <- order(dense$values)
+  reference <- dense$vectors[, ord[2:3], drop = FALSE]
+
+  res <- flotsam:::ltsa_adaptive_ritz_eig(
+    Matrix::Matrix(B, sparse = TRUE),
+    ndim = 2L,
+    provider = flotsam:::ltsa_rspectra_candidate_provider,
+    provider_args = list(dense_n = 0L, tol = 1e-10, maxitr = 5000L),
+    strict_rescue_arg_mapper = flotsam:::ltsa_strict_rescue_args,
+    strict_rescue_controls = list(
+      strict_rescue_tol = 1e-10,
+      strict_rescue_maxitr = 5000L
+    )
+  )
+
+  expect_identical(res$backend, "rspectra")
+  expect_true(!is.null(res$candidate_vectors))
+  expect_equal(res$values, dense$values[ord[2:3]], tolerance = 1e-8)
+  expect_same_subspace(res$vectors, reference, tolerance = 1e-7)
+  expect_lt(max(res$scaled_residuals), 1e-8)
+})
+
 test_that("adaptive RSpectra path returns Ritz-polished vectors", {
   B <- synthetic_ltsa_matrix(c(0, 0.1, 0.2, 1, 3, 5, 8, 13))
   dense <- eigen(B, symmetric = TRUE)

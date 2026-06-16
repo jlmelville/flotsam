@@ -720,6 +720,25 @@ test_that("C++ local weights match exact R SVD reference", {
   expect_identical(high_candidate$rank, high_reference$rank)
 })
 
+test_that("Gram local weights document near-machine SVD-rank boundary", {
+  k <- 6L
+  p <- 12L
+  X <- matrix(0, nrow = k, ncol = p)
+  X[, 1L] <- c(1, -1, 0, 0, 0, 0) / sqrt(2)
+  # The second singular direction is above the direct-SVD tolerance but below
+  # the Gram eigenvalue tolerance used to avoid promoting Gram roundoff.
+  X[, 2L] <- 1e-8 * c(0, 0, 1, -1, 0, 0) / sqrt(2)
+  nni <- seq_len(k)
+
+  reference <- ltsa_local_weights_r_reference(X, nni, ndim = 2L)
+  candidate <- flotsam:::ltsa_local_weights(X, nni, ndim = 2L)
+
+  expect_gt(ncol(X), length(nni))
+  expect_identical(reference$rank, 2L)
+  expect_identical(candidate$rank, 1L)
+  expect_gt(max(abs(candidate$Wi - reference$Wi)), 0.1)
+})
+
 test_that("ltsa ret_B uses append/finalize assembly", {
   X <- as.matrix(iris[seq_len(15L), seq_len(4L)])
   nn_idx <- exact_nn_idx(X, n_neighbors = 5L, include_self = FALSE)
