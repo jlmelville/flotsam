@@ -309,6 +309,85 @@ test_that("adaptive RSpectra path returns Ritz-polished vectors", {
   expect_true(is.finite(res$boundary_gap_relative))
 })
 
+test_that("strict rescue trigger is limited to partial near-zero selected blocks", {
+  fake_result <- function(near_zero_count, rank_ok = TRUE, resid_ok = TRUE) {
+    list(
+      values = c(1e-9, 8e-7),
+      near_zero_nonconstant_count = near_zero_count,
+      acceptance = list(rank_ok = rank_ok, resid_ok = resid_ok)
+    )
+  }
+
+  expect_true(flotsam:::ltsa_strict_rescue_needed(fake_result(1L), ndim = 2L))
+  expect_false(flotsam:::ltsa_strict_rescue_needed(fake_result(0L), ndim = 2L))
+  expect_false(flotsam:::ltsa_strict_rescue_needed(fake_result(2L), ndim = 2L))
+  expect_false(flotsam:::ltsa_strict_rescue_needed(
+    fake_result(1L, resid_ok = FALSE),
+    ndim = 2L
+  ))
+  expect_false(flotsam:::ltsa_strict_rescue_needed(
+    fake_result(1L, rank_ok = FALSE),
+    ndim = 2L
+  ))
+})
+
+test_that("strict rescue result ranking prefers lower selected block energy", {
+  fake_result <- function(values,
+                          near_zero_count,
+                          rank_ok = TRUE,
+                          resid_ok = TRUE) {
+    list(
+      values = values,
+      near_zero_nonconstant_count = near_zero_count,
+      acceptance = list(rank_ok = rank_ok, resid_ok = resid_ok)
+    )
+  }
+  default <- fake_result(c(2e-9, 8e-7), near_zero_count = 1L)
+  strict <- fake_result(c(4e-10, 2e-9), near_zero_count = 2L)
+  bad_residual <- fake_result(
+    c(4e-10, 2e-9),
+    near_zero_count = 2L,
+    resid_ok = FALSE
+  )
+
+  expect_true(flotsam:::ltsa_energy_better(strict, default, ndim = 2L))
+  expect_identical(
+    flotsam:::ltsa_rescue_candidate(strict, default, ndim = 2L),
+    strict
+  )
+  expect_identical(
+    flotsam:::ltsa_rescue_candidate(bad_residual, default, ndim = 2L),
+    default
+  )
+})
+
+test_that("strict rescue arguments tighten tolerance and preserve stricter user opts", {
+  expect_equal(
+    flotsam:::ltsa_strict_rescue_args(
+      list(),
+      strict_rescue_tol = 1e-10,
+      strict_rescue_maxitr = 5000L
+    ),
+    list(tol = 1e-10, maxitr = 5000L)
+  )
+  expect_equal(
+    flotsam:::ltsa_strict_rescue_args(
+      list(tol = 1e-12, maxitr = 8000L),
+      strict_rescue_tol = 1e-10,
+      strict_rescue_maxitr = 5000L
+    ),
+    list(tol = 1e-12, maxitr = 8000L)
+  )
+  expect_equal(
+    flotsam:::ltsa_strict_rescue_args(
+      list(tol = 1e-6, maxitr = 100L),
+      strict_rescue_tol = 1e-10,
+      strict_rescue_maxitr = 5000L
+    ),
+    list(tol = 1e-10, maxitr = 5000L)
+  )
+})
+
 test_that("weak-gap-only adaptive expansion stops before max_extra", {
   B <- synthetic_ltsa_matrix(c(
     0, 0.1, 0.2, 0.200001, 1, 2, 3, 5, 8, 13,

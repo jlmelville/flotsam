@@ -423,6 +423,288 @@ accept_ltsa_ritz <- function(rr,
   )
 }
 
+ltsa_result_energy_key <- function(res, ndim) {
+  values <- as.numeric(res$values)
+  if (length(values) < ndim) {
+    return(list(lambda_ndim = Inf, trace = Inf, near_zero_count = 0L))
+  }
+
+  list(
+    lambda_ndim = values[[ndim]],
+    trace = sum(values[seq_len(ndim)]),
+    near_zero_count = res$near_zero_nonconstant_count %||% 0L
+  )
+}
+
+ltsa_energy_better <- function(candidate, incumbent, ndim) {
+  candidate_key <- ltsa_result_energy_key(candidate, ndim)
+  incumbent_key <- ltsa_result_energy_key(incumbent, ndim)
+
+  scale <- max(
+    abs(candidate_key$lambda_ndim),
+    abs(incumbent_key$lambda_ndim),
+    1
+  )
+  tol <- max(100 * .Machine$double.eps * scale, 1e-8 * scale)
+  if (candidate_key$lambda_ndim < incumbent_key$lambda_ndim - tol) {
+    return(TRUE)
+  }
+  if (candidate_key$lambda_ndim > incumbent_key$lambda_ndim + tol) {
+    return(FALSE)
+  }
+
+  trace_scale <- max(abs(candidate_key$trace), abs(incumbent_key$trace), 1)
+  trace_tol <- max(100 * .Machine$double.eps * trace_scale, 1e-8 * trace_scale)
+  if (candidate_key$trace < incumbent_key$trace - trace_tol) {
+    return(TRUE)
+  }
+  if (candidate_key$trace > incumbent_key$trace + trace_tol) {
+    return(FALSE)
+  }
+
+  candidate_key$near_zero_count > incumbent_key$near_zero_count
+}
+
+ltsa_rescue_candidate <- function(candidate, incumbent, ndim) {
+  if (is.null(candidate)) {
+    return(incumbent)
+  }
+  if (!isTRUE(candidate$acceptance$rank_ok) || !isTRUE(candidate$acceptance$resid_ok)) {
+    return(incumbent)
+  }
+  if (is.null(incumbent)) {
+    return(candidate)
+  }
+  if (!isTRUE(incumbent$acceptance$rank_ok) || !isTRUE(incumbent$acceptance$resid_ok)) {
+    return(candidate)
+  }
+  if (ltsa_energy_better(candidate, incumbent, ndim)) {
+    return(candidate)
+  }
+  incumbent
+}
+
+ltsa_strict_rescue_needed <- function(res, ndim) {
+  if (
+    is.null(res) ||
+      !isTRUE(res$acceptance$rank_ok) ||
+      !isTRUE(res$acceptance$resid_ok)
+  ) {
+    return(FALSE)
+  }
+
+  near_zero_count <- res$near_zero_nonconstant_count %||% 0L
+  near_zero_count > 0L && near_zero_count < ndim
+}
+
+ltsa_rs_eig_call <- function(B, eig_k, varargs, lambda_max = NULL, verbose = FALSE) {
+  do.call(
+    rs_eig,
+    c(
+      list(X = B, k = eig_k, lambda_max = lambda_max, verbose = verbose),
+      varargs
+    )
+  )
+}
+
+ltsa_strict_rescue_args <- function(varargs,
+                                    strict_rescue_tol,
+                                    strict_rescue_maxitr) {
+  strict_args <- varargs
+  if (is.null(strict_args$tol)) {
+    strict_args$tol <- strict_rescue_tol
+  } else {
+    strict_args$tol <- min(strict_args$tol, strict_rescue_tol)
+  }
+  if (is.null(strict_args$maxitr)) {
+    strict_args$maxitr <- strict_rescue_maxitr
+  } else {
+    strict_args$maxitr <- max(strict_args$maxitr, strict_rescue_maxitr)
+  }
+  strict_args
+}
+
+ltsa_attempt_summary <- function(eig_k,
+                                 eig_res,
+                                 rr,
+                                 acceptance,
+                                 strict_rescue = FALSE,
+                                 bank = FALSE) {
+  list(
+    eig_k = eig_k,
+    nconv = eig_res$nconv,
+    rank_after_null = rr$rank_after_null,
+    max_scaled_residual = acceptance$max_scaled_residual,
+    global_gap = rr$global_gap,
+    local_gap = rr$local_gap,
+    zero_tol = rr$zero_tol,
+    boundary_gap_relative = rr$boundary_gap_relative,
+    near_zero_nonconstant_count = rr$near_zero_nonconstant_count,
+    near_zero_nonconstant_counts = rr$near_zero_nonconstant_counts,
+    first_ritz_values = rr$reported_ritz_values,
+    gap_status = acceptance$gap_status,
+    accepted = acceptance$ok,
+    strict_rescue = strict_rescue,
+    bank = bank
+  )
+}
+
+ltsa_with_attempt <- function(eig_res, rr, acceptance, attempts, attempt) {
+  ltsa_with_ritz(
+    eig_res = eig_res,
+    rr = rr,
+    acceptance = acceptance,
+    attempts = c(attempts, list(attempt))
+  )
+}
+
+ltsa_bank_eig_result <- function(strict_eig_res, bank_vectors, lambda_max) {
+  bank_eig_res <- strict_eig_res
+  bank_eig_res$vectors <- bank_vectors
+  bank_eig_res$values <- ltsa_rayleigh_values(strict_eig_res$matrix, bank_vectors)
+  bank_eig_res$backend <- "rspectra_bank"
+  bank_eig_res$eig_k <- ncol(bank_vectors)
+  bank_eig_res$returned_columns <- ncol(bank_vectors)
+  bank_eig_res$converged_columns <- ncol(bank_vectors)
+  bank_eig_res$nconv <- ncol(bank_vectors)
+  residuals <- ltsa_ritz_residuals(
+    strict_eig_res$matrix,
+    bank_vectors,
+    bank_eig_res$values,
+    lambda_max
+  )
+  bank_eig_res$absolute_residuals <- residuals$absolute_residuals
+  bank_eig_res$scaled_residuals <- residuals$scaled_residuals
+  bank_eig_res$residual_scale <- residuals$residual_scale
+  bank_eig_res
+}
+
+ltsa_maybe_strict_rescue <- function(B,
+                                     selected,
+                                     ndim,
+                                     nullvec,
+                                     lambda_max,
+                                     varargs,
+                                     resid_tol,
+                                     gap_tol,
+                                     strict_rescue_tol,
+                                     strict_rescue_maxitr,
+                                     strict_rescue_extra,
+                                     verbose = FALSE) {
+  if (!ltsa_strict_rescue_needed(selected, ndim)) {
+    return(selected)
+  }
+
+  strict_eig_k <- min(
+    nrow(B) - 1L,
+    max(selected$eig_k %||% 0L, ndim + strict_rescue_extra)
+  )
+  strict_args <- ltsa_strict_rescue_args(
+    varargs,
+    strict_rescue_tol = strict_rescue_tol,
+    strict_rescue_maxitr = strict_rescue_maxitr
+  )
+
+  strict_eig_res <- tryCatch(
+    ltsa_rs_eig_call(
+      B = B,
+      eig_k = strict_eig_k,
+      varargs = strict_args,
+      lambda_max = lambda_max,
+      verbose = verbose
+    ),
+    error = function(e) e
+  )
+  if (inherits(strict_eig_res, "error")) {
+    selected$attempts <- c(
+      selected$attempts,
+      list(list(
+        eig_k = strict_eig_k,
+        error = conditionMessage(strict_eig_res),
+        strict_rescue = TRUE
+      ))
+    )
+    return(selected)
+  }
+
+  strict_rr <- ltsa_ritz_select(
+    B = strict_eig_res$matrix,
+    vectors = strict_eig_res$vectors,
+    ndim = ndim,
+    nullvec = nullvec,
+    lambda_max = strict_eig_res$lambda_max
+  )
+  strict_acceptance <- accept_ltsa_ritz(
+    rr = strict_rr,
+    ndim = ndim,
+    lambda_max = strict_eig_res$lambda_max,
+    resid_tol = resid_tol,
+    gap_tol = gap_tol,
+    require_gap = FALSE
+  )
+  strict_attempt <- ltsa_attempt_summary(
+    eig_k = strict_eig_k,
+    eig_res = strict_eig_res,
+    rr = strict_rr,
+    acceptance = strict_acceptance,
+    strict_rescue = TRUE
+  )
+  strict_result <- ltsa_with_attempt(
+    eig_res = strict_eig_res,
+    rr = strict_rr,
+    acceptance = strict_acceptance,
+    attempts = selected$attempts,
+    attempt = strict_attempt
+  )
+  strict_result$acceptance$return_reason <- "strict_rescue"
+
+  bank_vectors <- cbind(selected$candidate_vectors, strict_eig_res$vectors)
+  bank_eig_res <- ltsa_bank_eig_result(
+    strict_eig_res = strict_eig_res,
+    bank_vectors = bank_vectors,
+    lambda_max = strict_eig_res$lambda_max
+  )
+  bank_rr <- ltsa_ritz_select(
+    B = bank_eig_res$matrix,
+    vectors = bank_vectors,
+    ndim = ndim,
+    nullvec = nullvec,
+    lambda_max = strict_eig_res$lambda_max
+  )
+  bank_acceptance <- accept_ltsa_ritz(
+    rr = bank_rr,
+    ndim = ndim,
+    lambda_max = strict_eig_res$lambda_max,
+    resid_tol = resid_tol,
+    gap_tol = gap_tol,
+    require_gap = FALSE
+  )
+  bank_attempt <- ltsa_attempt_summary(
+    eig_k = ncol(bank_vectors),
+    eig_res = bank_eig_res,
+    rr = bank_rr,
+    acceptance = bank_acceptance,
+    strict_rescue = TRUE,
+    bank = TRUE
+  )
+  bank_result <- ltsa_with_attempt(
+    eig_res = bank_eig_res,
+    rr = bank_rr,
+    acceptance = bank_acceptance,
+    attempts = strict_result$attempts,
+    attempt = bank_attempt
+  )
+  bank_result$acceptance$return_reason <- "strict_rescue_bank"
+
+  rescued <- ltsa_rescue_candidate(strict_result, selected, ndim)
+  rescued <- ltsa_rescue_candidate(bank_result, rescued, ndim)
+  if (!identical(rescued, selected)) {
+    rescued$acceptance$strict_rescue_used <- TRUE
+    rescued$acceptance$strict_rescue_eig_k <- strict_eig_k
+  }
+  rescued
+}
+
 ltsa_with_ritz <- function(eig_res, rr, acceptance, attempts) {
   eig_res$candidate_vectors <- eig_res$vectors
   eig_res$candidate_values <- eig_res$values
@@ -456,8 +738,13 @@ ltsa_rspectra_ritz_eig <- function(B,
                                    resid_tol = 1e-5,
                                    gap_tol = 1e-4,
                                    gap_expansion_steps = 2L,
+                                   strict_rescue = TRUE,
+                                   strict_rescue_tol = 1e-10,
+                                   strict_rescue_maxitr = 5000L,
+                                   strict_rescue_extra = 5L,
                                    verbose = FALSE) {
   n <- nrow(B)
+  varargs <- list(...)
   eig_k <- ltsa_initial_ritz_candidate_k(ndim, n, initial_extra)
   max_k <- ltsa_max_ritz_candidate_k(ndim, n, max_extra)
   gap_expansion_steps <- as.integer(gap_expansion_steps)
@@ -468,6 +755,34 @@ ltsa_rspectra_ritz_eig <- function(B,
   ) {
     stop("gap_expansion_steps must be a non-negative integer", call. = FALSE)
   }
+  strict_rescue <- as.logical(strict_rescue)
+  if (length(strict_rescue) != 1L || is.na(strict_rescue)) {
+    stop("strict_rescue must be TRUE or FALSE", call. = FALSE)
+  }
+  strict_rescue_maxitr <- as.integer(strict_rescue_maxitr)
+  if (
+    length(strict_rescue_maxitr) != 1L ||
+      is.na(strict_rescue_maxitr) ||
+      strict_rescue_maxitr < 1L
+  ) {
+    stop("strict_rescue_maxitr must be a positive integer", call. = FALSE)
+  }
+  strict_rescue_extra <- as.integer(strict_rescue_extra)
+  if (
+    length(strict_rescue_extra) != 1L ||
+      is.na(strict_rescue_extra) ||
+      strict_rescue_extra < 1L
+  ) {
+    stop("strict_rescue_extra must be a positive integer", call. = FALSE)
+  }
+  if (
+    length(strict_rescue_tol) != 1L ||
+      is.na(strict_rescue_tol) ||
+      !is.finite(strict_rescue_tol) ||
+      strict_rescue_tol <= 0
+  ) {
+    stop("strict_rescue_tol must be positive", call. = FALSE)
+  }
   lambda_max <- NULL
   attempts <- list()
   best <- NULL
@@ -477,7 +792,13 @@ ltsa_rspectra_ritz_eig <- function(B,
 
   repeat {
     eig_res <- tryCatch(
-      rs_eig(B, k = eig_k, ..., lambda_max = lambda_max, verbose = verbose),
+      ltsa_rs_eig_call(
+        B = B,
+        eig_k = eig_k,
+        varargs = varargs,
+        lambda_max = lambda_max,
+        verbose = verbose
+      ),
       error = function(e) e
     )
     if (inherits(eig_res, "error")) {
@@ -515,20 +836,11 @@ ltsa_rspectra_ritz_eig <- function(B,
           gap_tol = gap_tol,
           require_gap = FALSE
         )
-        attempts[[length(attempts) + 1L]] <- list(
+        attempts[[length(attempts) + 1L]] <- ltsa_attempt_summary(
           eig_k = eig_k,
-          nconv = eig_res$nconv,
-          rank_after_null = rr$rank_after_null,
-          max_scaled_residual = acceptance$max_scaled_residual,
-          global_gap = rr$global_gap,
-          local_gap = rr$local_gap,
-          zero_tol = rr$zero_tol,
-          boundary_gap_relative = rr$boundary_gap_relative,
-          near_zero_nonconstant_count = rr$near_zero_nonconstant_count,
-          near_zero_nonconstant_counts = rr$near_zero_nonconstant_counts,
-          first_ritz_values = rr$reported_ritz_values,
-          gap_status = acceptance$gap_status,
-          accepted = acceptance$ok
+          eig_res = eig_res,
+          rr = rr,
+          acceptance = acceptance
         )
         tsmessage(
           "Rayleigh-Ritz LTSA postprocess: post-null rank = ",
@@ -553,6 +865,22 @@ ltsa_rspectra_ritz_eig <- function(B,
 
         if (acceptance$rank_ok && acceptance$resid_ok && acceptance$gap_ok) {
           best$acceptance$return_reason <- "residual_rank_gap_ok"
+          if (strict_rescue) {
+            best <- ltsa_maybe_strict_rescue(
+              B = B,
+              selected = best,
+              ndim = ndim,
+              nullvec = nullvec,
+              lambda_max = lambda_max,
+              varargs = varargs,
+              resid_tol = resid_tol,
+              gap_tol = gap_tol,
+              strict_rescue_tol = strict_rescue_tol,
+              strict_rescue_maxitr = strict_rescue_maxitr,
+              strict_rescue_extra = strict_rescue_extra,
+              verbose = verbose
+            )
+          }
           return(best)
         }
         if (acceptance$gap_issue_only) {
@@ -567,16 +895,42 @@ ltsa_rspectra_ritz_eig <- function(B,
             selected$acceptance$return_reason <- "weak_first_residual_rank_good"
             selected$acceptance$gap_expansions <- gap_expansions
             selected$acceptance$diagnostic_final_eig_k <- eig_k
-            tsmessage(
-              "LTSA Ritz boundary gap ",
-              if (acceptance$gap_available) "remains below tolerance" else "is unavailable",
-              "; returning the first residual-good, rank-good Ritz vectors ",
-              "from a weakly separated low-energy block after diagnostic ",
-              "expansion to ",
-              eig_k,
-              " candidates. solver quality: now mostly good; ",
-              "coordinate usefulness: still unresolved for weak-gap cases."
-            )
+            if (strict_rescue) {
+              selected <- ltsa_maybe_strict_rescue(
+                B = B,
+                selected = selected,
+                ndim = ndim,
+                nullvec = nullvec,
+                lambda_max = lambda_max,
+                varargs = varargs,
+                resid_tol = resid_tol,
+                gap_tol = gap_tol,
+                strict_rescue_tol = strict_rescue_tol,
+                strict_rescue_maxitr = strict_rescue_maxitr,
+                strict_rescue_extra = strict_rescue_extra,
+                verbose = verbose
+              )
+            }
+            if (isTRUE(selected$acceptance$strict_rescue_used)) {
+              tsmessage(
+                "LTSA strict rescue found lower-energy residual-good Ritz ",
+                "vectors after an incomplete near-zero selected block; ",
+                "returning strict-rescue result with selected values = [",
+                ltsa_format_ritz_values(selected$values),
+                "]"
+              )
+            } else {
+              tsmessage(
+                "LTSA Ritz boundary gap ",
+                if (acceptance$gap_available) "remains below tolerance" else "is unavailable",
+                "; returning the first residual-good, rank-good Ritz vectors ",
+                "from a weakly separated low-energy block after diagnostic ",
+                "expansion to ",
+                eig_k,
+                " candidates. solver quality: now mostly good; ",
+                "coordinate usefulness: still unresolved for weak-gap cases."
+              )
+            }
             return(selected)
           }
 
@@ -609,6 +963,22 @@ ltsa_rspectra_ritz_eig <- function(B,
       best$eig_k,
       " candidate vectors",
       call. = FALSE
+    )
+  }
+  if (strict_rescue) {
+    best <- ltsa_maybe_strict_rescue(
+      B = B,
+      selected = best,
+      ndim = ndim,
+      nullvec = nullvec,
+      lambda_max = best$lambda_max %||% lambda_max,
+      varargs = varargs,
+      resid_tol = resid_tol,
+      gap_tol = gap_tol,
+      strict_rescue_tol = strict_rescue_tol,
+      strict_rescue_maxitr = strict_rescue_maxitr,
+      strict_rescue_extra = strict_rescue_extra,
+      verbose = verbose
     )
   }
   if (!best$acceptance$resid_ok) {
