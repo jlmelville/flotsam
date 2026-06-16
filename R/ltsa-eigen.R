@@ -524,6 +524,37 @@ ltsa_strict_rescue_args <- function(varargs,
   strict_args
 }
 
+ltsa_attempt_eig_ks <- function(attempts) {
+  if (is.null(attempts) || length(attempts) == 0L) {
+    return(integer())
+  }
+
+  eig_ks <- vapply(attempts, function(attempt) {
+    eig_k <- attempt$eig_k %||% NA_integer_
+    if (length(eig_k) != 1L || is.na(eig_k)) {
+      return(NA_integer_)
+    }
+    as.integer(eig_k)
+  }, integer(1))
+  eig_ks[!is.na(eig_ks) & eig_ks > 0L]
+}
+
+ltsa_strict_rescue_eig_k <- function(selected,
+                                     ndim,
+                                     n,
+                                     strict_rescue_extra) {
+  candidates <- c(
+    selected$eig_k %||% NA_integer_,
+    selected$acceptance$diagnostic_final_eig_k %||% NA_integer_,
+    ltsa_attempt_eig_ks(selected$attempts),
+    ndim + strict_rescue_extra
+  )
+  candidates <- as.integer(candidates)
+  candidates <- candidates[!is.na(candidates) & candidates > 0L]
+
+  min(n - 1L, max(candidates))
+}
+
 ltsa_attempt_summary <- function(eig_k,
                                  eig_res,
                                  rr,
@@ -595,9 +626,11 @@ ltsa_maybe_strict_rescue <- function(B,
     return(selected)
   }
 
-  strict_eig_k <- min(
-    nrow(B) - 1L,
-    max(selected$eig_k %||% 0L, ndim + strict_rescue_extra)
+  strict_eig_k <- ltsa_strict_rescue_eig_k(
+    selected = selected,
+    ndim = ndim,
+    n = nrow(B),
+    strict_rescue_extra = strict_rescue_extra
   )
   strict_args <- ltsa_strict_rescue_args(
     varargs,

@@ -388,6 +388,51 @@ test_that("strict rescue arguments tighten tolerance and preserve stricter user 
   )
 })
 
+test_that("strict rescue candidate count includes expanded diagnostic attempts", {
+  selected <- list(
+    eig_k = 8L,
+    acceptance = list(diagnostic_final_eig_k = 18L),
+    attempts = list(
+      list(eig_k = 8L),
+      list(eig_k = 12L),
+      list(eig_k = 18L)
+    )
+  )
+
+  expect_equal(
+    flotsam:::ltsa_strict_rescue_eig_k(
+      selected,
+      ndim = 2L,
+      n = 100L,
+      strict_rescue_extra = 5L
+    ),
+    18L
+  )
+
+  selected$acceptance$diagnostic_final_eig_k <- NULL
+  selected$attempts <- list(list(eig_k = 8L), list(eig_k = 12L))
+  expect_equal(
+    flotsam:::ltsa_strict_rescue_eig_k(
+      selected,
+      ndim = 2L,
+      n = 100L,
+      strict_rescue_extra = 5L
+    ),
+    12L
+  )
+
+  selected$eig_k <- 30L
+  expect_equal(
+    flotsam:::ltsa_strict_rescue_eig_k(
+      selected,
+      ndim = 2L,
+      n = 20L,
+      strict_rescue_extra = 5L
+    ),
+    19L
+  )
+})
+
 test_that("weak-gap-only adaptive expansion stops before max_extra", {
   B <- synthetic_ltsa_matrix(c(
     0, 0.1, 0.2, 0.200001, 1, 2, 3, 5, 8, 13,

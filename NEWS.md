@@ -18,6 +18,9 @@
 * Eigenanalysis now extracts more eigenvectors than requested and uses
   Rayleigh-Ritz polishing on the subspace to attempt a better final result.
   `verbose = TRUE` reports residual, rank, and boundary-gap diagnostics.
+* If the `ndim` eigenvalues appear to contain only part of a near-zero
+  low-energy cluster, a further refinement step is added with tighter RSpectra
+  settings and more candidates in case eigenvectors have been missed.
 * Better argument validation and eigenanalysis error reporting.
 * Updated GitHub Actions.
 
