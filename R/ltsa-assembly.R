@@ -90,19 +90,26 @@ log_ltsa_assembly_diagnostics <- function(components, verbose) {
     "; row-major Gram used: ",
     diagnostics$row_major_used
   )
-  if (nzchar(diagnostics$row_major_fallback_reason)) {
+  if (ltsa_log_fallback_reason(diagnostics$row_major_fallback_reason)) {
     tsmessage(
       "LTSA row-major fallback reason: ",
       diagnostics$row_major_fallback_reason
     )
   }
-  if (nzchar(diagnostics$parallel_fallback_reason)) {
+  if (ltsa_log_fallback_reason(diagnostics$parallel_fallback_reason)) {
     tsmessage(
       "LTSA parallel fallback reason: ",
       diagnostics$parallel_fallback_reason
     )
   }
   invisible(NULL)
+}
+
+ltsa_log_fallback_reason <- function(reason) {
+  if (is.null(reason) || length(reason) != 1L || is.na(reason)) {
+    return(FALSE)
+  }
+  nzchar(reason) && !reason %in% c("not_requested", "not_applicable_svd_route")
 }
 
 format_ltsa_count <- function(x) {

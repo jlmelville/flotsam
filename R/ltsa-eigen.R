@@ -956,12 +956,9 @@ ltsa_rspectra_ritz_eig <- function(B,
               tsmessage(
                 "LTSA Ritz boundary gap ",
                 if (acceptance$gap_available) "remains below tolerance" else "is unavailable",
-                "; returning the first residual-good, rank-good Ritz vectors ",
-                "from a weakly separated low-energy block after diagnostic ",
-                "expansion to ",
+                " after diagnostic expansion to ",
                 eig_k,
-                " candidates. solver quality: now mostly good; ",
-                "coordinate usefulness: still unresolved for weak-gap cases."
+                " candidates; returning residual-good, rank-good Ritz vectors."
               )
             }
             return(selected)
@@ -1030,15 +1027,13 @@ ltsa_rspectra_ritz_eig <- function(B,
       if (best$acceptance$gap_available) "remains below tolerance" else "is unavailable",
       " after requesting ",
       best$eig_k,
-      " candidate vectors: global gap = ",
+      " candidates: global gap = ",
       signif(best$acceptance$rel_gap, 4),
       ", local gap = ",
       signif(best$acceptance$local_gap, 4),
       ", tolerance = ",
       signif(gap_tol, 4),
-      "; returning residual-good, rank-good Ritz vectors from a weakly ",
-      "separated low-energy block. solver quality: now mostly good; ",
-      "coordinate usefulness: still unresolved for weak-gap cases."
+      "; returning residual-good, rank-good Ritz vectors."
     )
   }
 

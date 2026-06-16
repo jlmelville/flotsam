@@ -143,6 +143,13 @@ assemble_ltsa_B_r_triplet_reference <- function(X, nn_idx, ndim, include_self) {
   )
 }
 
+test_that("assembly verbose logging suppresses non-actionable fallback reasons", {
+  expect_false(flotsam:::ltsa_log_fallback_reason(""))
+  expect_false(flotsam:::ltsa_log_fallback_reason("not_requested"))
+  expect_false(flotsam:::ltsa_log_fallback_reason("not_applicable_svd_route"))
+  expect_true(flotsam:::ltsa_log_fallback_reason("copy_size_exceeds_limit"))
+})
+
 test_that("default assembly behavior remains serial", {
   X <- as.matrix(iris[seq_len(18L), seq_len(4L)])
   nn_idx <- exact_nn_idx(X, n_neighbors = 6L, include_self = TRUE)

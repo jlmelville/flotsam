@@ -457,9 +457,9 @@ test_that("weak-gap-only adaptive expansion stops before max_extra", {
   )
   expect_true(any(grepl(
     paste0(
-      "returning the first residual-good, rank-good Ritz vectors.*",
-      "solver quality: now mostly good.*",
-      "coordinate usefulness: still unresolved"
+      "LTSA Ritz boundary gap remains below tolerance ",
+      "after diagnostic expansion to 18 candidates; ",
+      "returning residual-good, rank-good Ritz vectors"
     ),
     messages
   )))
