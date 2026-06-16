@@ -8,7 +8,7 @@ Apply the Local Tangent Space Alignment (LTSA) method (Zhang and Zha,
 ``` r
 ltsa(
   X,
-  n_neighbors = 15,
+  n_neighbors = NULL,
   ndim = 2,
   nn_method = "nnd",
   eig_method = "rspectra",
@@ -16,6 +16,8 @@ ltsa(
   normalize = FALSE,
   ret_B = FALSE,
   n_threads = 0,
+  n_assembly_threads = 1,
+  copy_max_mib = 256,
   verbose = FALSE,
   ...
 )
@@ -32,7 +34,9 @@ ltsa(
 - n_neighbors:
 
   The size of local neighborhood (in terms of number of neighboring
-  sample points) used for manifold approximation.
+  sample points) used for manifold approximation. If `NULL`, the default
+  is `15` when neighbors are computed, or inferred when a precomputed
+  graph is supplied as `nn_method`.
 
 - ndim:
 
@@ -40,12 +44,25 @@ ltsa(
 
 - nn_method:
 
-  Method for finding nearest neighbors. Can be one of:
+  Method for finding nearest neighbors, or a precomputed
+  nearest-neighbor graph. Can be one of:
 
   - `"nnd"` Approximate nearest neighbors by Nearest Neighbor Descent.
 
   - `"exact"` Exact nearest neighbors by exhaustively comparing all
     items. Slow for large datasets.
+
+  - A precomputed nearest-neighbor index matrix.
+
+  - A nearest-neighbor result object with an `idx` matrix.
+
+  Precomputed index matrices should match the raw neighbor-search output
+  used by `rnndescent`: one row per observation and 1-based indices into
+  `X`. When `include_self = TRUE`, `ncol(nn_method)` must equal
+  `n_neighbors` and each row must contain its own row index. When
+  `include_self = FALSE`, `ncol(nn_method)` must equal `n_neighbors + 1`
+  and the first column must contain the row index, because that column
+  is dropped before LTSA assembly.
 
 - eig_method:
 
@@ -95,6 +112,24 @@ ltsa(
 
   Number of threads to use. Applies only to the nearest neighbor
   calculation.
+
+- n_assembly_threads:
+
+  Number of threads to use when constructing the LTSA alignment matrix
+  `B` after nearest neighbors are computed. The default `1` preserves
+  the serial assembly path. Values greater than `1` opt into parallel
+  construction of `B`, which can be faster but may increase peak memory
+  use.
+
+- copy_max_mib:
+
+  Maximum size, in MiB, of the optional row-major dense copy of `X` used
+  to speed up high-dimensional local Gram assembly. If this cap is
+  exceeded, no row-major copy is made. The default is 256 MiB. Set to
+  `0` to disable this copy. This code path is only used when the number
+  of numeric columns in `X` is greater than the number of neighbors.
+  Outside of synthetic datasets, you are quite likely to hit this code
+  path.
 
 - verbose:
 

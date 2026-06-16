@@ -34,7 +34,14 @@
 
     <div class="section level2">
 <h2 class="pkg-version" data-toc-text="0.0.0.9001" id="flotsam-0009001">flotsam 0.0.0.9001<a class="anchor" aria-label="anchor" href="#flotsam-0009001"></a></h2>
-<ul><li>Replaced the old sparse slot-search LTSA assembly path with the serial append/finalize C++ builder as the only internal assembly implementation. Now modestly faster and slightly less peak memory usage.</li>
+<ul><li>New parameter: <code>n_assembly_threads</code> to control number of threads to construct the <code>B</code> matrix.</li>
+<li>You can now pass a precomputed nearest-neighbor index (or the full dense neighbor graph list created by <code>rnndescent</code>) directly to <code>nn_method</code>, for example <code>ltsa(X, nn_method = nn$idx)</code>. Leave <code>n_neighbors</code> unset when using this because the correct number of neighbors is inferred from the graph.</li>
+<li>LTSA matrix construction is improved for high-dimensional inputs (<code>ncol(X)</code> larger than <code>n_neighbors</code>) by using a row-major centered Gram and a triangular matrix taking advantage of B matrix symmetry.</li>
+<li>New parameter: <code>copy_max_mib</code> to control the size cap for the optional row-major dense copy. The default is 256 MiB.</li>
+<li>Replaced the old sparse slot-search LTSA assembly path with the serial append/finalize C++ builder. Now modestly faster and slightly less peak memory usage.</li>
+<li>More robust eigenanalysis convergence.</li>
+<li>Eigenanalysis now extracts more eigenvectors than requested and uses Rayleigh-Ritz polishing on the subspace to attempt a better final result. <code>verbose = TRUE</code> reports residual, rank, and boundary-gap diagnostics.</li>
+<li>If the <code>ndim</code> eigenvalues appear to contain only part of a near-zero low-energy cluster, a further refinement step is added with tighter RSpectra settings and more candidates in case eigenvectors have been missed.</li>
 <li>Better argument validation and eigenanalysis error reporting.</li>
 <li>Updated GitHub Actions.</li>
 </ul></div>
