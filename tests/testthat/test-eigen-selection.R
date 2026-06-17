@@ -645,6 +645,58 @@ test_that("strict rescue candidate count includes expanded diagnostic attempts",
   )
 })
 
+test_that("adaptive Ritz driver keeps strict rescue enabled by default", {
+  # fmt: skip
+  problem <- synthetic_ltsa_problem(c(
+    0, 1e-7, 2e-7, 5e-5, 1e-4, 2e-4, 5e-4, 1e-3,
+    2e-3, 5e-3, 1e-2, 2e-2
+  ))
+  calls <- data.frame(eig_k = integer(), strict = logical())
+  provider <- function(
+    B,
+    eig_k,
+    lambda_max = NULL,
+    verbose = FALSE,
+    strict = FALSE
+  ) {
+    calls <<- rbind(calls, data.frame(eig_k = eig_k, strict = strict))
+    cols <- if (strict) {
+      seq_len(eig_k)
+    } else {
+      c(1L, 2L, 4L:9L)
+    }
+    flotsam:::ltsa_candidate_result(
+      vectors = problem$basis[, cols, drop = FALSE],
+      backend = "synthetic",
+      eig_k = eig_k,
+      matrix = B,
+      lambda_max = 100,
+      convergence_known = FALSE,
+      returned_columns = length(cols)
+    )
+  }
+
+  res <- NULL
+  expect_warning(
+    res <- flotsam:::ltsa_adaptive_ritz_eig(
+      problem$matrix,
+      ndim = 2L,
+      provider = provider,
+      gap_expansion_steps = 0L,
+      strict_rescue_arg_mapper = function(provider_args, ...) {
+        c(provider_args, list(strict = TRUE))
+      }
+    ),
+    NA
+  )
+
+  expect_equal(calls$eig_k, c(8L, 8L))
+  expect_equal(calls$strict, c(FALSE, TRUE))
+  expect_true(isTRUE(res$acceptance$strict_rescue_used))
+  expect_identical(res$acceptance$return_reason, "strict_rescue")
+  expect_lt(max(abs(res$values - c(1e-7, 2e-7))), 1e-14)
+})
+
 test_that("extra near-zero nonconstant modes warn about spectral ambiguity", {
   B <- synthetic_ltsa_matrix(c(0, 1e-9, 2e-9, 3e-9, 4e-9, 1))
   dense <- eigen(B, symmetric = TRUE)
@@ -717,7 +769,7 @@ test_that("adaptive weak-gap expansion keeps lower-energy candidates", {
     NA
   )
 
-  expect_equal(calls, c(8L, 12L, 18L))
+  expect_equal(calls, c(8L, 12L))
   expect_equal(res$eig_k, 12L)
   expect_lt(max(abs(res$values - c(1e-7, 2e-7))), 1e-14)
   expect_false(isTRUE(res$acceptance$strict_rescue_used))
@@ -726,9 +778,58 @@ test_that("adaptive weak-gap expansion keeps lower-energy candidates", {
     res$acceptance$return_reason,
     "weak_lowest_energy_residual_rank_good"
   )
+  expect_equal(res$acceptance$diagnostic_final_eig_k, 12L)
 })
 
-test_that("weak-gap-only adaptive expansion stops before max_extra", {
+test_that("weak-gap-only wrapper default confirms once", {
+  # fmt: skip
+  B <- synthetic_ltsa_matrix(c(
+    0, 0.1, 0.2, 0.200001, 1, 2, 3, 5, 8, 13,
+    21, 34, 55, 89, 144, 233, 377, 610, 987, 1597
+  ))
+
+  messages <- character()
+  res <- NULL
+  expect_warning(
+    res <- withCallingHandlers(
+      flotsam:::ltsa_rspectra_ritz_eig(
+        Matrix::Matrix(B, sparse = TRUE),
+        ndim = 2L,
+        dense_n = 0L,
+        tol = 1e-10,
+        maxitr = 5000L,
+        verbose = TRUE
+      ),
+      message = function(m) {
+        messages <<- c(messages, conditionMessage(m))
+        invokeRestart("muffleMessage")
+      }
+    ),
+    "boundary gap after ndim is weak"
+  )
+  expect_true(any(grepl(
+    paste0(
+      "LTSA Ritz boundary gap remains below tolerance ",
+      "after diagnostic expansion to 12 candidates; ",
+      "returning residual-good, rank-good Ritz vectors"
+    ),
+    messages
+  )))
+
+  requested <- vapply(res$attempts, `[[`, integer(1), "eig_k")
+  expect_equal(requested, c(8L, 12L))
+  expect_equal(res$acceptance$diagnostic_final_eig_k, 12L)
+  expect_true(res$acceptance$resid_ok)
+  expect_true(res$acceptance$rank_ok)
+  expect_false(res$acceptance$gap_ok)
+  expect_true(res$acceptance$spectral_ambiguity_warning)
+  expect_identical(
+    res$acceptance$return_reason,
+    "weak_lowest_energy_residual_rank_good"
+  )
+})
+
+test_that("explicit two-step weak-gap expansion stops before max_extra", {
   # fmt: skip
   B <- synthetic_ltsa_matrix(c(
     0, 0.1, 0.2, 0.200001, 1, 2, 3, 5, 8, 13,

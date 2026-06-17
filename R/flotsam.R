@@ -132,6 +132,8 @@
 #' vector, `ndim` embedding vectors, and one boundary-gap vector may be
 #' requested. `gap_expansion_steps` controls how many extra attempts are made
 #' when rank and residual diagnostics are good but the boundary gap is weak.
+#' The default is one extra attempt, confirming a weak-gap result once before
+#' returning it.
 #' `resid_tol` and `gap_tol` set the scaled residual and global boundary-gap
 #' diagnostic tolerances. `strict_rescue`, `strict_rescue_tol`,
 #' `strict_rescue_maxitr`, `strict_rescue_maxit`, `strict_rescue_it`, and

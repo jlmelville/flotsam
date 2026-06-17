@@ -143,7 +143,9 @@ Advanced LTSA eigenanalysis controls are also accepted here. \code{initial_extra
 and \code{max_extra} control how many candidate vectors beyond the constant null
 vector, \code{ndim} embedding vectors, and one boundary-gap vector may be
 requested. \code{gap_expansion_steps} controls how many extra attempts are made
-when rank and residual diagnostics are good but the boundary gap is weak.
+when rank and residual diagnostics are good but the boundary gap is weak. The
+default is one extra attempt, confirming a weak-gap result once before returning
+it.
 \code{resid_tol} and \code{gap_tol} set the scaled residual and global boundary-gap
 diagnostic tolerances. \code{strict_rescue}, \code{strict_rescue_tol},
 \code{strict_rescue_maxitr}, \code{strict_rescue_maxit}, \code{strict_rescue_it}, and

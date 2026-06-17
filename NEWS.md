@@ -1,3 +1,9 @@
+# flotsam 0.0.0.9002
+
+* Weak LTSA boundary-gap confirmations now default to one extra candidate
+  expansion instead of two, while keeping strict rescue enabled for incomplete
+  near-zero selected blocks.
+
 # flotsam 0.0.0.9001
 
 * New parameter: `n_assembly_threads` to control number of threads to construct
