@@ -18,14 +18,22 @@
   append/finalize C++ builder. Now modestly faster and slightly less
   peak memory usage.
 - More robust eigenanalysis convergence.
-- Eigenanalysis now extracts more eigenvectors than requested and uses
-  Rayleigh-Ritz polishing on the subspace to attempt a better final
-  result. `verbose = TRUE` reports residual, rank, and boundary-gap
-  diagnostics.
+- Iterative eigenanalysis now extracts more eigenvectors than requested
+  and uses null-aware Rayleigh-Ritz polishing on the candidate subspace
+  to attempt a better final result. `verbose = TRUE` reports residual,
+  rank, and boundary-gap diagnostics. The `eig_method = "irlba"` and
+  `"svdr"` paths now share this postprocessing, but rely on post-hoc
+  diagnostics because they do not report RSpectra-style convergence
+  counts.
+- LTSA now warns when final eigenanalysis diagnostics indicate an
+  ambiguous low-energy eigenspace, such as extra near-zero nonconstant
+  modes or a weak boundary gap after the requested embedding dimensions.
+  This can indicate a disconnected or weakly connected neighborhood
+  graph, too-small `n_neighbors`, or `ndim` cutting through a low-energy
+  eigenspace.
 - If the `ndim` eigenvalues appear to contain only part of a near-zero
   low-energy cluster, a further refinement step is added with tighter
-  RSpectra settings and more candidates in case eigenvectors have been
-  missed.
+  settings and more candidates in case eigenvectors have been missed.
 - Better argument validation and eigenanalysis error reporting.
 - Updated GitHub Actions.
 

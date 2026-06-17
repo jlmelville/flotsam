@@ -96,14 +96,25 @@ contain the row index, because that column is dropped before LTSA assembly.</p><
 
 
 <dt id="arg-eig-method">eig_method<a class="anchor" aria-label="anchor" href="#arg-eig-method"></a></dt>
-<dd><p>How to carry out the eigendecomposition. Possible values are:</p><ul><li><p><code>"rspectra"</code> Use <code><a href="https://rdrr.io/pkg/RSpectra/man/eigs.html" class="external-link">RSpectra::eigs_sym()</a></code>.</p></li>
-<li><p><code>"irlba"</code> Use <code><a href="https://rdrr.io/pkg/irlba/man/irlba.html" class="external-link">irlba::irlba()</a></code>.</p></li>
-<li><p><code>"svdr"</code> Use <code><a href="https://rdrr.io/pkg/irlba/man/svdr.html" class="external-link">irlba::svdr()</a></code>.</p></li>
-<li><p><code>"fullsvd"</code> Use the <code><a href="https://rdrr.io/r/base/svd.html" class="external-link">base::svd()</a></code> function. This is only feasible for small
-datasets and should be used for diagnostic purposes only.</p></li>
+<dd><p>How to carry out the final eigendecomposition. Possible
+values are:</p><ul><li><p><code>"rspectra"</code> Use <code><a href="https://rdrr.io/pkg/RSpectra/man/eigs.html" class="external-link">RSpectra::eigs_sym()</a></code> to generate candidate vectors,
+then apply null-aware Rayleigh-Ritz postprocessing. This is the default
+and can report hard backend convergence failures through RSpectra's
+<code>nconv</code> metadata.</p></li>
+<li><p><code>"irlba"</code> Use <code><a href="https://rdrr.io/pkg/irlba/man/irlba.html" class="external-link">irlba::irlba()</a></code> to generate candidate vectors, then apply
+the same null-aware Rayleigh-Ritz postprocessing. This backend does not
+report RSpectra-style convergence counts, so convergence issues are
+detected with post-hoc residual diagnostics.</p></li>
+<li><p><code>"svdr"</code> Use <code><a href="https://rdrr.io/pkg/irlba/man/svdr.html" class="external-link">irlba::svdr()</a></code> to generate candidate vectors, then apply
+the same null-aware Rayleigh-Ritz postprocessing. This backend does not
+report RSpectra-style convergence counts, so convergence issues are
+detected with post-hoc residual diagnostics.</p></li>
+<li><p><code>"fullsvd"</code> Use the <code><a href="https://rdrr.io/r/base/svd.html" class="external-link">base::svd()</a></code> function. This is only feasible for
+small datasets and should be used for diagnostic purposes only.</p></li>
 <li><p><code>"eig"</code> or <code>"eigen"</code> Use the <code><a href="https://rdrr.io/r/base/eigen.html" class="external-link">base::eigen()</a></code> function. This is only
 feasible for small datasets and should be used for diagnostic purposes
-only.</p></li>
+only. Dense <code>"eig"</code> is the better diagnostic reference when algebraic
+eigenvalue ordering matters.</p></li>
 </ul></dd>
 
 
@@ -116,10 +127,14 @@ may allow emulating the HLLE method.</p></dd>
 
 
 <dt id="arg-normalize">normalize<a class="anchor" aria-label="anchor" href="#arg-normalize"></a></dt>
-<dd><p>If <code>TRUE</code> calculate the eigendecomposition on a normalized
-version of the Laplacian. This may be slightly easier to converge while
-giving similar results to the un-normalized case. It may also have suitable
-better properties if clustering is to be carried out on the eigenvectors.</p></dd>
+<dd><p>If <code>TRUE</code>, calculate the final decomposition on a normalized
+version of the LTSA alignment matrix. For iterative methods (<code>"rspectra"</code>,
+<code>"irlba"</code>, and <code>"svdr"</code>), the normalized operator uses the same null-aware
+Rayleigh-Ritz selection as the unnormalized path, then transforms the
+selected vectors back to output coordinates. This may be slightly easier to
+converge while giving similar results to the unnormalized case. It may also
+have better properties if clustering is to be carried out on the
+eigenvectors.</p></dd>
 
 
 <dt id="arg-ret-b">ret_B<a class="anchor" aria-label="anchor" href="#arg-ret-b"></a></dt>
@@ -156,16 +171,23 @@ synthetic datasets, you are quite likely to hit this code path.</p></dd>
 <dt id="arg--">...<a class="anchor" aria-label="anchor" href="#arg--"></a></dt>
 <dd><p>Extra arguments to be passed to the eigendecomposition method
 specified by <code>eig_method</code>. For <code>"rspectra"</code>, arguments are passed to the
-<code>opts</code> list. Suitable parameters include:</p><ul><li><p><code>ncv</code> Number of Lanzcos vectors to use.</p></li>
+<code>opts</code> list used by <code><a href="https://rdrr.io/pkg/RSpectra/man/eigs.html" class="external-link">RSpectra::eigs_sym()</a></code>. Suitable parameters include:</p><ul><li><p><code>ncv</code> Number of Lanczos vectors to use.</p></li>
 <li><p><code>tol</code> Tolerance.</p></li>
 <li><p><code>maxitr</code> Maximum number of iterations.</p></li>
-</ul><p>For <code>"irlba"</code> suitable arguments are:</p><ul><li><p><code>work</code> Working subspace dimension size.</p></li>
+</ul><p>For <code>"irlba"</code>, arguments are passed to <code><a href="https://rdrr.io/pkg/irlba/man/irlba.html" class="external-link">irlba::irlba()</a></code>. Suitable arguments
+include:</p><ul><li><p><code>work</code> Working subspace dimension size.</p></li>
 <li><p><code>tol</code> Tolerance.</p></li>
 <li><p><code>maxit</code> Maximum number of iterations.</p></li>
-</ul><p>For <code>"svdr"</code> suitable arguments are:</p><ul><li><p><code>extra</code> Number of extra vectors to use.</p></li>
+<li><p><code>reorth</code> Whether to use full reorthogonalization.</p></li>
+</ul><p>For <code>"svdr"</code>, arguments are passed to <code><a href="https://rdrr.io/pkg/irlba/man/svdr.html" class="external-link">irlba::svdr()</a></code>. Suitable arguments
+include:</p><ul><li><p><code>extra</code> Number of extra vectors to use.</p></li>
 <li><p><code>tol</code> Tolerance.</p></li>
 <li><p><code>it</code>  Maximum number of iterations.</p></li>
-</ul><p>For more details see the documentation for <code><a href="https://rdrr.io/pkg/RSpectra/man/eigs.html" class="external-link">RSpectra::eigs_sym()</a></code>,
+</ul><p>The iterative methods all use shared Rayleigh-Ritz postprocessing, residual
+diagnostics, and adaptive candidate expansion. However, only RSpectra reports
+explicit convergence counts; <code>"irlba"</code> and <code>"svdr"</code> rely on post-hoc residual
+diagnostics instead.</p>
+<p>For more details see the documentation for <code><a href="https://rdrr.io/pkg/RSpectra/man/eigs.html" class="external-link">RSpectra::eigs_sym()</a></code>,
 <code><a href="https://rdrr.io/pkg/irlba/man/irlba.html" class="external-link">irlba::irlba()</a></code> and <code><a href="https://rdrr.io/pkg/irlba/man/svdr.html" class="external-link">irlba::svdr()</a></code> functions, respectively. Don't pass
 other arguments unless you know what you are doing, as it may cause the
 <code>ltsa</code> to fail.</p></dd>
@@ -196,6 +218,7 @@ On the Equivalence of HLLE and LTSA.
 <span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="co"># unroll it</span></span></span>
 <span class="r-in"><span><span class="va">swiss_ltsa</span> <span class="op">&lt;-</span> <span class="fu">ltsa</span><span class="op">(</span><span class="va">swiss_roll</span><span class="op">)</span></span></span>
+<span class="r-wrn co"><span class="r-pr">#&gt;</span> <span class="warning">Warning: </span>LTSA eigenanalysis found an ambiguous low-energy eigenspace; embedding may not be unique up to only rotation/sign. Diagnostics: the boundary gap after ndim is weak: global gap = 8.795e-06, local gap = 0.8579, tolerance = 1e-04. This can happen when the neighborhood graph is disconnected or weakly connected, n_neighbors is too small, or ndim cuts through a low-energy eigenspace.</span>
 <span class="r-in"><span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">swiss_ltsa</span>, col <span class="op">=</span> <span class="va">phi</span><span class="op">)</span></span></span>
 <span class="r-plt img"><img src="ltsa-1.png" alt="" width="700" height="433"></span>
 <span class="r-in"><span></span></span>
