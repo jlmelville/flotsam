@@ -187,12 +187,46 @@ include:</p><ul><li><p><code>extra</code> Number of extra vectors to use.</p></l
 diagnostics, and adaptive candidate expansion. However, only RSpectra reports
 explicit convergence counts; <code>"irlba"</code> and <code>"svdr"</code> rely on post-hoc residual
 diagnostics instead.</p>
+<p>Advanced LTSA eigenanalysis controls are also accepted here. <code>initial_extra</code>
+and <code>max_extra</code> control how many candidate vectors beyond the constant null
+vector, <code>ndim</code> embedding vectors, and one boundary-gap vector may be
+requested. <code>gap_expansion_steps</code> controls how many extra attempts are made
+when rank and residual diagnostics are good but the boundary gap is weak.
+<code>resid_tol</code> and <code>gap_tol</code> set the scaled residual and global boundary-gap
+diagnostic tolerances. <code>strict_rescue</code>, <code>strict_rescue_tol</code>,
+<code>strict_rescue_maxitr</code>, <code>strict_rescue_maxit</code>, <code>strict_rescue_it</code>, and
+<code>strict_rescue_extra</code> control the stricter rerun used when the selected
+block appears to contain only part of a near-zero nonconstant eigenspace.</p>
 <p>For more details see the documentation for <code><a href="https://rdrr.io/pkg/RSpectra/man/eigs.html" class="external-link">RSpectra::eigs_sym()</a></code>,
 <code><a href="https://rdrr.io/pkg/irlba/man/irlba.html" class="external-link">irlba::irlba()</a></code> and <code><a href="https://rdrr.io/pkg/irlba/man/svdr.html" class="external-link">irlba::svdr()</a></code> functions, respectively. Don't pass
 other arguments unless you know what you are doing, as it may cause the
 <code>ltsa</code> to fail.</p></dd>
 
 </dl></div>
+    <div class="section level2">
+    <h2 id="details">Details<a class="anchor" aria-label="anchor" href="#details"></a></h2>
+    <p>LTSA forms a sparse alignment matrix <code>B</code> and then returns the low-energy
+nonconstant eigenvectors of that matrix. For iterative final eigenanalysis,
+<code>flotsam</code> does more than return the raw columns from the eigensolver. It
+asks the selected backend for a candidate block, projects out the known
+constant null vector, performs a small Rayleigh-Ritz extraction on the
+original LTSA matrix, sorts by the resulting Ritz values, and returns the
+first <code>ndim</code> nonconstant Ritz vectors.</p>
+<p>This postprocessing is intended to make clustered low-energy spectra less
+fragile. The iterative methods over-request candidate vectors by default,
+check post-null rank, compute scaled residuals against <code>B</code>, inspect the
+boundary gap after the selected block, and report near-zero nonconstant mode
+counts when <code>verbose = TRUE</code>. A weak boundary gap does not make the result
+fail, but it can trigger a small number of diagnostic expansion attempts and
+an ambiguity warning because the requested <code>ndim</code> may cut through a larger
+low-energy eigenspace.</p>
+<p>The <code>"rspectra"</code> path first estimates the largest eigenvalue and solves a
+shifted largest-algebraic problem instead of using shift-invert near zero.
+RSpectra's <code>nconv</code> metadata is treated as a hard backend convergence check.
+The <code>"irlba"</code> and <code>"svdr"</code> paths use the same Rayleigh-Ritz selection and
+diagnostics, but they rely on post-hoc residual checks because those
+backends do not expose RSpectra-style convergence counts.</p>
+    </div>
     <div class="section level2">
     <h2 id="references">References<a class="anchor" aria-label="anchor" href="#references"></a></h2>
     <p>Zhang, Z., &amp; Zha, H. (2004).
