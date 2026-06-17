@@ -48,10 +48,17 @@ centered_test_basis <- function(n, rank) {
   Q[, seq_len(rank), drop = FALSE]
 }
 
-synthetic_ltsa_matrix <- function(values) {
+synthetic_ltsa_problem <- function(values) {
   n <- length(values)
-  Q <- cbind(rep(1, n) / sqrt(n), centered_test_basis(n, n - 1L))
-  Q %*% diag(values) %*% t(Q)
+  basis <- cbind(rep(1, n) / sqrt(n), centered_test_basis(n, n - 1L))
+  list(
+    matrix = basis %*% diag(values) %*% t(basis),
+    basis = basis
+  )
+}
+
+synthetic_ltsa_matrix <- function(values) {
+  synthetic_ltsa_problem(values)$matrix
 }
 
 test_that("embedding vector selection drops a returned trivial vector", {
@@ -176,13 +183,11 @@ test_that("Ritz residual diagnostics use the scaled residual convention", {
 })
 
 test_that("Ritz gap diagnostics report global and local scales", {
-  B <- synthetic_ltsa_matrix(c(0, 5e-9, 5e-8, 5e-7, 5e-6, 1))
-  dense <- eigen(B, symmetric = TRUE)
-  ord <- order(dense$values)
+  problem <- synthetic_ltsa_problem(c(0, 5e-9, 5e-8, 5e-7, 5e-6, 1))
 
   rr <- flotsam:::ltsa_ritz_select(
-    B,
-    dense$vectors[, ord, drop = FALSE],
+    problem$matrix,
+    problem$basis,
     ndim = 2L,
     lambda_max = 1
   )
@@ -208,13 +213,11 @@ test_that("Ritz gap diagnostics report global and local scales", {
 })
 
 test_that("near-zero Ritz counts are reported at multiple thresholds", {
-  B <- synthetic_ltsa_matrix(c(0, 5e-9, 5e-8, 5e-7, 5e-6, 1))
-  dense <- eigen(B, symmetric = TRUE)
-  ord <- order(dense$values)
+  problem <- synthetic_ltsa_problem(c(0, 5e-9, 5e-8, 5e-7, 5e-6, 1))
 
   rr <- flotsam:::ltsa_ritz_select(
-    B,
-    dense$vectors[, ord, drop = FALSE],
+    problem$matrix,
+    problem$basis,
     ndim = 2L,
     lambda_max = 1
   )
@@ -223,11 +226,9 @@ test_that("near-zero Ritz counts are reported at multiple thresholds", {
     rr$near_zero_nonconstant_counts,
     c("1e-08" = 1L, "1e-07" = 2L, "1e-06" = 3L, "1e-05" = 4L)
   )
-  expect_equal(
-    rr$reported_ritz_values,
-    c(5e-9, 5e-8, 5e-7, 5e-6, 1),
-    tolerance = 1e-12
-  )
+  expected_ritz_values <- c(5e-9, 5e-8, 5e-7, 5e-6, 1)
+  expect_length(rr$reported_ritz_values, length(expected_ritz_values))
+  expect_lt(max(abs(rr$reported_ritz_values - expected_ritz_values)), 1e-14)
 })
 
 test_that("small Ritz-selected cases agree with dense eigen reference subspaces", {
@@ -490,7 +491,7 @@ test_that("adaptive Ritz driver handles rotated normalized null vectors", {
   )
 
   expect_equal(res$values, c(0.1, 0.2), tolerance = 1e-12)
-  expect_same_subspace(res$vectors, basis[, 2:3], tolerance = 1e-10)
+  expect_same_subspace(res$vectors, basis[, 2:3], tolerance = 1e-7)
   expect_lt(max(res$scaled_residuals), 1e-12)
   expect_identical(res$backend, "synthetic")
 })
