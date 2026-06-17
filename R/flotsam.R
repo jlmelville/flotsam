@@ -3,6 +3,31 @@
 #' Apply the Local Tangent Space Alignment (LTSA) method (Zhang and Zha, 2004)
 #' for dimensionality reduction.
 #'
+#' @details
+#' LTSA forms a sparse alignment matrix `B` and then returns the low-energy
+#' nonconstant eigenvectors of that matrix. For iterative final eigenanalysis,
+#' `flotsam` does more than return the raw columns from the eigensolver. It
+#' asks the selected backend for a candidate block, projects out the known
+#' constant null vector, performs a small Rayleigh-Ritz extraction on the
+#' original LTSA matrix, sorts by the resulting Ritz values, and returns the
+#' first `ndim` nonconstant Ritz vectors.
+#'
+#' This postprocessing is intended to make clustered low-energy spectra less
+#' fragile. The iterative methods over-request candidate vectors by default,
+#' check post-null rank, compute scaled residuals against `B`, inspect the
+#' boundary gap after the selected block, and report near-zero nonconstant mode
+#' counts when `verbose = TRUE`. A weak boundary gap does not make the result
+#' fail, but it can trigger a small number of diagnostic expansion attempts and
+#' an ambiguity warning because the requested `ndim` may cut through a larger
+#' low-energy eigenspace.
+#'
+#' The `"rspectra"` path first estimates the largest eigenvalue and solves a
+#' shifted largest-algebraic problem instead of using shift-invert near zero.
+#' RSpectra's `nconv` metadata is treated as a hard backend convergence check.
+#' The `"irlba"` and `"svdr"` paths use the same Rayleigh-Ritz selection and
+#' diagnostics, but they rely on post-hoc residual checks because those
+#' backends do not expose RSpectra-style convergence counts.
+#'
 #' @param X The input data matrix or data frame with one observation per row. If
 #'   a data frame is supplied, non-numeric columns are ignored. At least one
 #'   numeric column is required.
@@ -101,6 +126,17 @@
 #' diagnostics, and adaptive candidate expansion. However, only RSpectra reports
 #' explicit convergence counts; `"irlba"` and `"svdr"` rely on post-hoc residual
 #' diagnostics instead.
+#'
+#' Advanced LTSA eigenanalysis controls are also accepted here. `initial_extra`
+#' and `max_extra` control how many candidate vectors beyond the constant null
+#' vector, `ndim` embedding vectors, and one boundary-gap vector may be
+#' requested. `gap_expansion_steps` controls how many extra attempts are made
+#' when rank and residual diagnostics are good but the boundary gap is weak.
+#' `resid_tol` and `gap_tol` set the scaled residual and global boundary-gap
+#' diagnostic tolerances. `strict_rescue`, `strict_rescue_tol`,
+#' `strict_rescue_maxitr`, `strict_rescue_maxit`, `strict_rescue_it`, and
+#' `strict_rescue_extra` control the stricter rerun used when the selected
+#' block appears to contain only part of a near-zero nonconstant eigenspace.
 #'
 #' For more details see the documentation for [RSpectra::eigs_sym()],
 #' [irlba::irlba()] and [irlba::svdr()] functions, respectively. Don't pass

@@ -1,3 +1,11 @@
+# LTSA eigenanalysis is deliberately layered:
+# 1. backend-neutral candidate providers call RSpectra, irlba, svdr, or dense
+#    eigensolvers and return a candidate subspace;
+# 2. Rayleigh-Ritz selection re-extracts the lowest nonconstant directions of
+#    the original LTSA matrix from that subspace;
+# 3. the adaptive driver expands, diagnoses, and occasionally reruns stricter
+#    backend solves when the selected low-energy block looks incomplete.
+
 ltsa_iterative_search_k <- function(ndim, n) {
   base_eig_k <- ndim + 1L
   search_eig_k <- max(ndim + 3L, 2L * base_eig_k)
@@ -224,6 +232,10 @@ ltsa_lambda_max_probe <- function(B, varargs) {
   )
 }
 
+# Backend-neutral candidate result contract. Providers may use different
+# eigensolver APIs, but the adaptive LTSA driver only needs candidate vectors,
+# Rayleigh values against the matrix of interest, convergence metadata when
+# available, and residual diagnostics.
 ltsa_candidate_result <- function(
   vectors,
   values = NULL,
@@ -352,6 +364,8 @@ ltsa_call_candidate_provider <- function(
   )
 }
 
+# RSpectra candidate provider. The actual solve is delegated to rs_eig(), which
+# uses the shifted largest-algebraic formulation and enforces RSpectra nconv.
 ltsa_rspectra_candidate_provider <- function(
   B,
   eig_k,
@@ -377,6 +391,9 @@ ltsa_rspectra_candidate_provider <- function(
   )
 }
 
+# irlba and svdr do not expose an RSpectra-style nconv count. These mappers keep
+# strict-rescue reruns at least as rigorous as the user-supplied settings, while
+# the shared driver judges success using post-hoc residual diagnostics.
 ltsa_irlba_strict_rescue_args <- function(
   varargs,
   strict_rescue_tol,
@@ -458,6 +475,9 @@ ltsa_validate_candidate_eig_k <- function(eig_k, n) {
   eig_k
 }
 
+# Candidate results for shifted solves are always re-valued against the
+# original LTSA matrix. The shifted backend values are retained only as backend
+# metadata; final selection uses Rayleigh values of B.
 ltsa_shifted_candidate_result <- function(
   B,
   vectors,
@@ -527,6 +547,9 @@ ltsa_shifted_candidate_result <- function(
   candidate
 }
 
+# irlba candidate provider. It solves the shifted problem by requesting right
+# singular vectors, then all final ordering is recomputed by Rayleigh values of
+# the original LTSA matrix.
 ltsa_irlba_candidate_provider <- function(
   B,
   eig_k,
@@ -604,6 +627,9 @@ ltsa_irlba_candidate_provider <- function(
   )
 }
 
+# svdr candidate provider. Like irlba, this produces a candidate subspace only;
+# the common Rayleigh-Ritz selector decides which nonconstant directions to
+# return.
 ltsa_svdr_candidate_provider <- function(
   B,
   eig_k,
@@ -679,6 +705,8 @@ ltsa_svdr_candidate_provider <- function(
   )
 }
 
+# Dense diagnostic path used for small matrices or when a requested candidate
+# count is large relative to the matrix size.
 dense_ltsa_eig <- function(B, eig_k, backend = "dense_eigen") {
   dense <- as.matrix(B)
   eig <- eigen(dense, symmetric = TRUE)
@@ -715,6 +743,10 @@ dense_ltsa_eig <- function(B, eig_k, backend = "dense_eigen") {
   )
 }
 
+# Wrapper-level Rayleigh-Ritz extraction. Iterative solvers commonly do their
+# own Ritz extraction internally, but this step answers the LTSA-specific
+# question: within the returned candidate span, which vectors best diagonalize
+# the original LTSA matrix after the known constant null direction is removed?
 ltsa_ritz_select <- function(
   B,
   vectors,
@@ -862,6 +894,10 @@ ltsa_next_ritz_candidate_k <- function(eig_k, max_k) {
   min(max_k, max(eig_k + 2L, as.integer(ceiling(1.5 * eig_k))))
 }
 
+# Acceptance is intentionally split into hard checks and diagnostic checks.
+# Post-null rank and scaled residuals are hard quality gates. The boundary gap
+# is advisory by default: a weak gap can mean the embedding is part of a larger
+# low-energy eigenspace rather than numerically wrong.
 accept_ltsa_ritz <- function(
   rr,
   ndim,
@@ -971,6 +1007,11 @@ ltsa_rescue_candidate <- function(candidate, incumbent, ndim) {
   incumbent
 }
 
+# Strict rescue targets one specific failure signature: residual-good,
+# rank-good output where the selected block appears to contain only part of a
+# near-zero nonconstant cluster. Rayleigh-Ritz cannot invent a missing
+# direction, so the rescue path reruns the backend with stricter settings and
+# also tries a combined candidate bank.
 ltsa_strict_rescue_needed <- function(res, ndim) {
   if (
     is.null(res) ||
@@ -984,6 +1025,9 @@ ltsa_strict_rescue_needed <- function(res, ndim) {
   near_zero_count > 0L && near_zero_count < ndim
 }
 
+# Ambiguity warnings are only issued for residual-good, rank-good results. They
+# communicate spectral non-uniqueness without turning a plausible embedding into
+# an error.
 ltsa_spectral_ambiguity_issues <- function(res, ndim) {
   if (
     is.null(res) ||
@@ -1046,6 +1090,8 @@ ltsa_maybe_warn_spectral_ambiguity <- function(res, ndim) {
   res
 }
 
+# Small adapter kept for callers that want an explicit RSpectra provider call
+# rather than going through the shared adaptive driver.
 ltsa_rs_eig_call <- function(
   B,
   eig_k,
@@ -1337,6 +1383,10 @@ ltsa_with_ritz <- function(eig_res, rr, acceptance, attempts) {
   eig_res
 }
 
+# Adaptive driver shared by rspectra, irlba, and svdr. It over-requests
+# candidates, re-extracts LTSA Ritz vectors, expands only while diagnostics
+# justify it, and returns the first residual-good/rank-good weak-gap result
+# after the configured diagnostic expansion budget is exhausted.
 ltsa_adaptive_ritz_eig <- function(
   B,
   ndim,
@@ -1635,6 +1685,9 @@ ltsa_adaptive_ritz_eig <- function(
   best
 }
 
+# Public-facing iterative wrappers. Arguments in ... are split by R's argument
+# matching: LTSA controls such as initial_extra or gap_expansion_steps are
+# consumed here, while remaining backend controls are forwarded to the provider.
 ltsa_rspectra_ritz_eig <- function(
   B,
   ndim,
@@ -1803,6 +1856,10 @@ ltsa_svdr_ritz_eig <- function(
   )
 }
 
+# RSpectra backend call. This avoids shift-invert near zero by estimating the
+# largest eigenvalue, forming shift * I - B, and solving for largest algebraic
+# eigenvectors of the shifted problem. nconv is treated as a hard convergence
+# gate before shared LTSA postprocessing sees the candidate block.
 rs_opt <- function(eig_k = NULL, n = NULL) {
   opts <- list(tol = 1e-6)
   if (!is.null(eig_k) && !is.null(n)) {
