@@ -67,7 +67,8 @@ ltsa_adaptive_ritz_eig <- function(
   lambda_max <- NULL
   attempts <- list()
   best <- NULL
-  first_gap_good <- NULL
+  weak_gap_candidate <- NULL
+  first_weak_gap_eig_k <- NA_integer_
   last_error <- NULL
   gap_expansions <- 0L
 
@@ -169,15 +170,24 @@ ltsa_adaptive_ritz_eig <- function(
           return(best)
         }
         if (acceptance$gap_issue_only) {
-          if (is.null(first_gap_good)) {
-            first_gap_good <- best
-            first_gap_good$acceptance$return_reason <- "weak_first_residual_rank_good"
-            first_gap_good$acceptance$first_weak_gap_eig_k <- eig_k
+          if (is.null(weak_gap_candidate)) {
+            first_weak_gap_eig_k <- eig_k
           }
+          weak_gap_candidate <- ltsa_rescue_candidate(
+            candidate = best,
+            incumbent = weak_gap_candidate,
+            ndim = ndim
+          )
+          weak_gap_candidate$acceptance$return_reason <-
+            "weak_lowest_energy_residual_rank_good"
+          weak_gap_candidate$acceptance$first_weak_gap_eig_k <-
+            first_weak_gap_eig_k
           if (gap_expansions >= gap_expansion_steps || eig_k >= max_k) {
-            selected <- first_gap_good %||% best
+            selected <- weak_gap_candidate %||% best
             selected$attempts <- attempts
-            selected$acceptance$return_reason <- "weak_first_residual_rank_good"
+            selected$acceptance$return_reason <-
+              "weak_lowest_energy_residual_rank_good"
+            selected$acceptance$first_weak_gap_eig_k <- first_weak_gap_eig_k
             selected$acceptance$gap_expansions <- gap_expansions
             selected$acceptance$diagnostic_final_eig_k <- eig_k
             if (strict_rescue) {

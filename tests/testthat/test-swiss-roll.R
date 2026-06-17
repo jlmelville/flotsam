@@ -16,7 +16,7 @@ test_that("default RSpectra path unfolds a swiss roll", {
       eig_method = "rspectra",
       n_threads = 0
     ),
-    "ambiguous low-energy eigenspace"
+    NA
   )
 
   truth <- scale(cbind(phi = phi, z = swiss_roll$z))

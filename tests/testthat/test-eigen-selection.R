@@ -680,6 +680,54 @@ test_that("extra near-zero nonconstant modes warn about spectral ambiguity", {
   )))
 })
 
+test_that("adaptive weak-gap expansion keeps lower-energy candidates", {
+  # fmt: skip
+  problem <- synthetic_ltsa_problem(c(
+    0, 1e-7, 2e-7, 5e-5, 1e-4, 2e-4, 5e-4, 1e-3,
+    2e-3, 5e-3, 1e-2, 2e-2, 5e-2, 0.1, 0.2, 0.4,
+    0.8, 1, 2, 4, 8, 16, 32, 100
+  ))
+  calls <- integer()
+  provider <- function(B, eig_k, lambda_max = NULL, verbose = FALSE) {
+    calls <<- c(calls, eig_k)
+    cols <- if (eig_k == 8L) {
+      c(1L, 2L, 4L:9L)
+    } else {
+      seq_len(eig_k)
+    }
+    flotsam:::ltsa_candidate_result(
+      vectors = problem$basis[, cols, drop = FALSE],
+      backend = "synthetic",
+      eig_k = eig_k,
+      matrix = B,
+      lambda_max = 100,
+      convergence_known = FALSE,
+      returned_columns = length(cols)
+    )
+  }
+
+  res <- NULL
+  expect_warning(
+    res <- flotsam:::ltsa_adaptive_ritz_eig(
+      problem$matrix,
+      ndim = 2L,
+      provider = provider,
+      strict_rescue = TRUE
+    ),
+    NA
+  )
+
+  expect_equal(calls, c(8L, 12L, 18L))
+  expect_equal(res$eig_k, 12L)
+  expect_lt(max(abs(res$values - c(1e-7, 2e-7))), 1e-14)
+  expect_false(isTRUE(res$acceptance$strict_rescue_used))
+  expect_false(isTRUE(res$acceptance$spectral_ambiguity_warning))
+  expect_identical(
+    res$acceptance$return_reason,
+    "weak_lowest_energy_residual_rank_good"
+  )
+})
+
 test_that("weak-gap-only adaptive expansion stops before max_extra", {
   # fmt: skip
   B <- synthetic_ltsa_matrix(c(
@@ -727,7 +775,7 @@ test_that("weak-gap-only adaptive expansion stops before max_extra", {
   expect_true(res$acceptance$spectral_ambiguity_warning)
   expect_identical(
     res$acceptance$return_reason,
-    "weak_first_residual_rank_good"
+    "weak_lowest_energy_residual_rank_good"
   )
   expect_equal(res$acceptance$diagnostic_final_eig_k, 18L)
 })

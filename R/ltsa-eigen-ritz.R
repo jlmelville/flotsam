@@ -312,17 +312,24 @@ ltsa_spectral_ambiguity_issues <- function(res, ndim) {
     isTRUE(res$acceptance$gap_available) &&
       !isTRUE(res$acceptance$gap_ok)
   ) {
-    issues <- c(
-      issues,
-      paste0(
-        "the boundary gap after ndim is weak: global gap = ",
-        signif(res$acceptance$global_gap %||% NA_real_, 4),
-        ", local gap = ",
-        signif(res$acceptance$local_gap %||% NA_real_, 4),
-        ", tolerance = ",
-        signif(res$acceptance$gap_tol %||% NA_real_, 4)
+    local_gap <- res$acceptance$local_gap %||% NA_real_
+    gap_tol <- res$acceptance$gap_tol %||% NA_real_
+    local_gap_ok <- is.finite(local_gap) &&
+      is.finite(gap_tol) &&
+      local_gap >= gap_tol
+    if (!local_gap_ok) {
+      issues <- c(
+        issues,
+        paste0(
+          "the boundary gap after ndim is weak: global gap = ",
+          signif(res$acceptance$global_gap %||% NA_real_, 4),
+          ", local gap = ",
+          signif(local_gap, 4),
+          ", tolerance = ",
+          signif(gap_tol, 4)
+        )
       )
-    )
+    }
   }
 
   issues
