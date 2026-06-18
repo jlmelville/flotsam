@@ -20,6 +20,8 @@ ltsa_adaptive_ritz_eig <- function(
   strict_rescue_arg_mapper = function(provider_args, ...) provider_args,
   strict_rescue_controls = list(),
   strict_rescue_extra = 5L,
+  attempt_reference_vectors = NULL,
+  retain_attempt_candidate_spaces = FALSE,
   bank_backend = NULL,
   verbose = FALSE
 ) {
@@ -187,7 +189,12 @@ ltsa_adaptive_ritz_eig <- function(
             strict_rescue = strict_rescue
           )
           best <- ltsa_maybe_warn_spectral_ambiguity(best, ndim)
-          return(ltsa_finalize_attempt_observability(best, nullvec = nullvec))
+          return(ltsa_finalize_attempt_observability(
+            best,
+            reference_vectors = attempt_reference_vectors,
+            nullvec = nullvec,
+            retain_candidate_spaces = retain_attempt_candidate_spaces
+          ))
         }
         if (acceptance$gap_issue_only) {
           if (is.null(weak_gap_candidate)) {
@@ -262,7 +269,9 @@ ltsa_adaptive_ritz_eig <- function(
             }
             return(ltsa_finalize_attempt_observability(
               selected,
-              nullvec = nullvec
+              reference_vectors = attempt_reference_vectors,
+              nullvec = nullvec,
+              retain_candidate_spaces = retain_attempt_candidate_spaces
             ))
           }
 
@@ -348,7 +357,12 @@ ltsa_adaptive_ritz_eig <- function(
     )
   }
 
-  ltsa_finalize_attempt_observability(best, nullvec = nullvec)
+  ltsa_finalize_attempt_observability(
+    best,
+    reference_vectors = attempt_reference_vectors,
+    nullvec = nullvec,
+    retain_candidate_spaces = retain_attempt_candidate_spaces
+  )
 }
 
 # Public-facing iterative wrappers. Arguments in ... are split by R's argument
@@ -368,6 +382,8 @@ ltsa_rspectra_ritz_eig <- function(
   strict_rescue_tol = 1e-10,
   strict_rescue_maxitr = 5000L,
   strict_rescue_extra = 5L,
+  attempt_reference_vectors = NULL,
+  retain_attempt_candidate_spaces = FALSE,
   verbose = FALSE
 ) {
   strict_rescue_maxitr <- as.integer(strict_rescue_maxitr)
@@ -405,6 +421,8 @@ ltsa_rspectra_ritz_eig <- function(
       strict_rescue_maxitr = strict_rescue_maxitr
     ),
     strict_rescue_extra = strict_rescue_extra,
+    attempt_reference_vectors = attempt_reference_vectors,
+    retain_attempt_candidate_spaces = retain_attempt_candidate_spaces,
     bank_backend = "rspectra_bank",
     verbose = verbose
   )
@@ -424,6 +442,8 @@ ltsa_irlba_ritz_eig <- function(
   strict_rescue_tol = 1e-10,
   strict_rescue_maxit = 5000L,
   strict_rescue_extra = 5L,
+  attempt_reference_vectors = NULL,
+  retain_attempt_candidate_spaces = FALSE,
   verbose = FALSE
 ) {
   strict_rescue_maxit <- as.integer(strict_rescue_maxit)
@@ -461,6 +481,8 @@ ltsa_irlba_ritz_eig <- function(
       strict_rescue_maxit = strict_rescue_maxit
     ),
     strict_rescue_extra = strict_rescue_extra,
+    attempt_reference_vectors = attempt_reference_vectors,
+    retain_attempt_candidate_spaces = retain_attempt_candidate_spaces,
     bank_backend = "irlba_bank",
     verbose = verbose
   )
@@ -480,6 +502,8 @@ ltsa_svdr_ritz_eig <- function(
   strict_rescue_tol = 1e-10,
   strict_rescue_it = 5000L,
   strict_rescue_extra = 5L,
+  attempt_reference_vectors = NULL,
+  retain_attempt_candidate_spaces = FALSE,
   verbose = FALSE
 ) {
   strict_rescue_it <- as.integer(strict_rescue_it)
@@ -517,6 +541,8 @@ ltsa_svdr_ritz_eig <- function(
       strict_rescue_it = strict_rescue_it
     ),
     strict_rescue_extra = strict_rescue_extra,
+    attempt_reference_vectors = attempt_reference_vectors,
+    retain_attempt_candidate_spaces = retain_attempt_candidate_spaces,
     bank_backend = "svdr_bank",
     verbose = verbose
   )

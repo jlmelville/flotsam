@@ -497,20 +497,39 @@ ltsa_candidate_reference_projection <- function(
     return(list(
       reference_projection_norms = numeric(),
       reference_projection_min_norm = NA_real_,
-      reference_candidate_space_rank = NA_integer_
+      reference_candidate_space_rank = NA_integer_,
+      reference_space_rank = NA_integer_,
+      reference_overlap_singular_values = numeric(),
+      reference_overlap_min_singular_value = NA_real_
     ))
   }
 
-  qrp <- qr(candidate_vectors, tol = rank_tol)
-  rank <- qrp$rank
-  if (rank == 0L) {
+  candidate_qrp <- qr(candidate_vectors, tol = rank_tol)
+  candidate_rank <- candidate_qrp$rank
+  reference_qrp <- qr(reference_vectors, tol = rank_tol)
+  reference_rank <- reference_qrp$rank
+  if (candidate_rank == 0L) {
     norms <- rep(0, ncol(reference_vectors))
   } else {
-    Q <- qr.Q(qrp)[, seq_len(rank), drop = FALSE]
-    projected_norms <- sqrt(colSums(crossprod(Q, reference_vectors)^2))
+    candidate_Q <- qr.Q(candidate_qrp)[, seq_len(candidate_rank), drop = FALSE]
+    projected_norms <- sqrt(colSums(crossprod(candidate_Q, reference_vectors)^2))
     reference_norms <- sqrt(colSums(reference_vectors * reference_vectors))
     norms <- projected_norms / pmax(reference_norms, .Machine$double.eps)
     norms <- pmax(0, pmin(1, norms))
+  }
+  singular_values <- if (reference_rank == 0L) {
+    numeric()
+  } else if (candidate_rank == 0L) {
+    rep(0, reference_rank)
+  } else {
+    candidate_Q <- qr.Q(candidate_qrp)[, seq_len(candidate_rank), drop = FALSE]
+    reference_Q <- qr.Q(reference_qrp)[, seq_len(reference_rank), drop = FALSE]
+    sv <- svd(crossprod(candidate_Q, reference_Q), nu = 0, nv = 0)$d
+    sv <- pmax(0, pmin(1, sv))
+    if (length(sv) < reference_rank) {
+      sv <- c(sv, rep(0, reference_rank - length(sv)))
+    }
+    sv
   }
 
   list(
@@ -520,14 +539,22 @@ ltsa_candidate_reference_projection <- function(
     } else {
       min(norms)
     },
-    reference_candidate_space_rank = as.integer(rank)
+    reference_candidate_space_rank = as.integer(candidate_rank),
+    reference_space_rank = as.integer(reference_rank),
+    reference_overlap_singular_values = singular_values,
+    reference_overlap_min_singular_value = if (length(singular_values) == 0L) {
+      NA_real_
+    } else {
+      min(singular_values)
+    }
   )
 }
 
 ltsa_finalize_attempt_observability <- function(
   res,
   reference_vectors = NULL,
-  nullvec = NULL
+  nullvec = NULL,
+  retain_candidate_spaces = FALSE
 ) {
   if (is.null(res) || is.null(res$attempts) || length(res$attempts) == 0L) {
     return(res)
@@ -558,8 +585,16 @@ ltsa_finalize_attempt_observability <- function(
         coverage$reference_projection_min_norm
       attempt$reference_candidate_space_rank <-
         coverage$reference_candidate_space_rank
+      attempt$reference_space_rank <-
+        coverage$reference_space_rank
+      attempt$reference_overlap_singular_values <-
+        coverage$reference_overlap_singular_values
+      attempt$reference_overlap_min_singular_value <-
+        coverage$reference_overlap_min_singular_value
     }
-    attempt$.candidate_vectors <- NULL
+    if (!isTRUE(retain_candidate_spaces)) {
+      attempt$.candidate_vectors <- NULL
+    }
     attempt
   })
 
@@ -585,6 +620,16 @@ ltsa_attempt_summary <- function(
     nops = eig_res$nops %||% NA_integer_,
     mprod = eig_res$mprod %||% NA_integer_,
     ncv = ltsa_attempt_opt_integer(eig_res$opts, "ncv"),
+    candidate_vector_rows = if (!is.null(eig_res$vectors)) {
+      nrow(eig_res$vectors)
+    } else {
+      NA_integer_
+    },
+    candidate_vector_cols = if (!is.null(eig_res$vectors)) {
+      ncol(eig_res$vectors)
+    } else {
+      NA_integer_
+    },
     returned_columns = eig_res$returned_columns %||% ncol(eig_res$vectors),
     converged_columns = eig_res$converged_columns %||%
       eig_res$nconv %||% NA_integer_,
@@ -636,6 +681,16 @@ ltsa_attempt_error_summary <- function(
     nops = eig_res$nops %||% NA_integer_,
     mprod = eig_res$mprod %||% NA_integer_,
     ncv = ltsa_attempt_opt_integer(eig_res$opts, "ncv"),
+    candidate_vector_rows = if (!is.null(eig_res$vectors)) {
+      nrow(eig_res$vectors)
+    } else {
+      NA_integer_
+    },
+    candidate_vector_cols = if (!is.null(eig_res$vectors)) {
+      ncol(eig_res$vectors)
+    } else {
+      NA_integer_
+    },
     returned_columns = eig_res$returned_columns %||%
       if (!is.null(eig_res$vectors)) ncol(eig_res$vectors) else NA_integer_,
     converged_columns = eig_res$converged_columns %||%

@@ -667,6 +667,58 @@ test_that("adaptive attempt summaries include backend work and coverage metadata
   expect_equal(attempt$reference_projection_norms, c(1, 1), tolerance = 1e-12)
   expect_equal(attempt$reference_projection_min_norm, 1, tolerance = 1e-12)
   expect_identical(attempt$reference_candidate_space_rank, 7L)
+  expect_identical(attempt$reference_space_rank, 2L)
+  expect_equal(attempt$reference_overlap_singular_values, c(1, 1), tolerance = 1e-12)
+  expect_equal(attempt$reference_overlap_min_singular_value, 1, tolerance = 1e-12)
+})
+
+test_that("candidate reference projection pads missing reference directions", {
+  basis <- selection_test_basis()
+  candidates <- cbind(basis$u, basis$v1)
+  reference <- cbind(basis$v1, basis$v2)
+
+  coverage <- flotsam:::ltsa_candidate_reference_projection(
+    candidate_vectors = candidates,
+    reference_vectors = reference,
+    nullvec = basis$u
+  )
+
+  expect_identical(coverage$reference_candidate_space_rank, 1L)
+  expect_identical(coverage$reference_space_rank, 2L)
+  expect_equal(coverage$reference_projection_norms, c(1, 0), tolerance = 1e-12)
+  expect_equal(coverage$reference_overlap_singular_values, c(1, 0), tolerance = 1e-12)
+  expect_equal(coverage$reference_overlap_min_singular_value, 0, tolerance = 1e-12)
+})
+
+test_that("adaptive Ritz driver can retain attempts and use a fixed reference", {
+  problem <- synthetic_ltsa_problem(c(0, 0.1, 0.2, 1, 2, 3, 4, 5, 6, 7))
+  fixed_reference <- problem$basis[, 3:4, drop = FALSE]
+  provider <- function(B, eig_k, lambda_max = NULL, verbose = FALSE) {
+    flotsam:::ltsa_candidate_result(
+      vectors = problem$basis[, seq_len(eig_k), drop = FALSE],
+      backend = "synthetic",
+      eig_k = eig_k,
+      matrix = B,
+      lambda_max = 7,
+      convergence_known = TRUE,
+      returned_columns = eig_k,
+      converged_columns = eig_k
+    )
+  }
+
+  res <- flotsam:::ltsa_adaptive_ritz_eig(
+    problem$matrix,
+    ndim = 2L,
+    provider = provider,
+    strict_rescue = FALSE,
+    attempt_reference_vectors = fixed_reference,
+    retain_attempt_candidate_spaces = TRUE
+  )
+  attempt <- res$attempts[[1L]]
+
+  expect_false(is.null(attempt$.candidate_vectors))
+  expect_equal(attempt$reference_overlap_singular_values, c(1, 1), tolerance = 1e-12)
+  expect_equal(attempt$reference_projection_norms, c(1, 1), tolerance = 1e-12)
 })
 
 test_that("adaptive RSpectra path returns Ritz-polished vectors", {
