@@ -458,17 +458,139 @@ ltsa_strict_rescue_eig_k <- function(selected, ndim, n, strict_rescue_extra) {
   min(n - 1L, max(candidates))
 }
 
+ltsa_attempt_opt_integer <- function(opts, name) {
+  if (is.null(opts) || !is.list(opts) || is.null(opts[[name]])) {
+    return(NA_integer_)
+  }
+
+  value <- opts[[name]]
+  if (length(value) == 0L || is.na(value[[1L]])) {
+    return(NA_integer_)
+  }
+
+  out <- suppressWarnings(as.integer(value[[1L]]))
+  if (length(out) != 1L || is.na(out)) {
+    return(NA_integer_)
+  }
+  out
+}
+
+ltsa_candidate_reference_projection <- function(
+  candidate_vectors,
+  reference_vectors,
+  nullvec = NULL,
+  rank_tol = 1e-10
+) {
+  candidate_vectors <- as.matrix(candidate_vectors)
+  reference_vectors <- as.matrix(reference_vectors)
+  if (nrow(candidate_vectors) != nrow(reference_vectors)) {
+    stop("candidate and reference vector row counts differ", call. = FALSE)
+  }
+  if (!is.null(nullvec)) {
+    nullvec <- ltsa_normalize_null_vector(nullvec, nrow(candidate_vectors))
+    candidate_vectors <- candidate_vectors -
+      nullvec %*% crossprod(nullvec, candidate_vectors)
+    reference_vectors <- reference_vectors -
+      nullvec %*% crossprod(nullvec, reference_vectors)
+  }
+  if (ncol(reference_vectors) == 0L) {
+    return(list(
+      reference_projection_norms = numeric(),
+      reference_projection_min_norm = NA_real_,
+      reference_candidate_space_rank = NA_integer_
+    ))
+  }
+
+  qrp <- qr(candidate_vectors, tol = rank_tol)
+  rank <- qrp$rank
+  if (rank == 0L) {
+    norms <- rep(0, ncol(reference_vectors))
+  } else {
+    Q <- qr.Q(qrp)[, seq_len(rank), drop = FALSE]
+    projected_norms <- sqrt(colSums(crossprod(Q, reference_vectors)^2))
+    reference_norms <- sqrt(colSums(reference_vectors * reference_vectors))
+    norms <- projected_norms / pmax(reference_norms, .Machine$double.eps)
+    norms <- pmax(0, pmin(1, norms))
+  }
+
+  list(
+    reference_projection_norms = norms,
+    reference_projection_min_norm = if (length(norms) == 0L) {
+      NA_real_
+    } else {
+      min(norms)
+    },
+    reference_candidate_space_rank = as.integer(rank)
+  )
+}
+
+ltsa_finalize_attempt_observability <- function(
+  res,
+  reference_vectors = NULL,
+  nullvec = NULL
+) {
+  if (is.null(res) || is.null(res$attempts) || length(res$attempts) == 0L) {
+    return(res)
+  }
+  reference_vectors <- reference_vectors %||% res$vectors
+  if (is.null(reference_vectors)) {
+    return(res)
+  }
+
+  res$attempts <- lapply(res$attempts, function(attempt) {
+    candidate_vectors <- attempt$.candidate_vectors
+    if (!is.null(candidate_vectors)) {
+      coverage <- tryCatch(
+        ltsa_candidate_reference_projection(
+          candidate_vectors = candidate_vectors,
+          reference_vectors = reference_vectors,
+          nullvec = nullvec
+        ),
+        error = function(e) list(
+          reference_projection_norms = NA_real_,
+          reference_projection_min_norm = NA_real_,
+          reference_candidate_space_rank = NA_integer_
+        )
+      )
+      attempt$reference_projection_norms <-
+        coverage$reference_projection_norms
+      attempt$reference_projection_min_norm <-
+        coverage$reference_projection_min_norm
+      attempt$reference_candidate_space_rank <-
+        coverage$reference_candidate_space_rank
+    }
+    attempt$.candidate_vectors <- NULL
+    attempt
+  })
+
+  res
+}
+
 ltsa_attempt_summary <- function(
   eig_k,
   eig_res,
   rr,
   acceptance,
   strict_rescue = FALSE,
-  bank = FALSE
+  bank = FALSE,
+  candidate_elapsed = NA_real_,
+  ritz_elapsed = NA_real_,
+  capture_candidate_space = FALSE
 ) {
-  list(
+  out <- list(
     eig_k = eig_k,
+    backend = eig_res$backend %||% NA_character_,
     nconv = eig_res$nconv,
+    niter = eig_res$niter %||% NA_integer_,
+    nops = eig_res$nops %||% NA_integer_,
+    mprod = eig_res$mprod %||% NA_integer_,
+    ncv = ltsa_attempt_opt_integer(eig_res$opts, "ncv"),
+    returned_columns = eig_res$returned_columns %||% ncol(eig_res$vectors),
+    converged_columns = eig_res$converged_columns %||%
+      eig_res$nconv %||% NA_integer_,
+    convergence_known = eig_res$convergence_known %||% NA,
+    candidate_elapsed = candidate_elapsed,
+    ritz_elapsed = ritz_elapsed,
     rank_after_null = rr$rank_after_null,
     max_scaled_residual = acceptance$max_scaled_residual,
     global_gap = rr$global_gap,
@@ -490,6 +612,45 @@ ltsa_attempt_summary <- function(
     strict_rescue = strict_rescue,
     bank = bank
   )
+  if (isTRUE(capture_candidate_space)) {
+    out$.candidate_vectors <- eig_res$vectors
+  }
+  out
+}
+
+ltsa_attempt_error_summary <- function(
+  eig_k,
+  error,
+  eig_res = NULL,
+  strict_rescue = FALSE,
+  bank = FALSE,
+  candidate_elapsed = NA_real_,
+  ritz_elapsed = NA_real_,
+  capture_candidate_space = FALSE
+) {
+  out <- list(
+    eig_k = eig_k,
+    backend = eig_res$backend %||% NA_character_,
+    nconv = eig_res$nconv %||% NA_integer_,
+    niter = eig_res$niter %||% NA_integer_,
+    nops = eig_res$nops %||% NA_integer_,
+    mprod = eig_res$mprod %||% NA_integer_,
+    ncv = ltsa_attempt_opt_integer(eig_res$opts, "ncv"),
+    returned_columns = eig_res$returned_columns %||%
+      if (!is.null(eig_res$vectors)) ncol(eig_res$vectors) else NA_integer_,
+    converged_columns = eig_res$converged_columns %||%
+      eig_res$nconv %||% NA_integer_,
+    convergence_known = eig_res$convergence_known %||% NA,
+    candidate_elapsed = candidate_elapsed,
+    ritz_elapsed = ritz_elapsed,
+    strict_rescue = strict_rescue,
+    bank = bank,
+    error = error
+  )
+  if (isTRUE(capture_candidate_space) && !is.null(eig_res$vectors)) {
+    out$.candidate_vectors <- eig_res$vectors
+  }
+  out
 }
 
 ltsa_with_attempt <- function(eig_res, rr, acceptance, attempts, attempt) {
@@ -516,9 +677,14 @@ ltsa_bank_eig_result <- function(
   bank_eig_res$backend <- bank_backend %||%
     paste0(strict_eig_res$backend %||% "candidate", "_bank")
   bank_eig_res$eig_k <- ncol(bank_vectors)
+  bank_eig_res$niter <- NA_integer_
+  bank_eig_res$nops <- NA_integer_
+  bank_eig_res$mprod <- NA_integer_
+  bank_eig_res$opts <- NULL
   bank_eig_res$returned_columns <- ncol(bank_vectors)
   bank_eig_res$converged_columns <- ncol(bank_vectors)
   bank_eig_res$nconv <- ncol(bank_vectors)
+  bank_eig_res$convergence_known <- TRUE
   residuals <- ltsa_ritz_residuals(
     strict_eig_res$matrix,
     bank_vectors,
@@ -562,36 +728,45 @@ ltsa_maybe_strict_rescue <- function(
     c(list(provider_args), strict_rescue_controls)
   )
 
-  strict_eig_res <- tryCatch(
-    ltsa_call_candidate_provider(
-      provider = provider,
-      B = B,
-      eig_k = strict_eig_k,
-      provider_args = strict_args,
-      lambda_max = lambda_max,
-      verbose = verbose
-    ),
-    error = function(e) e
-  )
+  strict_candidate_elapsed <- NA_real_
+  strict_candidate_timing <- system.time({
+    strict_eig_res <- tryCatch(
+      ltsa_call_candidate_provider(
+        provider = provider,
+        B = B,
+        eig_k = strict_eig_k,
+        provider_args = strict_args,
+        lambda_max = lambda_max,
+        verbose = verbose
+      ),
+      error = function(e) e
+    )
+  })
+  strict_candidate_elapsed <- unname(strict_candidate_timing[["elapsed"]])
   if (inherits(strict_eig_res, "error")) {
     selected$attempts <- c(
       selected$attempts,
-      list(list(
+      list(ltsa_attempt_error_summary(
         eig_k = strict_eig_k,
         error = conditionMessage(strict_eig_res),
-        strict_rescue = TRUE
+        strict_rescue = TRUE,
+        candidate_elapsed = strict_candidate_elapsed
       ))
     )
     return(selected)
   }
 
-  strict_rr <- ltsa_ritz_select(
-    B = strict_eig_res$matrix,
-    vectors = strict_eig_res$vectors,
-    ndim = ndim,
-    nullvec = nullvec,
-    lambda_max = strict_eig_res$lambda_max
-  )
+  strict_ritz_elapsed <- NA_real_
+  strict_ritz_timing <- system.time({
+    strict_rr <- ltsa_ritz_select(
+      B = strict_eig_res$matrix,
+      vectors = strict_eig_res$vectors,
+      ndim = ndim,
+      nullvec = nullvec,
+      lambda_max = strict_eig_res$lambda_max
+    )
+  })
+  strict_ritz_elapsed <- unname(strict_ritz_timing[["elapsed"]])
   strict_acceptance <- accept_ltsa_ritz(
     rr = strict_rr,
     ndim = ndim,
@@ -605,7 +780,10 @@ ltsa_maybe_strict_rescue <- function(
     eig_res = strict_eig_res,
     rr = strict_rr,
     acceptance = strict_acceptance,
-    strict_rescue = TRUE
+    strict_rescue = TRUE,
+    candidate_elapsed = strict_candidate_elapsed,
+    ritz_elapsed = strict_ritz_elapsed,
+    capture_candidate_space = TRUE
   )
   strict_result <- ltsa_with_attempt(
     eig_res = strict_eig_res,
@@ -623,13 +801,17 @@ ltsa_maybe_strict_rescue <- function(
     lambda_max = strict_eig_res$lambda_max,
     bank_backend = bank_backend
   )
-  bank_rr <- ltsa_ritz_select(
-    B = bank_eig_res$matrix,
-    vectors = bank_vectors,
-    ndim = ndim,
-    nullvec = nullvec,
-    lambda_max = strict_eig_res$lambda_max
-  )
+  bank_ritz_elapsed <- NA_real_
+  bank_ritz_timing <- system.time({
+    bank_rr <- ltsa_ritz_select(
+      B = bank_eig_res$matrix,
+      vectors = bank_vectors,
+      ndim = ndim,
+      nullvec = nullvec,
+      lambda_max = strict_eig_res$lambda_max
+    )
+  })
+  bank_ritz_elapsed <- unname(bank_ritz_timing[["elapsed"]])
   bank_acceptance <- accept_ltsa_ritz(
     rr = bank_rr,
     ndim = ndim,
@@ -644,7 +826,9 @@ ltsa_maybe_strict_rescue <- function(
     rr = bank_rr,
     acceptance = bank_acceptance,
     strict_rescue = TRUE,
-    bank = TRUE
+    bank = TRUE,
+    ritz_elapsed = bank_ritz_elapsed,
+    capture_candidate_space = TRUE
   )
   bank_result <- ltsa_with_attempt(
     eig_res = bank_eig_res,

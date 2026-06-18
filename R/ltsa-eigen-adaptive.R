@@ -73,42 +73,54 @@ ltsa_adaptive_ritz_eig <- function(
   gap_expansions <- 0L
 
   repeat {
-    eig_res <- tryCatch(
-      ltsa_call_candidate_provider(
-        provider = provider,
-        B = B,
-        eig_k = eig_k,
-        provider_args = provider_args,
-        lambda_max = lambda_max,
-        verbose = verbose
-      ),
-      error = function(e) e
-    )
-    if (inherits(eig_res, "error")) {
-      last_error <- conditionMessage(eig_res)
-      attempts[[length(attempts) + 1L]] <- list(
-        eig_k = eig_k,
-        error = last_error
-      )
-    } else {
-      lambda_max <- eig_res$lambda_max
-      rr <- tryCatch(
-        ltsa_ritz_select(
-          B = eig_res$matrix,
-          vectors = eig_res$vectors,
-          ndim = ndim,
-          nullvec = nullvec,
-          lambda_max = lambda_max
+    candidate_elapsed <- NA_real_
+    candidate_timing <- system.time({
+      eig_res <- tryCatch(
+        ltsa_call_candidate_provider(
+          provider = provider,
+          B = B,
+          eig_k = eig_k,
+          provider_args = provider_args,
+          lambda_max = lambda_max,
+          verbose = verbose
         ),
         error = function(e) e
       )
+    })
+    candidate_elapsed <- unname(candidate_timing[["elapsed"]])
+    if (inherits(eig_res, "error")) {
+      last_error <- conditionMessage(eig_res)
+      attempts[[length(attempts) + 1L]] <- ltsa_attempt_error_summary(
+        eig_k = eig_k,
+        error = last_error,
+        candidate_elapsed = candidate_elapsed
+      )
+    } else {
+      lambda_max <- eig_res$lambda_max
+      ritz_elapsed <- NA_real_
+      ritz_timing <- system.time({
+        rr <- tryCatch(
+          ltsa_ritz_select(
+            B = eig_res$matrix,
+            vectors = eig_res$vectors,
+            ndim = ndim,
+            nullvec = nullvec,
+            lambda_max = lambda_max
+          ),
+          error = function(e) e
+        )
+      })
+      ritz_elapsed <- unname(ritz_timing[["elapsed"]])
 
       if (inherits(rr, "error")) {
         last_error <- conditionMessage(rr)
-        attempts[[length(attempts) + 1L]] <- list(
+        attempts[[length(attempts) + 1L]] <- ltsa_attempt_error_summary(
           eig_k = eig_k,
-          nconv = eig_res$nconv,
-          error = last_error
+          eig_res = eig_res,
+          error = last_error,
+          candidate_elapsed = candidate_elapsed,
+          ritz_elapsed = ritz_elapsed,
+          capture_candidate_space = TRUE
         )
       } else {
         acceptance <- accept_ltsa_ritz(
@@ -123,7 +135,10 @@ ltsa_adaptive_ritz_eig <- function(
           eig_k = eig_k,
           eig_res = eig_res,
           rr = rr,
-          acceptance = acceptance
+          acceptance = acceptance,
+          candidate_elapsed = candidate_elapsed,
+          ritz_elapsed = ritz_elapsed,
+          capture_candidate_space = TRUE
         )
         tsmessage(
           "Rayleigh-Ritz LTSA postprocess: post-null rank = ",
@@ -172,7 +187,7 @@ ltsa_adaptive_ritz_eig <- function(
             strict_rescue = strict_rescue
           )
           best <- ltsa_maybe_warn_spectral_ambiguity(best, ndim)
-          return(best)
+          return(ltsa_finalize_attempt_observability(best, nullvec = nullvec))
         }
         if (acceptance$gap_issue_only) {
           if (is.null(weak_gap_candidate)) {
@@ -245,7 +260,10 @@ ltsa_adaptive_ritz_eig <- function(
               )
               selected <- ltsa_maybe_warn_spectral_ambiguity(selected, ndim)
             }
-            return(selected)
+            return(ltsa_finalize_attempt_observability(
+              selected,
+              nullvec = nullvec
+            ))
           }
 
           gap_expansions <- gap_expansions + 1L
@@ -330,7 +348,7 @@ ltsa_adaptive_ritz_eig <- function(
     )
   }
 
-  best
+  ltsa_finalize_attempt_observability(best, nullvec = nullvec)
 }
 
 # Public-facing iterative wrappers. Arguments in ... are split by R's argument

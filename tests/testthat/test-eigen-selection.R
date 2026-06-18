@@ -496,6 +496,52 @@ test_that("adaptive Ritz driver handles rotated normalized null vectors", {
   expect_identical(res$backend, "synthetic")
 })
 
+test_that("adaptive attempt summaries include backend work and coverage metadata", {
+  problem <- synthetic_ltsa_problem(c(0, 0.1, 0.2, 1, 2, 3, 4, 5, 6, 7))
+  provider <- function(B, eig_k, lambda_max = NULL, verbose = FALSE) {
+    flotsam:::ltsa_candidate_result(
+      vectors = problem$basis[, seq_len(eig_k), drop = FALSE],
+      backend = "synthetic",
+      eig_k = eig_k,
+      matrix = B,
+      lambda_max = 7,
+      nconv = eig_k,
+      niter = 3L,
+      nops = 101L,
+      mprod = 202L,
+      opts = list(ncv = 13L),
+      convergence_known = TRUE,
+      returned_columns = eig_k,
+      converged_columns = eig_k
+    )
+  }
+
+  res <- flotsam:::ltsa_adaptive_ritz_eig(
+    problem$matrix,
+    ndim = 2L,
+    provider = provider,
+    strict_rescue = FALSE
+  )
+  attempt <- res$attempts[[1L]]
+
+  expect_identical(attempt$backend, "synthetic")
+  expect_identical(attempt$niter, 3L)
+  expect_identical(attempt$nops, 101L)
+  expect_identical(attempt$mprod, 202L)
+  expect_identical(attempt$ncv, 13L)
+  expect_identical(attempt$returned_columns, 8L)
+  expect_identical(attempt$converged_columns, 8L)
+  expect_true(attempt$convergence_known)
+  expect_true(is.finite(attempt$candidate_elapsed))
+  expect_true(attempt$candidate_elapsed >= 0)
+  expect_true(is.finite(attempt$ritz_elapsed))
+  expect_true(attempt$ritz_elapsed >= 0)
+  expect_null(attempt$.candidate_vectors)
+  expect_equal(attempt$reference_projection_norms, c(1, 1), tolerance = 1e-12)
+  expect_equal(attempt$reference_projection_min_norm, 1, tolerance = 1e-12)
+  expect_identical(attempt$reference_candidate_space_rank, 7L)
+})
+
 test_that("adaptive RSpectra path returns Ritz-polished vectors", {
   B <- synthetic_ltsa_matrix(c(0, 0.1, 0.2, 1, 3, 5, 8, 13))
   dense <- eigen(B, symmetric = TRUE)
@@ -864,6 +910,22 @@ test_that("adaptive weak-gap expansion keeps lower-energy candidates", {
   expect_equal(calls, c(8L, 12L))
   expect_equal(res$eig_k, 12L)
   expect_lt(max(abs(res$values - c(1e-7, 2e-7))), 1e-14)
+  expect_equal(
+    res$attempts[[1L]]$reference_projection_norms,
+    c(1, 0),
+    tolerance = 1e-8
+  )
+  expect_equal(
+    res$attempts[[2L]]$reference_projection_norms,
+    c(1, 1),
+    tolerance = 1e-12
+  )
+  expect_lt(res$attempts[[1L]]$reference_projection_min_norm, 1e-8)
+  expect_equal(
+    res$attempts[[2L]]$reference_projection_min_norm,
+    1,
+    tolerance = 1e-12
+  )
   expect_false(isTRUE(res$acceptance$strict_rescue_used))
   expect_false(isTRUE(res$acceptance$spectral_ambiguity_warning))
   expect_identical(
