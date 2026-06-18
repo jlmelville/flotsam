@@ -61,6 +61,31 @@ synthetic_ltsa_matrix <- function(values) {
   synthetic_ltsa_problem(values)$matrix
 }
 
+calibrated_synthetic_ritz <- function(values, ndim, lambda_max = max(values)) {
+  problem <- synthetic_ltsa_problem(values)
+  rr <- flotsam:::ltsa_ritz_select(
+    problem$matrix,
+    problem$basis,
+    ndim = ndim,
+    lambda_max = lambda_max
+  )
+  acceptance <- flotsam:::accept_ltsa_ritz(
+    rr,
+    ndim = ndim,
+    lambda_max = lambda_max
+  )
+  flotsam:::ltsa_mark_partial_near_zero_block(
+    list(
+      values = rr$values,
+      near_zero_nonconstant_count = rr$near_zero_nonconstant_count,
+      near_zero_nonconstant_counts = rr$near_zero_nonconstant_counts,
+      near_zero_tol = rr$near_zero_tol,
+      acceptance = acceptance
+    ),
+    ndim = ndim
+  )
+}
+
 test_that("embedding vector selection drops a returned trivial vector", {
   basis <- selection_test_basis()
   B <- selection_test_matrix(basis)
@@ -229,6 +254,85 @@ test_that("near-zero Ritz counts are reported at multiple thresholds", {
   expected_ritz_values <- c(5e-9, 5e-8, 5e-7, 5e-6, 1)
   expect_length(rr$reported_ritz_values, length(expected_ritz_values))
   expect_lt(max(abs(rr$reported_ritz_values - expected_ritz_values)), 1e-14)
+})
+
+test_that("near-zero trigger calibration documents synthetic spectra", {
+  case_a <- calibrated_synthetic_ritz(
+    c(0, 1e-10, 2e-10, 1e-3, 1),
+    ndim = 3L
+  )
+  expect_identical(case_a$near_zero_nonconstant_count, 2L)
+  expect_true(isTRUE(case_a$partial_near_zero_block))
+  expect_true(flotsam:::ltsa_strict_rescue_needed(case_a, ndim = 3L))
+
+  case_b <- calibrated_synthetic_ritz(
+    c(0, 1e-8, 1e-4, 1e-3, 1),
+    ndim = 2L
+  )
+  expect_identical(case_b$near_zero_nonconstant_count, 1L)
+  expect_true(isTRUE(case_b$partial_near_zero_block))
+  expect_warning(
+    flotsam:::ltsa_maybe_warn_partial_near_zero_block(
+      case_b,
+      ndim = 2L,
+      strict_rescue = FALSE
+    ),
+    "missing near-zero LTSA coordinate"
+  )
+
+  case_c_unit_scale <- calibrated_synthetic_ritz(
+    c(0, 1e-6, 2e-6, 3e-6, 1),
+    ndim = 2L
+  )
+  expect_identical(case_c_unit_scale$near_zero_nonconstant_count, 0L)
+  expect_false(isTRUE(case_c_unit_scale$partial_near_zero_block))
+  expect_identical(
+    unname(case_c_unit_scale$near_zero_nonconstant_counts[["1e-05"]]),
+    3L
+  )
+
+  case_c_large_scale <- calibrated_synthetic_ritz(
+    c(0, 1e-6, 2e-6, 3e-6, 100),
+    ndim = 2L
+  )
+  expect_gt(case_c_large_scale$near_zero_tol, 1e-6)
+  expect_lt(case_c_large_scale$near_zero_tol, 2e-6)
+  expect_identical(case_c_large_scale$near_zero_nonconstant_count, 1L)
+  expect_true(isTRUE(case_c_large_scale$partial_near_zero_block))
+})
+
+test_that("multiple exact zeros use ambiguity diagnostics, not partial-block rescue", {
+  exact_equal_ndim <- calibrated_synthetic_ritz(
+    c(0, 0, 0, 1e-3, 1),
+    ndim = 2L
+  )
+  expect_identical(exact_equal_ndim$near_zero_nonconstant_count, 2L)
+  expect_false(isTRUE(exact_equal_ndim$partial_near_zero_block))
+  expect_false(flotsam:::ltsa_strict_rescue_needed(
+    exact_equal_ndim,
+    ndim = 2L
+  ))
+  expect_length(
+    flotsam:::ltsa_spectral_ambiguity_issues(exact_equal_ndim, ndim = 2L),
+    0L
+  )
+
+  exact_extra <- calibrated_synthetic_ritz(
+    c(0, 0, 0, 1e-3, 1),
+    ndim = 1L
+  )
+  expect_identical(exact_extra$near_zero_nonconstant_count, 2L)
+  expect_false(isTRUE(exact_extra$partial_near_zero_block))
+  expect_false(flotsam:::ltsa_strict_rescue_needed(exact_extra, ndim = 1L))
+  issues <- flotsam:::ltsa_spectral_ambiguity_issues(
+    exact_extra,
+    ndim = 1L
+  )
+  expect_true(any(grepl(
+    "2 near-zero nonconstant modes",
+    issues,
+    fixed = TRUE
+  )))
 })
 
 test_that("small Ritz-selected cases agree with dense eigen reference subspaces", {
@@ -615,6 +719,54 @@ test_that("strict rescue trigger is limited to partial near-zero selected blocks
     fake_result(1L, resid_ok = FALSE),
     ndim = 2L
   ))
+})
+
+test_that("partial near-zero helpers mark and warn only no-rescue partial blocks", {
+  fake_result <- function(near_zero_count, rank_ok = TRUE, resid_ok = TRUE) {
+    list(
+      values = c(1e-8, 1e-4),
+      near_zero_nonconstant_count = near_zero_count,
+      acceptance = list(rank_ok = rank_ok, resid_ok = resid_ok)
+    )
+  }
+
+  marked <- flotsam:::ltsa_mark_partial_near_zero_block(
+    fake_result(1L),
+    ndim = 2L
+  )
+  expect_true(isTRUE(marked$partial_near_zero_block))
+  expect_true(isTRUE(marked$acceptance$partial_near_zero_block))
+
+  expect_warning(
+    flotsam:::ltsa_maybe_warn_partial_near_zero_block(
+      marked,
+      ndim = 2L,
+      strict_rescue = FALSE
+    ),
+    "missing near-zero LTSA coordinate"
+  )
+  expect_warning(
+    flotsam:::ltsa_maybe_warn_partial_near_zero_block(
+      marked,
+      ndim = 2L,
+      strict_rescue = TRUE
+    ),
+    NA
+  )
+
+  unmarked <- flotsam:::ltsa_mark_partial_near_zero_block(
+    fake_result(1L, resid_ok = FALSE),
+    ndim = 2L
+  )
+  expect_false(isTRUE(unmarked$partial_near_zero_block))
+  expect_warning(
+    flotsam:::ltsa_maybe_warn_partial_near_zero_block(
+      unmarked,
+      ndim = 2L,
+      strict_rescue = FALSE
+    ),
+    NA
+  )
 })
 
 test_that("strict rescue result ranking prefers lower selected block energy", {
