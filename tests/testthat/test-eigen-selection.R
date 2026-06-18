@@ -349,6 +349,29 @@ test_that("RSpectra candidate provider returns backend-neutral fields", {
   expect_s4_class(res$matrix, "dgCMatrix")
 })
 
+test_that("RSpectra Ritz wrapper forwards backend tolerance and ncv controls", {
+  B <- synthetic_ltsa_matrix(c(
+    0, 0.1, 0.2, 1, 3, 5, 8, 13, 21, 34,
+    55, 89, 144, 233, 377, 610, 987, 1597, 2584, 4181
+  ))
+
+  res <- flotsam:::ltsa_rspectra_ritz_eig(
+    Matrix::Matrix(B, sparse = TRUE),
+    ndim = 2L,
+    dense_n = 0L,
+    tol = 1e-8,
+    ncv = 18L,
+    maxitr = 5000L,
+    strict_rescue = FALSE
+  )
+
+  expect_identical(res$opts$tol, 1e-8)
+  expect_identical(res$opts$ncv, 18L)
+  expect_identical(res$attempts[[1L]]$backend, "rspectra")
+  expect_identical(res$attempts[[1L]]$ncv, 18L)
+  expect_equal(res$attempts[[1L]]$eig_k, 8L)
+})
+
 test_that("irlba and svdr candidate providers return backend-neutral fields", {
   B <- Matrix::Diagonal(x = seq(0, 29))
   providers <- list(
