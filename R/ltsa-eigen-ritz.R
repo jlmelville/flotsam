@@ -270,7 +270,7 @@ ltsa_rescue_candidate <- function(candidate, incumbent, ndim) {
 # near-zero nonconstant cluster. Rayleigh-Ritz cannot invent a missing
 # direction, so the rescue path reruns the backend with stricter settings and
 # also tries a combined candidate bank.
-ltsa_strict_rescue_needed <- function(res, ndim) {
+ltsa_partial_near_zero_block <- function(res, ndim) {
   if (
     is.null(res) ||
       !isTRUE(res$acceptance$rank_ok) ||
@@ -281,6 +281,39 @@ ltsa_strict_rescue_needed <- function(res, ndim) {
 
   near_zero_count <- res$near_zero_nonconstant_count %||% 0L
   near_zero_count > 0L && near_zero_count < ndim
+}
+
+ltsa_strict_rescue_needed <- function(res, ndim) {
+  ltsa_partial_near_zero_block(res, ndim)
+}
+
+ltsa_mark_partial_near_zero_block <- function(res, ndim) {
+  partial <- ltsa_partial_near_zero_block(res, ndim)
+  res$partial_near_zero_block <- partial
+  res$acceptance$partial_near_zero_block <- partial
+  res
+}
+
+ltsa_maybe_warn_partial_near_zero_block <- function(
+  res,
+  ndim,
+  strict_rescue
+) {
+  res <- ltsa_mark_partial_near_zero_block(res, ndim)
+  if (!isTRUE(strict_rescue) && isTRUE(res$partial_near_zero_block)) {
+    warning(
+      "LTSA selected a residual-good/rank-good embedding but found only ",
+      res$near_zero_nonconstant_count,
+      " near-zero nonconstant mode",
+      if (isTRUE(res$near_zero_nonconstant_count == 1L)) "" else "s",
+      " for ndim = ",
+      ndim,
+      ". This pattern can indicate a missing near-zero LTSA coordinate; ",
+      "consider strict_rescue = TRUE or a larger candidate budget.",
+      call. = FALSE
+    )
+  }
+  res
 }
 
 # Ambiguity warnings are only issued for residual-good, rank-good results. They
@@ -444,6 +477,13 @@ ltsa_attempt_summary <- function(
     boundary_gap_relative = rr$boundary_gap_relative,
     near_zero_nonconstant_count = rr$near_zero_nonconstant_count,
     near_zero_nonconstant_counts = rr$near_zero_nonconstant_counts,
+    partial_near_zero_block = ltsa_partial_near_zero_block(
+      list(
+        near_zero_nonconstant_count = rr$near_zero_nonconstant_count,
+        acceptance = acceptance
+      ),
+      ndim = ncol(rr$vectors)
+    ),
     first_ritz_values = rr$reported_ritz_values,
     gap_status = acceptance$gap_status,
     accepted = acceptance$ok,
@@ -645,5 +685,6 @@ ltsa_with_ritz <- function(eig_res, rr, acceptance, attempts) {
   eig_res$near_zero_thresholds <- rr$near_zero_thresholds
   eig_res$near_zero_nonconstant_counts <- rr$near_zero_nonconstant_counts
   eig_res$reported_ritz_values <- rr$reported_ritz_values
+  eig_res <- ltsa_mark_partial_near_zero_block(eig_res, ncol(rr$vectors))
   eig_res
 }

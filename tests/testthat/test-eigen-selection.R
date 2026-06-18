@@ -528,6 +528,9 @@ test_that("strict rescue trigger is limited to partial near-zero selected blocks
     )
   }
 
+  expect_true(flotsam:::ltsa_partial_near_zero_block(fake_result(1L), ndim = 2L))
+  expect_false(flotsam:::ltsa_partial_near_zero_block(fake_result(0L), ndim = 2L))
+  expect_false(flotsam:::ltsa_partial_near_zero_block(fake_result(2L), ndim = 2L))
   expect_true(flotsam:::ltsa_strict_rescue_needed(fake_result(1L), ndim = 2L))
   expect_false(flotsam:::ltsa_strict_rescue_needed(fake_result(0L), ndim = 2L))
   expect_false(flotsam:::ltsa_strict_rescue_needed(fake_result(2L), ndim = 2L))
@@ -537,6 +540,10 @@ test_that("strict rescue trigger is limited to partial near-zero selected blocks
   ))
   expect_false(flotsam:::ltsa_strict_rescue_needed(
     fake_result(1L, rank_ok = FALSE),
+    ndim = 2L
+  ))
+  expect_false(flotsam:::ltsa_partial_near_zero_block(
+    fake_result(1L, resid_ok = FALSE),
     ndim = 2L
   ))
 })
@@ -692,9 +699,94 @@ test_that("adaptive Ritz driver keeps strict rescue enabled by default", {
 
   expect_equal(calls$eig_k, c(8L, 8L))
   expect_equal(calls$strict, c(FALSE, TRUE))
+  expect_true(isTRUE(res$attempts[[1L]]$partial_near_zero_block))
+  expect_false(isTRUE(res$attempts[[2L]]$partial_near_zero_block))
+  expect_false(isTRUE(res$partial_near_zero_block))
+  expect_false(isTRUE(res$acceptance$partial_near_zero_block))
   expect_true(isTRUE(res$acceptance$strict_rescue_used))
   expect_identical(res$acceptance$return_reason, "strict_rescue")
   expect_lt(max(abs(res$values - c(1e-7, 2e-7))), 1e-14)
+})
+
+test_that("disabled strict rescue warns on returned partial near-zero blocks", {
+  # fmt: skip
+  problem <- synthetic_ltsa_problem(c(
+    0, 1e-7, 2e-7, 5e-5, 1e-4, 2e-4, 5e-4, 1e-3,
+    2e-3, 5e-3, 1e-2, 2e-2
+  ))
+  calls <- integer()
+  provider <- function(B, eig_k, lambda_max = NULL, verbose = FALSE) {
+    calls <<- c(calls, eig_k)
+    flotsam:::ltsa_candidate_result(
+      vectors = problem$basis[, c(1L, 2L, 4L:9L), drop = FALSE],
+      backend = "synthetic",
+      eig_k = eig_k,
+      matrix = B,
+      lambda_max = 100,
+      convergence_known = FALSE,
+      returned_columns = eig_k
+    )
+  }
+
+  res <- NULL
+  expect_warning(
+    res <- flotsam:::ltsa_adaptive_ritz_eig(
+      problem$matrix,
+      ndim = 2L,
+      provider = provider,
+      gap_expansion_steps = 0L,
+      strict_rescue = FALSE
+    ),
+    "missing near-zero LTSA coordinate"
+  )
+
+  expect_equal(calls, 8L)
+  expect_true(res$acceptance$rank_ok)
+  expect_true(res$acceptance$resid_ok)
+  expect_identical(res$near_zero_nonconstant_count, 1L)
+  expect_true(isTRUE(res$partial_near_zero_block))
+  expect_true(isTRUE(res$acceptance$partial_near_zero_block))
+  expect_true(isTRUE(res$attempts[[1L]]$partial_near_zero_block))
+  expect_identical(
+    res$acceptance$return_reason,
+    "weak_lowest_energy_residual_rank_good"
+  )
+})
+
+test_that("partial near-zero warning preserves gap-ok return reason", {
+  # fmt: skip
+  problem <- synthetic_ltsa_problem(c(
+    0, 1e-7, 2e-7, 1, 2, 3, 4, 5, 6, 7, 8, 9
+  ))
+  calls <- integer()
+  provider <- function(B, eig_k, lambda_max = NULL, verbose = FALSE) {
+    calls <<- c(calls, eig_k)
+    flotsam:::ltsa_candidate_result(
+      vectors = problem$basis[, c(1L, 2L, 4L:9L), drop = FALSE],
+      backend = "synthetic",
+      eig_k = eig_k,
+      matrix = B,
+      lambda_max = 100,
+      convergence_known = FALSE,
+      returned_columns = eig_k
+    )
+  }
+
+  res <- NULL
+  expect_warning(
+    res <- flotsam:::ltsa_adaptive_ritz_eig(
+      problem$matrix,
+      ndim = 2L,
+      provider = provider,
+      strict_rescue = FALSE
+    ),
+    "missing near-zero LTSA coordinate"
+  )
+
+  expect_equal(calls, 8L)
+  expect_true(res$acceptance$gap_ok)
+  expect_true(isTRUE(res$partial_near_zero_block))
+  expect_identical(res$acceptance$return_reason, "residual_rank_gap_ok")
 })
 
 test_that("extra near-zero nonconstant modes warn about spectral ambiguity", {

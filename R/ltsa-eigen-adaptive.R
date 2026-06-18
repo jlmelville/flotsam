@@ -166,6 +166,11 @@ ltsa_adaptive_ritz_eig <- function(
               verbose = verbose
             )
           }
+          best <- ltsa_maybe_warn_partial_near_zero_block(
+            best,
+            ndim = ndim,
+            strict_rescue = strict_rescue
+          )
           best <- ltsa_maybe_warn_spectral_ambiguity(best, ndim)
           return(best)
         }
@@ -217,6 +222,11 @@ ltsa_adaptive_ritz_eig <- function(
                 "]"
               )
             } else {
+              selected <- ltsa_maybe_warn_partial_near_zero_block(
+                selected,
+                ndim = ndim,
+                strict_rescue = strict_rescue
+              )
               selected <- ltsa_maybe_warn_spectral_ambiguity(selected, ndim)
               tsmessage(
                 "LTSA Ritz boundary gap ",
@@ -228,6 +238,11 @@ ltsa_adaptive_ritz_eig <- function(
               )
             }
             if (isTRUE(selected$acceptance$strict_rescue_used)) {
+              selected <- ltsa_maybe_warn_partial_near_zero_block(
+                selected,
+                ndim = ndim,
+                strict_rescue = strict_rescue
+              )
               selected <- ltsa_maybe_warn_spectral_ambiguity(selected, ndim)
             }
             return(selected)
@@ -282,6 +297,11 @@ ltsa_adaptive_ritz_eig <- function(
       verbose = verbose
     )
   }
+  best <- ltsa_maybe_warn_partial_near_zero_block(
+    best,
+    ndim = ndim,
+    strict_rescue = strict_rescue
+  )
   best <- ltsa_maybe_warn_spectral_ambiguity(best, ndim)
   if (!best$acceptance$resid_ok) {
     warning(
