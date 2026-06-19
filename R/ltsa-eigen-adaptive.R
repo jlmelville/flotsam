@@ -121,6 +121,11 @@ ltsa_adaptive_ritz_eig <- function(
         strict_rescue = strict_rescue
       )
     }
+    selected <- ltsa_maybe_message_width_first_rescue_decision(
+      selected,
+      ndim = ndim,
+      verbose = verbose
+    )
     selected <- ltsa_maybe_warn_spectral_ambiguity(selected, ndim)
     ltsa_finalize_attempt_observability(
       selected,

@@ -547,6 +547,135 @@ ltsa_mark_width_rescue_attempt <- function(attempt, decision, stage = NULL) {
   attempt
 }
 
+ltsa_width_first_rescue_decision_message <- function(res, ndim) {
+  attempts <- res$attempts %||% list()
+  attempt_eig_k <- function(attempt) {
+    eig_k <- attempt$eig_k %||% NA_integer_
+    if (length(eig_k) != 1L || is.na(eig_k)) {
+      return(NA_integer_)
+    }
+    as.integer(eig_k)
+  }
+  ordinary <- Filter(
+    function(attempt) {
+      !isTRUE(attempt$strict_rescue) && !isTRUE(attempt$bank)
+    },
+    attempts
+  )
+  strict <- Filter(
+    function(attempt) {
+      isTRUE(attempt$strict_rescue) && !isTRUE(attempt$bank)
+    },
+    attempts
+  )
+
+  ordinary_widths <- vapply(
+    ordinary,
+    attempt_eig_k,
+    integer(1)
+  )
+  ordinary_partial <- vapply(
+    ordinary,
+    function(attempt) isTRUE(attempt$partial_near_zero_block),
+    logical(1)
+  )
+  ordinary_partial <- ordinary_partial[!is.na(ordinary_widths)]
+  ordinary_widths <- ordinary_widths[!is.na(ordinary_widths)]
+  partial_widths <- ordinary_widths[ordinary_partial]
+
+  ordinary_phrase <- if (length(ordinary_widths) == 0L) {
+    "no ordinary widths recorded"
+  } else if (
+    length(partial_widths) == length(ordinary_widths) &&
+      length(ordinary_widths) > 0L
+  ) {
+    paste0(
+      "ordinary widths ",
+      paste(ordinary_widths, collapse = ", "),
+      " remained partial"
+    )
+  } else if (length(partial_widths) > 0L) {
+    paste0(
+      "ordinary widths ",
+      paste(ordinary_widths, collapse = ", "),
+      " attempted; partial widths = ",
+      paste(partial_widths, collapse = ", ")
+    )
+  } else {
+    paste0(
+      "ordinary widths ",
+      paste(ordinary_widths, collapse = ", "),
+      " attempted"
+    )
+  }
+
+  strict_widths <- vapply(
+    strict,
+    attempt_eig_k,
+    integer(1)
+  )
+  strict_widths <- strict_widths[!is.na(strict_widths)]
+  strict_phrase <- if (isTRUE(res$acceptance[["width_first_rescue_ordinary"]])) {
+    paste0(
+      "ordinary width ",
+      res$eig_k %||% tail(ordinary_widths, 1L),
+      " accepted"
+    )
+  } else if (isTRUE(res$acceptance[["strict_rescue_used"]])) {
+    paste0(
+      "strict width ",
+      res$acceptance[["strict_rescue_eig_k"]] %||% tail(strict_widths, 1L),
+      " accepted",
+      if (!is.null(res$acceptance[["strict_rescue_stage"]])) {
+        paste0(" (", res$acceptance[["strict_rescue_stage"]], ")")
+      } else {
+        ""
+      }
+    )
+  } else if (length(strict_widths) > 0L) {
+    paste0(
+      "strict widths ",
+      paste(strict_widths, collapse = ", "),
+      " attempted but not accepted"
+    )
+  } else {
+    "strict fallback not attempted"
+  }
+
+  candidate_solve_count <- sum(vapply(
+    attempts,
+    function(attempt) !isTRUE(attempt$bank),
+    logical(1)
+  ))
+
+  paste0(
+    "LTSA width-first rescue decision: ",
+    ordinary_phrase,
+    "; ",
+    strict_phrase,
+    "; selected near-zero modes = ",
+    res$near_zero_nonconstant_count %||% NA_integer_,
+    " / ",
+    ndim,
+    "; selected values = [",
+    ltsa_format_ritz_values(res$values),
+    "]; total candidate solves = ",
+    candidate_solve_count,
+    "."
+  )
+}
+
+ltsa_maybe_message_width_first_rescue_decision <- function(
+  res,
+  ndim,
+  verbose = FALSE
+) {
+  if (isTRUE(verbose)) {
+    tsmessage(ltsa_width_first_rescue_decision_message(res, ndim))
+  }
+  res
+}
+
 ltsa_rescue_candidate <- function(candidate, incumbent, ndim) {
   if (is.null(candidate)) {
     return(incumbent)

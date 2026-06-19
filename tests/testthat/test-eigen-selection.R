@@ -1280,6 +1280,14 @@ test_that("width-first rescue invokes strict fallback after ordinary exhaustion"
     "previous_ordinary_width"
   )
   expect_identical(res$acceptance$strict_rescue_width_cap, 18L)
+  expect_message(
+    flotsam:::ltsa_maybe_message_width_first_rescue_decision(
+      res,
+      ndim = 2L,
+      verbose = TRUE
+    ),
+    "ordinary widths 8, 12, 18 remained partial; strict width 12 accepted"
+  )
 })
 
 test_that("width-first staged strict fallback tries widest after previous remains partial", {
