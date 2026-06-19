@@ -594,6 +594,23 @@ ltsa_strict_rescue_needed <- function(res, ndim) {
   ltsa_partial_near_zero_block(res, ndim)
 }
 
+ltsa_partial_block_rescue_allowed <- function(res, ndim) {
+  if (!ltsa_strict_rescue_needed(res, ndim)) {
+    return(FALSE)
+  }
+
+  values <- as.numeric(res$values %||% numeric())
+  if (length(values) < ndim || !is.finite(values[[ndim]])) {
+    return(FALSE)
+  }
+  lambda_max <- res$lambda_max %||%
+    res$acceptance$lambda_max %||%
+    NA_real_
+  scale <- ltsa_residual_scale(lambda_max)
+  gap_tol <- res$acceptance$gap_tol %||% 1e-4
+  isTRUE(values[[ndim]] <= 10 * gap_tol * scale)
+}
+
 ltsa_mark_partial_near_zero_block <- function(res, ndim) {
   partial <- ltsa_partial_near_zero_block(res, ndim)
   res$partial_near_zero_block <- partial
@@ -1096,7 +1113,7 @@ ltsa_maybe_strict_rescue <- function(
   bank_backend = NULL,
   verbose = FALSE
 ) {
-  if (!ltsa_strict_rescue_needed(selected, ndim)) {
+  if (!ltsa_partial_block_rescue_allowed(selected, ndim)) {
     return(selected)
   }
 

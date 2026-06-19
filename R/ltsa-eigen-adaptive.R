@@ -279,7 +279,7 @@ ltsa_adaptive_ritz_eig <- function(
         if (width_first_rescue) {
           if (
             is.null(width_rescue_incumbent) &&
-              ltsa_strict_rescue_needed(best, ndim)
+              ltsa_partial_block_rescue_allowed(best, ndim)
           ) {
             width_rescue_trigger_eig_k <- eig_k
             width_rescue_incumbent <- best

@@ -122,7 +122,7 @@ synthetic_energy_rescue_result <- function(
 width_rescue_problem <- function(ndim, n = 96L) {
   low <- seq_len(ndim) * 1e-10
   high_count <- n - ndim - 1L
-  high <- 1e-3 + seq_len(high_count) * 1e-3
+  high <- 5e-4 + seq_len(high_count) * 1e-8
   synthetic_ltsa_problem(c(0, low, high))
 }
 
@@ -1372,11 +1372,14 @@ test_that("width-first rescue honors small-n cap without duplicate ordinary atte
 test_that("width-first rescue returns warned partial incumbent after capped failures", {
   out <- NULL
   expect_warning(
-    out <- run_width_rescue_case(
-      ordinary_mode = function(eig_k) "partial",
-      strict_mode = function(eig_k) "partial"
+    expect_warning(
+      out <- run_width_rescue_case(
+        ordinary_mode = function(eig_k) "partial",
+        strict_mode = function(eig_k) "partial"
+      ),
+      "width-first rescue exhausted capped ordinary and strict attempts"
     ),
-    "width-first rescue exhausted capped ordinary and strict attempts"
+    "ambiguous low-energy eigenspace"
   )
 
   calls <- out$calls
@@ -1470,6 +1473,52 @@ test_that("partial near-zero warning preserves gap-ok return reason", {
   expect_equal(calls, 8L)
   expect_true(res$acceptance$gap_ok)
   expect_true(isTRUE(res$partial_near_zero_block))
+  expect_identical(res$acceptance$return_reason, "residual_rank_gap_ok")
+})
+
+test_that("high-energy partial near-zero blocks do not trigger rescue", {
+  # fmt: skip
+  problem <- synthetic_ltsa_problem(c(
+    0, 1e-7, 2e-7, 1, 2, 3, 4, 5, 6, 7, 8, 9
+  ))
+  calls <- data.frame(eig_k = integer(), strict = logical())
+  provider <- function(
+    B,
+    eig_k,
+    lambda_max = NULL,
+    verbose = FALSE,
+    strict = FALSE
+  ) {
+    calls <<- rbind(calls, data.frame(eig_k = eig_k, strict = strict))
+    flotsam:::ltsa_candidate_result(
+      vectors = problem$basis[, c(1L, 2L, 4L:9L), drop = FALSE],
+      backend = "synthetic",
+      eig_k = eig_k,
+      matrix = B,
+      lambda_max = 100,
+      convergence_known = FALSE,
+      returned_columns = eig_k
+    )
+  }
+
+  res <- NULL
+  expect_warning(
+    res <- flotsam:::ltsa_adaptive_ritz_eig(
+      problem$matrix,
+      ndim = 2L,
+      provider = provider,
+      strict_rescue_arg_mapper = function(provider_args, ...) {
+        c(provider_args, list(strict = TRUE))
+      }
+    ),
+    NA
+  )
+
+  expect_equal(calls$eig_k, 8L)
+  expect_false(any(calls$strict))
+  expect_true(res$acceptance$gap_ok)
+  expect_true(isTRUE(res$partial_near_zero_block))
+  expect_false(isTRUE(res$acceptance$strict_rescue_used))
   expect_identical(res$acceptance$return_reason, "residual_rank_gap_ok")
 })
 
