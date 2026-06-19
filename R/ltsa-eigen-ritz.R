@@ -240,6 +240,313 @@ ltsa_energy_better <- function(candidate, incumbent, ndim) {
   candidate_key$near_zero_count > incumbent_key$near_zero_count
 }
 
+ltsa_energy_rescue_selected_abs_residuals <- function(res, ndim, residual_scale) {
+  absolute_residuals <- as.numeric(res$absolute_residuals %||% numeric())
+  if (length(absolute_residuals) >= ndim) {
+    return(abs(absolute_residuals[seq_len(ndim)]))
+  }
+
+  scaled_residuals <- as.numeric(res$scaled_residuals %||% numeric())
+  if (length(scaled_residuals) >= ndim) {
+    return(abs(scaled_residuals[seq_len(ndim)]) * residual_scale)
+  }
+
+  rep(Inf, ndim)
+}
+
+ltsa_energy_rescue_key <- function(res, ndim) {
+  values <- as.numeric(res$values %||% numeric())
+  lambda_max <- res$lambda_max %||%
+    res$acceptance$lambda_max %||%
+    NA_real_
+  residual_scale <- ltsa_residual_scale(lambda_max)
+  zero_tol <- res$zero_tol %||% ltsa_gap_zero_tol(lambda_max)
+  near_zero_tol <- res$near_zero_tol %||% ltsa_near_zero_tol(lambda_max)
+  if (length(values) < ndim) {
+    return(list(
+      raw_values = values,
+      clamped_values = rep(Inf, ndim),
+      lambda_ndim = Inf,
+      trace = Inf,
+      max_abs_residual = Inf,
+      sum_abs_residual = Inf,
+      negative_clamp_count = 0L,
+      material_negative = FALSE,
+      zero_tol = zero_tol,
+      near_zero_tol = near_zero_tol,
+      residual_scale = residual_scale,
+      near_zero_count = res$near_zero_nonconstant_count %||% 0L,
+      partial = ltsa_partial_near_zero_block(res, ndim)
+    ))
+  }
+
+  selected <- values[seq_len(ndim)]
+  clamped <- ifelse(selected >= -zero_tol & selected < 0, 0, selected)
+  abs_residuals <- ltsa_energy_rescue_selected_abs_residuals(
+    res = res,
+    ndim = ndim,
+    residual_scale = residual_scale
+  )
+
+  list(
+    raw_values = selected,
+    clamped_values = clamped,
+    lambda_ndim = clamped[[ndim]],
+    trace = sum(clamped),
+    max_abs_residual = max(abs_residuals),
+    sum_abs_residual = sum(abs_residuals),
+    negative_clamp_count = sum(selected >= -zero_tol & selected < 0),
+    material_negative = any(selected < -zero_tol),
+    zero_tol = zero_tol,
+    near_zero_tol = near_zero_tol,
+    residual_scale = residual_scale,
+    near_zero_count = res$near_zero_nonconstant_count %||% 0L,
+    partial = ltsa_partial_near_zero_block(res, ndim)
+  )
+}
+
+ltsa_energy_rescue_allowances <- function(incumbent, candidate, ndim) {
+  inc <- ltsa_energy_rescue_key(incumbent, ndim)
+  cand <- ltsa_energy_rescue_key(candidate, ndim)
+  residual_scale <- max(inc$residual_scale, cand$residual_scale, 1)
+
+  list(
+    lambda_allowance = 100 * .Machine$double.eps * residual_scale +
+      2 * (inc$max_abs_residual + cand$max_abs_residual),
+    trace_allowance = ndim * 100 * .Machine$double.eps * residual_scale +
+      2 * (inc$sum_abs_residual + cand$sum_abs_residual)
+  )
+}
+
+ltsa_energy_rescue_accept_replacement <- function(incumbent, candidate, ndim) {
+  inc <- ltsa_energy_rescue_key(incumbent, ndim)
+  cand <- ltsa_energy_rescue_key(candidate, ndim)
+  allowances <- ltsa_energy_rescue_allowances(incumbent, candidate, ndim)
+  reasons <- character()
+  if (!isTRUE(candidate$acceptance$resid_ok)) {
+    reasons <- c(reasons, "candidate_residual_not_good")
+  }
+  if (!isTRUE(candidate$acceptance$rank_ok)) {
+    reasons <- c(reasons, "candidate_rank_not_good")
+  }
+  if (isTRUE(cand$partial)) {
+    reasons <- c(reasons, "candidate_partial")
+  }
+  if (isTRUE(cand$material_negative)) {
+    reasons <- c(reasons, "candidate_material_negative")
+  }
+  if (length(reasons) > 0L) {
+    return(c(
+      list(
+        accept = FALSE,
+        decision = paste(c("reject_ineligible", reasons), collapse = ";"),
+        near_zero_shortcut = FALSE,
+        warning = if (isTRUE(cand$material_negative)) {
+          "selected eigenvalue below -zero_tol"
+        } else {
+          ""
+        }
+      ),
+      allowances
+    ))
+  }
+
+  if (cand$lambda_ndim <= cand$near_zero_tol) {
+    return(c(
+      list(
+        accept = TRUE,
+        decision = "accept_near_zero_lambda_ndim_shortcut",
+        near_zero_shortcut = TRUE,
+        warning = ""
+      ),
+      allowances
+    ))
+  }
+
+  lambda_allowance <- allowances$lambda_allowance
+  trace_allowance <- allowances$trace_allowance
+  if (cand$lambda_ndim > inc$lambda_ndim + lambda_allowance) {
+    return(c(
+      list(
+        accept = FALSE,
+        decision = "reject_lambda_ndim_worse_beyond_residual_allowance",
+        near_zero_shortcut = FALSE,
+        warning = ""
+      ),
+      allowances
+    ))
+  }
+  if (cand$lambda_ndim < inc$lambda_ndim - lambda_allowance) {
+    return(c(
+      list(
+        accept = TRUE,
+        decision = "accept_lambda_ndim_better",
+        near_zero_shortcut = FALSE,
+        warning = ""
+      ),
+      allowances
+    ))
+  }
+  if (cand$trace > inc$trace + trace_allowance) {
+    return(c(
+      list(
+        accept = FALSE,
+        decision = "reject_trace_worse_beyond_residual_allowance",
+        near_zero_shortcut = FALSE,
+        warning = ""
+      ),
+      allowances
+    ))
+  }
+  if (cand$trace < inc$trace - trace_allowance) {
+    return(c(
+      list(
+        accept = TRUE,
+        decision = "accept_trace_better",
+        near_zero_shortcut = FALSE,
+        warning = ""
+      ),
+      allowances
+    ))
+  }
+  if (isTRUE(inc$partial) && !isTRUE(cand$partial)) {
+    return(c(
+      list(
+        accept = TRUE,
+        decision = "accept_energy_tie_nonpartial_replacement",
+        near_zero_shortcut = FALSE,
+        warning = ""
+      ),
+      allowances
+    ))
+  }
+  if (cand$near_zero_count > inc$near_zero_count) {
+    return(c(
+      list(
+        accept = TRUE,
+        decision = "accept_energy_tie_higher_near_zero_count",
+        near_zero_shortcut = FALSE,
+        warning = ""
+      ),
+      allowances
+    ))
+  }
+
+  c(
+    list(
+      accept = FALSE,
+      decision = "keep_incumbent_energy_tie",
+      near_zero_shortcut = FALSE,
+      warning = ""
+    ),
+    allowances
+  )
+}
+
+ltsa_width_rescue_partial_incumbent <- function(candidate, incumbent, ndim) {
+  if (is.null(candidate) || !ltsa_partial_near_zero_block(candidate, ndim)) {
+    return(incumbent)
+  }
+  if (is.null(incumbent)) {
+    return(candidate)
+  }
+  if (!ltsa_partial_near_zero_block(incumbent, ndim)) {
+    return(incumbent)
+  }
+
+  inc <- ltsa_energy_rescue_key(incumbent, ndim)
+  cand <- ltsa_energy_rescue_key(candidate, ndim)
+  if (isTRUE(cand$material_negative) && !isTRUE(inc$material_negative)) {
+    return(incumbent)
+  }
+  if (!isTRUE(cand$material_negative) && isTRUE(inc$material_negative)) {
+    return(candidate)
+  }
+
+  allowances <- ltsa_energy_rescue_allowances(incumbent, candidate, ndim)
+  if (cand$lambda_ndim < inc$lambda_ndim - allowances$lambda_allowance) {
+    return(candidate)
+  }
+  if (cand$lambda_ndim > inc$lambda_ndim + allowances$lambda_allowance) {
+    return(incumbent)
+  }
+  if (cand$trace < inc$trace - allowances$trace_allowance) {
+    return(candidate)
+  }
+  if (cand$trace > inc$trace + allowances$trace_allowance) {
+    return(incumbent)
+  }
+  if (cand$near_zero_count > inc$near_zero_count) {
+    return(candidate)
+  }
+
+  incumbent
+}
+
+ltsa_ordinary_attempt_eig_ks <- function(attempts) {
+  if (is.null(attempts) || length(attempts) == 0L) {
+    return(integer())
+  }
+
+  eig_ks <- vapply(
+    attempts,
+    function(attempt) {
+      if (isTRUE(attempt$strict_rescue) || isTRUE(attempt$bank)) {
+        return(NA_integer_)
+      }
+      eig_k <- attempt$eig_k %||% NA_integer_
+      if (length(eig_k) != 1L || is.na(eig_k)) {
+        return(NA_integer_)
+      }
+      as.integer(eig_k)
+    },
+    integer(1)
+  )
+  unique(eig_ks[!is.na(eig_ks) & eig_ks > 0L])
+}
+
+ltsa_width_rescue_extra_count <- function(attempts, trigger_eig_k) {
+  ordinary <- ltsa_ordinary_attempt_eig_ks(attempts)
+  if (length(ordinary) == 0L || is.na(trigger_eig_k)) {
+    return(0L)
+  }
+
+  as.integer(sum(ordinary > trigger_eig_k))
+}
+
+ltsa_staged_strict_rescue_eig_ks <- function(selected, n) {
+  ordinary <- ltsa_ordinary_attempt_eig_ks(selected$attempts)
+  ordinary <- ordinary[ordinary < n]
+  if (length(ordinary) == 0L) {
+    return(integer())
+  }
+
+  widest <- max(ordinary)
+  previous <- if (length(ordinary) >= 2L) {
+    ordinary[[length(ordinary) - 1L]]
+  } else {
+    widest
+  }
+  unique(pmin(c(previous, widest), widest, n - 1L))
+}
+
+ltsa_mark_width_rescue_attempt <- function(attempt, decision, stage = NULL) {
+  attempt$width_first_rescue <- TRUE
+  attempt$width_first_rescue_accept <- isTRUE(decision$accept)
+  attempt$width_first_rescue_decision <- decision$decision %||% NA_character_
+  attempt$width_first_rescue_warning <- decision$warning %||% ""
+  attempt$width_first_rescue_lambda_allowance <-
+    decision$lambda_allowance %||% NA_real_
+  attempt$width_first_rescue_trace_allowance <-
+    decision$trace_allowance %||% NA_real_
+  attempt$width_first_rescue_near_zero_shortcut <-
+    isTRUE(decision$near_zero_shortcut)
+  if (!is.null(stage)) {
+    attempt$strict_rescue_stage <- stage
+  }
+  attempt
+}
+
 ltsa_rescue_candidate <- function(candidate, incumbent, ndim) {
   if (is.null(candidate)) {
     return(incumbent)
@@ -313,6 +620,27 @@ ltsa_maybe_warn_partial_near_zero_block <- function(
       call. = FALSE
     )
   }
+  res
+}
+
+ltsa_maybe_warn_width_first_rescue_unresolved <- function(res, ndim) {
+  res <- ltsa_mark_partial_near_zero_block(res, ndim)
+  if (!isTRUE(res$partial_near_zero_block)) {
+    return(res)
+  }
+
+  warning(
+    "LTSA width-first rescue exhausted capped ordinary and strict attempts ",
+    "but still found only ",
+    res$near_zero_nonconstant_count,
+    " near-zero nonconstant mode",
+    if (isTRUE(res$near_zero_nonconstant_count == 1L)) "" else "s",
+    " for ndim = ",
+    ndim,
+    "; returning the best residual-good/rank-good partial incumbent.",
+    call. = FALSE
+  )
+  res$acceptance$width_first_rescue_unresolved <- TRUE
   res
 }
 
@@ -901,6 +1229,179 @@ ltsa_maybe_strict_rescue <- function(
     rescued$acceptance$strict_rescue_eig_k <- strict_eig_k
   }
   rescued
+}
+
+ltsa_maybe_staged_strict_rescue <- function(
+  B,
+  selected,
+  ndim,
+  nullvec,
+  lambda_max,
+  provider,
+  provider_args,
+  strict_rescue_arg_mapper,
+  strict_rescue_controls,
+  resid_tol,
+  gap_tol,
+  bank_backend = NULL,
+  verbose = FALSE
+) {
+  if (!ltsa_strict_rescue_needed(selected, ndim)) {
+    return(selected)
+  }
+
+  strict_eig_ks <- ltsa_staged_strict_rescue_eig_ks(
+    selected = selected,
+    n = nrow(B)
+  )
+  if (length(strict_eig_ks) == 0L) {
+    return(selected)
+  }
+  strict_width_cap <- max(strict_eig_ks)
+  strict_stages <- if (length(strict_eig_ks) == 1L) {
+    "widest_ordinary_width"
+  } else {
+    c("previous_ordinary_width", "widest_ordinary_width")
+  }
+  strict_args <- do.call(
+    strict_rescue_arg_mapper,
+    c(list(provider_args), strict_rescue_controls)
+  )
+
+  incumbent <- selected
+  attempts <- incumbent$attempts
+  for (i in seq_along(strict_eig_ks)) {
+    strict_eig_k <- strict_eig_ks[[i]]
+    strict_stage <- strict_stages[[i]]
+    strict_candidate_elapsed <- NA_real_
+    strict_candidate_timing <- system.time({
+      strict_eig_res <- tryCatch(
+        ltsa_call_candidate_provider(
+          provider = provider,
+          B = B,
+          eig_k = strict_eig_k,
+          provider_args = strict_args,
+          lambda_max = lambda_max,
+          verbose = verbose
+        ),
+        error = function(e) e
+      )
+    })
+    strict_candidate_elapsed <- unname(strict_candidate_timing[["elapsed"]])
+    if (inherits(strict_eig_res, "error")) {
+      attempt <- ltsa_attempt_error_summary(
+        eig_k = strict_eig_k,
+        error = conditionMessage(strict_eig_res),
+        strict_rescue = TRUE,
+        candidate_elapsed = strict_candidate_elapsed
+      )
+      attempt$width_first_rescue <- TRUE
+      attempt$strict_rescue_stage <- strict_stage
+      attempt$strict_rescue_width_cap <- strict_width_cap
+      attempts <- c(attempts, list(attempt))
+      incumbent$attempts <- attempts
+      next
+    }
+
+    strict_ritz_elapsed <- NA_real_
+    strict_ritz_timing <- system.time({
+      strict_rr <- tryCatch(
+        ltsa_ritz_select(
+          B = strict_eig_res$matrix,
+          vectors = strict_eig_res$vectors,
+          ndim = ndim,
+          nullvec = nullvec,
+          lambda_max = strict_eig_res$lambda_max
+        ),
+        error = function(e) e
+      )
+    })
+    strict_ritz_elapsed <- unname(strict_ritz_timing[["elapsed"]])
+    if (inherits(strict_rr, "error")) {
+      attempt <- ltsa_attempt_error_summary(
+        eig_k = strict_eig_k,
+        eig_res = strict_eig_res,
+        error = conditionMessage(strict_rr),
+        strict_rescue = TRUE,
+        candidate_elapsed = strict_candidate_elapsed,
+        ritz_elapsed = strict_ritz_elapsed,
+        capture_candidate_space = TRUE
+      )
+      attempt$width_first_rescue <- TRUE
+      attempt$strict_rescue_stage <- strict_stage
+      attempt$strict_rescue_width_cap <- strict_width_cap
+      attempts <- c(attempts, list(attempt))
+      incumbent$attempts <- attempts
+      next
+    }
+
+    strict_acceptance <- accept_ltsa_ritz(
+      rr = strict_rr,
+      ndim = ndim,
+      lambda_max = strict_eig_res$lambda_max,
+      resid_tol = resid_tol,
+      gap_tol = gap_tol,
+      require_gap = FALSE
+    )
+    strict_attempt <- ltsa_attempt_summary(
+      eig_k = strict_eig_k,
+      eig_res = strict_eig_res,
+      rr = strict_rr,
+      acceptance = strict_acceptance,
+      strict_rescue = TRUE,
+      candidate_elapsed = strict_candidate_elapsed,
+      ritz_elapsed = strict_ritz_elapsed,
+      capture_candidate_space = TRUE
+    )
+    strict_result <- ltsa_with_attempt(
+      eig_res = strict_eig_res,
+      rr = strict_rr,
+      acceptance = strict_acceptance,
+      attempts = attempts,
+      attempt = strict_attempt
+    )
+    decision <- ltsa_energy_rescue_accept_replacement(
+      incumbent = incumbent,
+      candidate = strict_result,
+      ndim = ndim
+    )
+    last_attempt <- length(strict_result$attempts)
+    strict_result$attempts[[last_attempt]] <-
+      ltsa_mark_width_rescue_attempt(
+        strict_result$attempts[[last_attempt]],
+        decision = decision,
+        stage = strict_stage
+      )
+    strict_result$attempts[[last_attempt]]$strict_rescue_width_cap <-
+      strict_width_cap
+    strict_result$acceptance$return_reason <- "width_first_strict_rescue"
+    attempts <- strict_result$attempts
+
+    if (isTRUE(decision$accept)) {
+      strict_result$acceptance$strict_rescue_used <- TRUE
+      strict_result$acceptance$strict_rescue_eig_k <- strict_eig_k
+      strict_result$acceptance$strict_rescue_stage <- strict_stage
+      strict_result$acceptance$strict_rescue_width_cap <- strict_width_cap
+      strict_result$acceptance$width_first_rescue_used <- TRUE
+      return(strict_result)
+    }
+
+    replacement <- ltsa_width_rescue_partial_incumbent(
+      candidate = strict_result,
+      incumbent = incumbent,
+      ndim = ndim
+    )
+    if (!identical(replacement, incumbent)) {
+      incumbent <- replacement
+    }
+    incumbent$attempts <- attempts
+  }
+
+  incumbent$attempts <- attempts
+  incumbent$acceptance$strict_rescue_attempted <- TRUE
+  incumbent$acceptance$strict_rescue_used <- FALSE
+  incumbent$acceptance$strict_rescue_width_cap <- strict_width_cap
+  incumbent
 }
 
 ltsa_with_ritz <- function(eig_res, rr, acceptance, attempts) {

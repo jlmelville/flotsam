@@ -86,6 +86,130 @@ calibrated_synthetic_ritz <- function(values, ndim, lambda_max = max(values)) {
   )
 }
 
+synthetic_energy_rescue_result <- function(
+  values,
+  scaled_residuals,
+  ndim,
+  lambda_max = 1,
+  rank_ok = TRUE,
+  resid_ok = TRUE
+) {
+  residual_scale <- flotsam:::ltsa_residual_scale(lambda_max)
+  values <- as.numeric(values)
+  scaled_residuals <- as.numeric(scaled_residuals)
+  if (length(scaled_residuals) == 1L) {
+    scaled_residuals <- rep(scaled_residuals, length(values))
+  }
+
+  list(
+    values = values,
+    scaled_residuals = scaled_residuals,
+    absolute_residuals = scaled_residuals * residual_scale,
+    lambda_max = lambda_max,
+    zero_tol = flotsam:::ltsa_gap_zero_tol(lambda_max),
+    near_zero_tol = flotsam:::ltsa_near_zero_tol(lambda_max),
+    near_zero_nonconstant_count = as.integer(sum(
+      abs(values[seq_len(ndim)]) <= flotsam:::ltsa_near_zero_tol(lambda_max)
+    )),
+    acceptance = list(
+      rank_ok = isTRUE(rank_ok),
+      resid_ok = isTRUE(resid_ok),
+      lambda_max = lambda_max
+    )
+  )
+}
+
+width_rescue_problem <- function(ndim, n = 96L) {
+  low <- seq_len(ndim) * 1e-10
+  high_count <- n - ndim - 1L
+  high <- 1e-3 + seq_len(high_count) * 1e-3
+  synthetic_ltsa_problem(c(0, low, high))
+}
+
+width_rescue_cols <- function(eig_k, ndim, n, mode) {
+  low <- seq.int(2L, ndim + 1L)
+  high <- seq.int(ndim + 2L, n)
+  cols <- switch(
+    mode,
+    partial = c(1L, low[seq_len(max(1L, ndim - 1L))], high),
+    complete = c(1L, low, high),
+    high = c(1L, high),
+    stop("unknown width rescue mode", call. = FALSE)
+  )
+  cols[seq_len(eig_k)]
+}
+
+width_rescue_provider_factory <- function(
+  problem,
+  ndim,
+  ordinary_mode,
+  strict_mode = function(eig_k) "complete",
+  lambda_max = 1
+) {
+  calls <- data.frame(eig_k = integer(), strict = logical())
+  provider <- function(
+    B,
+    eig_k,
+    lambda_max = NULL,
+    verbose = FALSE,
+    strict = FALSE
+  ) {
+    calls <<- rbind(calls, data.frame(eig_k = eig_k, strict = strict))
+    mode <- if (strict) strict_mode(eig_k) else ordinary_mode(eig_k)
+    cols <- width_rescue_cols(
+      eig_k = eig_k,
+      ndim = ndim,
+      n = nrow(problem$basis),
+      mode = mode
+    )
+    flotsam:::ltsa_candidate_result(
+      vectors = problem$basis[, cols, drop = FALSE],
+      backend = "synthetic",
+      eig_k = eig_k,
+      matrix = B,
+      lambda_max = lambda_max,
+      convergence_known = TRUE,
+      returned_columns = length(cols),
+      converged_columns = length(cols),
+      nconv = length(cols)
+    )
+  }
+
+  list(
+    provider = provider,
+    calls = function() calls
+  )
+}
+
+run_width_rescue_case <- function(
+  ndim = 2L,
+  n = 96L,
+  ordinary_mode,
+  strict_mode = function(eig_k) "complete",
+  ...
+) {
+  problem <- width_rescue_problem(ndim = ndim, n = n)
+  fixture <- width_rescue_provider_factory(
+    problem = problem,
+    ndim = ndim,
+    ordinary_mode = ordinary_mode,
+    strict_mode = strict_mode
+  )
+  res <- flotsam:::ltsa_adaptive_ritz_eig(
+    problem$matrix,
+    ndim = ndim,
+    provider = fixture$provider,
+    gap_expansion_steps = 0L,
+    width_first_rescue = TRUE,
+    strict_rescue_arg_mapper = function(provider_args, ...) {
+      c(provider_args, list(strict = TRUE))
+    },
+    ...
+  )
+
+  list(result = res, calls = fixture$calls(), problem = problem)
+}
+
 test_that("embedding vector selection drops a returned trivial vector", {
   basis <- selection_test_basis()
   B <- selection_test_matrix(basis)
@@ -853,6 +977,113 @@ test_that("strict rescue result ranking prefers lower selected block energy", {
   )
 })
 
+test_that("energy rescue predicate handles synthetic acceptance fixtures", {
+  cases <- list(
+    list(
+      name = "accept_better_lambda_and_trace",
+      ndim = 2L,
+      incumbent_values = c(1e-10, 7e-5),
+      candidate_values = c(1e-10, 2e-10),
+      incumbent_scaled_residuals = c(2e-17, 2e-17),
+      candidate_scaled_residuals = c(2e-17, 2e-17),
+      expected_accept = TRUE,
+      expected_decision = "accept_near_zero_lambda_ndim_shortcut",
+      expected_warning = ""
+    ),
+    list(
+      name = "reject_similar_lambda_worse_trace",
+      ndim = 3L,
+      incumbent_values = c(1e-10, 2e-10, 6e-5),
+      candidate_values = c(2e-5, 2e-5, 6e-5),
+      incumbent_scaled_residuals = c(1e-17, 1e-17, 1e-17),
+      candidate_scaled_residuals = c(1e-17, 1e-17, 1e-17),
+      expected_accept = FALSE,
+      expected_decision = "reject_trace_worse_beyond_residual_allowance",
+      expected_warning = ""
+    ),
+    list(
+      name = "reject_worse_lambda_beyond_tolerance",
+      ndim = 2L,
+      incumbent_values = c(1e-10, 7e-5),
+      candidate_values = c(7.2e-5, 7.3e-5),
+      incumbent_scaled_residuals = c(1e-17, 1e-17),
+      candidate_scaled_residuals = c(1e-17, 1e-17),
+      expected_accept = FALSE,
+      expected_decision = "reject_lambda_ndim_worse_beyond_residual_allowance",
+      expected_warning = ""
+    ),
+    list(
+      name = "accept_energy_tie_nonpartial_replacement",
+      ndim = 2L,
+      incumbent_values = c(1e-10, 7e-5),
+      candidate_values = c(2e-8, 7.00005e-5),
+      incumbent_scaled_residuals = c(2e-7, 2e-7),
+      candidate_scaled_residuals = c(2e-7, 2e-7),
+      expected_accept = TRUE,
+      expected_decision = "accept_energy_tie_nonpartial_replacement",
+      expected_warning = ""
+    ),
+    list(
+      name = "tiny_negative_clamped_no_spurious_trace_win",
+      ndim = 2L,
+      incumbent_values = c(1e-10, 5e-5),
+      candidate_values = c(-1e-8, 5.0005e-5),
+      incumbent_scaled_residuals = c(1e-17, 1e-17),
+      candidate_scaled_residuals = c(1e-17, 1e-17),
+      expected_accept = FALSE,
+      expected_decision = "reject_ineligible;candidate_partial",
+      expected_warning = ""
+    ),
+    list(
+      name = "reject_material_negative_below_zero_tol",
+      ndim = 2L,
+      incumbent_values = c(1e-10, 7e-5),
+      candidate_values = c(-2.1e-8, -2.0e-8),
+      incumbent_scaled_residuals = c(1e-17, 1e-17),
+      candidate_scaled_residuals = c(1e-17, 1e-17),
+      expected_accept = FALSE,
+      expected_decision = "reject_ineligible;candidate_material_negative",
+      expected_warning = "selected eigenvalue below -zero_tol"
+    )
+  )
+
+  for (case in cases) {
+    incumbent <- synthetic_energy_rescue_result(
+      values = case$incumbent_values,
+      scaled_residuals = case$incumbent_scaled_residuals,
+      ndim = case$ndim
+    )
+    candidate <- synthetic_energy_rescue_result(
+      values = case$candidate_values,
+      scaled_residuals = case$candidate_scaled_residuals,
+      ndim = case$ndim
+    )
+    decision <- flotsam:::ltsa_energy_rescue_accept_replacement(
+      incumbent = incumbent,
+      candidate = candidate,
+      ndim = case$ndim
+    )
+
+    expect_identical(decision$accept, case$expected_accept, info = case$name)
+    expect_identical(
+      decision$decision,
+      case$expected_decision,
+      info = case$name
+    )
+    expect_identical(decision$warning, case$expected_warning, info = case$name)
+  }
+
+  tiny_negative <- synthetic_energy_rescue_result(
+    values = c(-1e-8, 5.0005e-5),
+    scaled_residuals = c(1e-17, 1e-17),
+    ndim = 2L
+  )
+  key <- flotsam:::ltsa_energy_rescue_key(tiny_negative, ndim = 2L)
+  expect_identical(unname(key$clamped_values[[1L]]), 0)
+  expect_true(isTRUE(key$partial))
+  expect_false(isTRUE(key$material_negative))
+})
+
 test_that("strict rescue arguments tighten tolerance and preserve stricter user opts", {
   expect_equal(
     flotsam:::ltsa_strict_rescue_args(
@@ -979,6 +1210,186 @@ test_that("adaptive Ritz driver keeps strict rescue enabled by default", {
   expect_true(isTRUE(res$acceptance$strict_rescue_used))
   expect_identical(res$acceptance$return_reason, "strict_rescue")
   expect_lt(max(abs(res$values - c(1e-7, 2e-7))), 1e-14)
+})
+
+test_that("width-first rescue adaptive widths cover ndim and small-n caps", {
+  adaptive_widths <- function(ndim, n, count) {
+    max_k <- flotsam:::ltsa_max_ritz_candidate_k(ndim, n)
+    widths <- flotsam:::ltsa_initial_ritz_candidate_k(ndim, n)
+    while (length(widths) < count && tail(widths, 1L) < max_k) {
+      widths <- c(
+        widths,
+        flotsam:::ltsa_next_ritz_candidate_k(tail(widths, 1L), max_k)
+      )
+    }
+    widths
+  }
+
+  expect_equal(adaptive_widths(2L, 96L, 3L), c(8L, 12L, 18L))
+  expect_equal(adaptive_widths(3L, 96L, 3L), c(9L, 14L, 21L))
+  expect_equal(adaptive_widths(5L, 96L, 3L), c(11L, 17L, 26L))
+  expect_equal(adaptive_widths(5L, 13L, 3L), c(11L, 12L))
+})
+
+test_that("width-first rescue accepts ordinary widening after a partial block", {
+  out <- NULL
+  expect_warning(
+    out <- run_width_rescue_case(
+      ordinary_mode = function(eig_k) {
+        if (eig_k < 12L) "partial" else "complete"
+      }
+    ),
+    NA
+  )
+
+  calls <- out$calls
+  res <- out$result
+  expect_equal(calls$eig_k, c(8L, 12L))
+  expect_equal(calls$strict, c(FALSE, FALSE))
+  expect_equal(
+    vapply(res$attempts, `[[`, integer(1), "eig_k"),
+    c(8L, 12L)
+  )
+  expect_identical(res$acceptance$return_reason, "width_first_ordinary_rescue")
+  expect_true(isTRUE(res$acceptance$width_first_rescue_ordinary))
+  expect_false(isTRUE(res$partial_near_zero_block))
+  expect_lt(max(abs(res$values - c(1e-10, 2e-10))), 1e-14)
+})
+
+test_that("width-first rescue invokes strict fallback after ordinary exhaustion", {
+  out <- NULL
+  expect_warning(
+    out <- run_width_rescue_case(
+      ordinary_mode = function(eig_k) "partial",
+      strict_mode = function(eig_k) "complete"
+    ),
+    NA
+  )
+
+  calls <- out$calls
+  ordinary_calls <- calls$eig_k[!calls$strict]
+  strict_calls <- calls$eig_k[calls$strict]
+  res <- out$result
+  expect_equal(ordinary_calls, c(8L, 12L, 18L))
+  expect_equal(anyDuplicated(ordinary_calls), 0L)
+  expect_equal(strict_calls, 12L)
+  expect_identical(res$acceptance$return_reason, "width_first_strict_rescue")
+  expect_true(isTRUE(res$acceptance$strict_rescue_used))
+  expect_identical(
+    res$acceptance$strict_rescue_stage,
+    "previous_ordinary_width"
+  )
+  expect_identical(res$acceptance$strict_rescue_width_cap, 18L)
+})
+
+test_that("width-first staged strict fallback tries widest after previous remains partial", {
+  out <- NULL
+  expect_warning(
+    out <- run_width_rescue_case(
+      ordinary_mode = function(eig_k) "partial",
+      strict_mode = function(eig_k) {
+        if (eig_k == 12L) "partial" else "complete"
+      }
+    ),
+    NA
+  )
+
+  calls <- out$calls
+  res <- out$result
+  expect_equal(calls$eig_k, c(8L, 12L, 18L, 12L, 18L))
+  expect_equal(calls$strict, c(FALSE, FALSE, FALSE, TRUE, TRUE))
+  expect_identical(
+    res$acceptance$strict_rescue_stage,
+    "widest_ordinary_width"
+  )
+  strict_attempts <- Filter(function(x) isTRUE(x$strict_rescue), res$attempts)
+  expect_equal(
+    vapply(strict_attempts, `[[`, character(1), "strict_rescue_stage"),
+    c("previous_ordinary_width", "widest_ordinary_width")
+  )
+  expect_equal(
+    vapply(strict_attempts, `[[`, integer(1), "strict_rescue_width_cap"),
+    c(18L, 18L)
+  )
+  expect_lt(max(abs(res$values - c(1e-10, 2e-10))), 1e-14)
+})
+
+test_that("width-first rescue rejects energy-worse ordinary nonpartial candidates", {
+  out <- NULL
+  expect_warning(
+    out <- run_width_rescue_case(
+      ordinary_mode = function(eig_k) {
+        if (eig_k == 8L) {
+          "partial"
+        } else if (eig_k == 12L) {
+          "high"
+        } else {
+          "complete"
+        }
+      }
+    ),
+    NA
+  )
+
+  calls <- out$calls
+  res <- out$result
+  expect_equal(calls$eig_k, c(8L, 12L, 18L))
+  expect_equal(calls$strict, c(FALSE, FALSE, FALSE))
+  expect_identical(
+    res$attempts[[2L]]$width_first_rescue_decision,
+    "reject_lambda_ndim_worse_beyond_residual_allowance"
+  )
+  expect_false(isTRUE(res$attempts[[2L]]$width_first_rescue_accept))
+  expect_identical(res$acceptance$return_reason, "width_first_ordinary_rescue")
+  expect_lt(max(abs(res$values - c(1e-10, 2e-10))), 1e-14)
+})
+
+test_that("width-first rescue honors small-n cap without duplicate ordinary attempts", {
+  out <- NULL
+  expect_warning(
+    out <- run_width_rescue_case(
+      ndim = 5L,
+      n = 13L,
+      ordinary_mode = function(eig_k) "partial",
+      strict_mode = function(eig_k) "complete"
+    ),
+    NA
+  )
+
+  calls <- out$calls
+  ordinary_calls <- calls$eig_k[!calls$strict]
+  strict_calls <- calls$eig_k[calls$strict]
+  expect_equal(ordinary_calls, c(11L, 12L))
+  expect_equal(anyDuplicated(ordinary_calls), 0L)
+  expect_equal(strict_calls, 11L)
+  expect_identical(
+    out$result$acceptance$strict_rescue_stage,
+    "previous_ordinary_width"
+  )
+  expect_identical(out$result$acceptance$strict_rescue_width_cap, 12L)
+})
+
+test_that("width-first rescue returns warned partial incumbent after capped failures", {
+  out <- NULL
+  expect_warning(
+    out <- run_width_rescue_case(
+      ordinary_mode = function(eig_k) "partial",
+      strict_mode = function(eig_k) "partial"
+    ),
+    "width-first rescue exhausted capped ordinary and strict attempts"
+  )
+
+  calls <- out$calls
+  res <- out$result
+  expect_equal(calls$eig_k, c(8L, 12L, 18L, 12L, 18L))
+  expect_equal(calls$strict, c(FALSE, FALSE, FALSE, TRUE, TRUE))
+  expect_true(isTRUE(res$partial_near_zero_block))
+  expect_true(isTRUE(res$acceptance$width_first_rescue_unresolved))
+  expect_false(isTRUE(res$acceptance$strict_rescue_used))
+  expect_identical(
+    res$acceptance$return_reason,
+    "width_first_rescue_unresolved_partial"
+  )
 })
 
 test_that("disabled strict rescue warns on returned partial near-zero blocks", {
