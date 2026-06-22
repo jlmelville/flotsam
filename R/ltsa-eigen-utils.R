@@ -7,6 +7,35 @@ ltsa_iterative_search_k <- function(ndim, n) {
   min(n - 1L, search_eig_k)
 }
 
+ltsa_default_eig_k <- function(ndim, n) {
+  ndim <- check_whole_number(ndim, "ndim", min = 1)
+  n <- check_whole_number(n, "n", min = 2)
+
+  min(n - 1L, max(12L, ndim + 2L))
+}
+
+ltsa_validate_eig_k <- function(eig_k, ndim, n) {
+  if (is.null(eig_k)) {
+    return(ltsa_default_eig_k(ndim = ndim, n = n))
+  }
+
+  ndim <- check_whole_number(ndim, "ndim", min = 1)
+  n <- check_whole_number(n, "n", min = 2)
+
+  if (
+    !is.numeric(eig_k) ||
+      length(eig_k) != 1L ||
+      is.na(eig_k) ||
+      !is.finite(eig_k) ||
+      eig_k != floor(eig_k) ||
+      eig_k < ndim + 1L ||
+      eig_k >= n
+  ) {
+    stop("eig_k must satisfy ndim + 1 <= eig_k < n", call. = FALSE)
+  }
+  as.integer(eig_k)
+}
+
 symmetrize_ltsa_matrix <- function(B) {
   B <- 0.5 * (B + Matrix::t(B))
 

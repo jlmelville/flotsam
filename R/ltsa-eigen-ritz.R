@@ -140,6 +140,261 @@ select_ltsa_embedding_vectors <- function(
   rr$vectors
 }
 
+ltsa_fixed_exact_dense_backend <- function(backend) {
+  backend %in% c("dense_eigen", "eig", "eigen", "fullsvd", "dense_svd")
+}
+
+ltsa_fixed_backend_metadata <- function(eig_res) {
+  backend <- eig_res$backend %||% "unknown"
+  backend <- as.character(backend[[1L]])
+  exact_dense <- ltsa_fixed_exact_dense_backend(backend)
+  out <- list(
+    name = backend,
+    convergence_known = isTRUE(eig_res$convergence_known) || exact_dense
+  )
+
+  if (identical(backend, "rspectra")) {
+    out$nconv <- as.integer(eig_res$nconv %||% NA_integer_)
+    out$niter <- as.integer(eig_res$niter %||% NA_integer_)
+    out$nops <- as.integer(eig_res$nops %||% NA_integer_)
+  } else {
+    niter <- as.integer(eig_res$niter %||% NA_integer_)
+    mprod <- as.integer(eig_res$mprod %||% NA_integer_)
+    if (!is.na(niter)) {
+      out$iter <- niter
+    }
+    if (!is.na(mprod)) {
+      out$mprod <- mprod
+    }
+    if (exact_dense) {
+      out$exact_dense <- TRUE
+    }
+  }
+
+  out
+}
+
+ltsa_fixed_backend_failure_messages <- function(eig_res, eig_k) {
+  backend <- eig_res$backend %||% "unknown"
+  backend <- as.character(backend[[1L]])
+  nconv <- as.integer(eig_res$nconv %||% NA_integer_)
+  converged_columns <- as.integer(eig_res$converged_columns %||% nconv)
+
+  if (identical(backend, "rspectra") && !is.na(nconv) && nconv < eig_k) {
+    return(paste0(
+      "RSpectra converged fewer LTSA candidate vectors than requested: ",
+      nconv,
+      " / ",
+      eig_k,
+      "."
+    ))
+  }
+  if (
+    isTRUE(eig_res$convergence_known) &&
+      !is.na(converged_columns) &&
+      converged_columns < eig_k
+  ) {
+    return(paste0(
+      "Backend reported fewer converged LTSA candidate vectors than ",
+      "requested: ",
+      converged_columns,
+      " / ",
+      eig_k,
+      "."
+    ))
+  }
+
+  character()
+}
+
+ltsa_fixed_ritz_diagnostics <- function(
+  eig_res,
+  rr,
+  eig_k,
+  ndim,
+  resid_tol,
+  gap_tol
+) {
+  backend <- ltsa_fixed_backend_metadata(eig_res)
+  lambda_max <- eig_res$lambda_max %||% NA_real_
+  values <- as.numeric(rr$values)
+  residuals <- as.numeric(rr$scaled_residuals)
+  max_residual <- if (length(residuals) == 0L) {
+    Inf
+  } else {
+    max(residuals)
+  }
+
+  invalid_messages <- character()
+  if (length(values) < ndim || ncol(rr$vectors) < ndim) {
+    invalid_messages <- c(
+      invalid_messages,
+      "Fewer than ndim usable nonconstant Ritz vectors were selected."
+    )
+  }
+  if (rr$rank_after_null < ndim) {
+    invalid_messages <- c(
+      invalid_messages,
+      paste0(
+        "Post-null candidate rank ",
+        rr$rank_after_null,
+        " is less than ndim = ",
+        ndim,
+        "."
+      )
+    )
+  }
+  if (!all(is.finite(values)) || !all(is.finite(rr$vectors))) {
+    invalid_messages <- c(
+      invalid_messages,
+      "Selected Ritz values or vectors contain non-finite entries."
+    )
+  }
+  if (!is.finite(max_residual) || max_residual > resid_tol) {
+    invalid_messages <- c(
+      invalid_messages,
+      paste0(
+        "Selected scaled residuals exceed tolerance: max = ",
+        signif(max_residual, 4),
+        ", tolerance = ",
+        signif(resid_tol, 4),
+        "."
+      )
+    )
+  }
+  invalid_messages <- c(
+    invalid_messages,
+    ltsa_fixed_backend_failure_messages(eig_res, eig_k)
+  )
+
+  warning_messages <- character()
+  if (length(rr$all_values) < ndim + 1L) {
+    warning_messages <- c(
+      warning_messages,
+      paste0(
+        "Candidate span contains fewer than ndim + 1 post-null Ritz ",
+        "values; no spare boundary direction is available."
+      )
+    )
+  } else if (!is.finite(rr$global_gap)) {
+    warning_messages <- c(
+      warning_messages,
+      "Ritz boundary gap after the selected block is unavailable."
+    )
+  } else if (rr$global_gap < gap_tol) {
+    warning_messages <- c(
+      warning_messages,
+      paste0(
+        "Weak Ritz boundary gap after the selected block: ",
+        signif(rr$global_gap, 4),
+        " < ",
+        signif(gap_tol, 4),
+        "."
+      )
+    )
+  }
+  if (!isTRUE(backend$convergence_known)) {
+    warning_messages <- c(
+      warning_messages,
+      "Backend does not provide a native convergence certificate."
+    )
+  }
+  resid_ok <- is.finite(max_residual) && max_residual <= resid_tol
+  if (
+    ltsa_partial_near_zero_block(
+      list(
+        near_zero_nonconstant_count = rr$near_zero_nonconstant_count,
+        acceptance = list(
+          rank_ok = rr$rank_after_null >= ndim,
+          resid_ok = resid_ok
+        )
+      ),
+      ndim = ndim
+    )
+  ) {
+    warning_messages <- c(
+      warning_messages,
+      "Only part of a near-zero selected Ritz block is present."
+    )
+  }
+
+  status <- if (length(invalid_messages) > 0L) {
+    "invalid"
+  } else if (length(warning_messages) > 0L) {
+    "warning"
+  } else {
+    "ok"
+  }
+
+  list(
+    method = backend$name,
+    eig_k = eig_k,
+    values = values,
+    ritz_values = as.numeric(rr$all_values),
+    residuals = residuals,
+    rank = rr$rank_after_null,
+    lambda_max = lambda_max,
+    status = status,
+    messages = c(invalid_messages, warning_messages),
+    backend = backend
+  )
+}
+
+ltsa_fixed_ritz_eig <- function(
+  B,
+  ndim,
+  provider,
+  provider_args = list(),
+  nullvec = ltsa_default_null_vector(nrow(B)),
+  eig_k = NULL,
+  resid_tol = 1e-5,
+  gap_tol = 1e-4,
+  verbose = FALSE
+) {
+  eig_k <- ltsa_validate_eig_k(eig_k = eig_k, ndim = ndim, n = nrow(B))
+  eig_res <- ltsa_call_candidate_provider(
+    provider = provider,
+    B = B,
+    eig_k = eig_k,
+    provider_args = provider_args,
+    lambda_max = NULL,
+    verbose = verbose
+  )
+  eig_res <- ltsa_as_candidate_result(
+    eig_res,
+    B = B,
+    eig_k = eig_k,
+    backend = eig_res$backend %||% "unknown",
+    lambda_max = eig_res$lambda_max %||% NULL,
+    convergence_known = eig_res$convergence_known %||% FALSE
+  )
+  lambda_max <- eig_res$lambda_max %||% NA_real_
+  rr <- ltsa_ritz_select(
+    B = eig_res$matrix,
+    vectors = eig_res$vectors,
+    ndim = ndim,
+    nullvec = nullvec,
+    lambda_max = lambda_max
+  )
+  eigen <- ltsa_fixed_ritz_diagnostics(
+    eig_res = eig_res,
+    rr = rr,
+    eig_k = eig_k,
+    ndim = ndim,
+    resid_tol = resid_tol,
+    gap_tol = gap_tol
+  )
+
+  list(
+    vectors = rr$vectors,
+    values = rr$values,
+    eigen = eigen,
+    backend = eigen$backend,
+    lambda_max = eigen$lambda_max,
+    eig_k = eig_k
+  )
+}
+
 ltsa_initial_ritz_candidate_k <- function(ndim, n, initial_extra = 4L) {
   min(n - 1L, 1L + ndim + 1L + initial_extra)
 }

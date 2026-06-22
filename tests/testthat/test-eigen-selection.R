@@ -61,6 +61,61 @@ synthetic_ltsa_matrix <- function(values) {
   synthetic_ltsa_problem(values)$matrix
 }
 
+fixed_width_provider_factory <- function(
+  problem,
+  backend = "synthetic",
+  lambda_max = NULL,
+  convergence_known = TRUE,
+  nconv = function(eig_k) NA_integer_,
+  converged_columns = function(eig_k) {
+    if (isTRUE(convergence_known)) eig_k else NA_integer_
+  },
+  cols = function(eig_k) seq_len(eig_k),
+  niter = NA_integer_,
+  nops = NA_integer_,
+  mprod = NA_integer_
+) {
+  if (is.null(lambda_max)) {
+    lambda_max <- max(eigen(
+      problem$matrix,
+      symmetric = TRUE,
+      only.values = TRUE
+    )$values)
+  }
+  lambda_max_value <- lambda_max
+  calls <- data.frame(eig_k = integer())
+  provider <- function(B, eig_k, lambda_max = NULL, verbose = FALSE) {
+    calls <<- rbind(calls, data.frame(eig_k = eig_k))
+    cols_i <- cols(eig_k)
+    nconv_i <- if (is.function(nconv)) nconv(eig_k) else nconv
+    converged_i <- if (is.function(converged_columns)) {
+      converged_columns(eig_k)
+    } else {
+      converged_columns
+    }
+
+    flotsam:::ltsa_candidate_result(
+      vectors = problem$basis[, cols_i, drop = FALSE],
+      backend = backend,
+      eig_k = eig_k,
+      matrix = B,
+      lambda_max = lambda_max_value,
+      nconv = nconv_i,
+      niter = niter,
+      nops = nops,
+      mprod = mprod,
+      convergence_known = convergence_known,
+      returned_columns = length(cols_i),
+      converged_columns = converged_i
+    )
+  }
+
+  list(
+    provider = provider,
+    calls = function() calls
+  )
+}
+
 calibrated_synthetic_ritz <- function(values, ndim, lambda_max = max(values)) {
   problem <- synthetic_ltsa_problem(values)
   rr <- flotsam:::ltsa_ritz_select(
@@ -486,6 +541,215 @@ test_that("small Ritz-selected cases agree with dense eigen reference subspaces"
   expect_same_subspace(rr$vectors, reference, tolerance = 1e-7)
   expect_lt(max(rr$scaled_residuals), 1e-12)
   expect_gt(rr$boundary_gap_relative, 0)
+})
+
+test_that("fixed-width default eig_k follows the public rule", {
+  expect_identical(flotsam:::ltsa_default_eig_k(ndim = 2L, n = 50L), 12L)
+  expect_identical(flotsam:::ltsa_default_eig_k(ndim = 15L, n = 50L), 17L)
+  expect_identical(flotsam:::ltsa_default_eig_k(ndim = 2L, n = 8L), 7L)
+  expect_identical(flotsam:::ltsa_validate_eig_k(NULL, ndim = 2L, n = 50L), 12L)
+})
+
+test_that("fixed-width driver accepts minimum eig_k equal to ndim plus one", {
+  problem <- synthetic_ltsa_problem(c(0, 0.1, 0.2, 1, 2, 3))
+  fixture <- fixed_width_provider_factory(problem)
+
+  res <- flotsam:::ltsa_fixed_ritz_eig(
+    problem$matrix,
+    ndim = 2L,
+    provider = fixture$provider,
+    eig_k = 3L
+  )
+
+  expect_equal(fixture$calls()$eig_k, 3L)
+  expect_equal(res$values, c(0.1, 0.2), tolerance = 1e-12)
+  expect_same_subspace(res$vectors, problem$basis[, 2:3], tolerance = 1e-7)
+  expect_identical(res$eigen$eig_k, 3L)
+  expect_identical(res$eigen$rank, 2L)
+  expect_identical(res$eigen$status, "warning")
+  expect_true(any(grepl("no spare boundary", res$eigen$messages)))
+})
+
+test_that("fixed-width eig_k validation rejects values below ndim plus one", {
+  expect_error(
+    flotsam:::ltsa_validate_eig_k(2L, ndim = 2L, n = 6L),
+    "ndim \\+ 1 <= eig_k < n"
+  )
+})
+
+test_that("fixed-width eig_k validation rejects values at least n", {
+  expect_error(
+    flotsam:::ltsa_validate_eig_k(6L, ndim = 2L, n = 6L),
+    "ndim \\+ 1 <= eig_k < n"
+  )
+})
+
+test_that("fixed-width driver calls the provider exactly once", {
+  problem <- synthetic_ltsa_problem(c(
+    0, 0.1, 0.2, 1, 2, 3, 5, 8,
+    13, 21, 34, 55, 89, 144, 233, 377
+  ))
+  fixture <- fixed_width_provider_factory(problem)
+
+  res <- flotsam:::ltsa_fixed_ritz_eig(
+    problem$matrix,
+    ndim = 2L,
+    provider = fixture$provider
+  )
+
+  expect_equal(nrow(fixture$calls()), 1L)
+  expect_equal(fixture$calls()$eig_k, 12L)
+  expect_identical(res$eigen$eig_k, 12L)
+  expect_identical(res$eigen$status, "ok")
+})
+
+test_that("fixed-width diagnostics use compact solver-neutral shape", {
+  problem <- synthetic_ltsa_problem(c(0, 0.1, 0.2, 1, 2, 3))
+  fixture <- fixed_width_provider_factory(problem)
+
+  res <- flotsam:::ltsa_fixed_ritz_eig(
+    problem$matrix,
+    ndim = 2L,
+    provider = fixture$provider,
+    eig_k = 4L
+  )
+
+  expect_named(
+    res$eigen,
+    c(
+      "method",
+      "eig_k",
+      "values",
+      "ritz_values",
+      "residuals",
+      "rank",
+      "lambda_max",
+      "status",
+      "messages",
+      "backend"
+    )
+  )
+  expect_equal(res$eigen$values, res$values, tolerance = 1e-12)
+  expect_equal(res$eigen$residuals, rep(0, 2L), tolerance = 1e-12)
+  expect_identical(res$eigen$method, "synthetic")
+  expect_identical(res$eigen$backend$name, "synthetic")
+  expect_false(any(c(
+    "attempts",
+    "acceptance",
+    "boundary_gap",
+    "global_gap",
+    "local_gap",
+    "zero_tol",
+    "near_zero_tol"
+  ) %in% names(res$eigen)))
+  expect_false(any(c("attempts", "acceptance", "ritz") %in% names(res)))
+})
+
+test_that("fixed-width diagnostics mark RSpectra nconv shortfall invalid", {
+  problem <- synthetic_ltsa_problem(c(0, 0.1, 0.2, 1, 2, 3))
+  fixture <- fixed_width_provider_factory(
+    problem,
+    backend = "rspectra",
+    convergence_known = TRUE,
+    nconv = function(eig_k) eig_k - 1L,
+    converged_columns = function(eig_k) eig_k - 1L,
+    niter = 11L,
+    nops = 101L
+  )
+
+  res <- flotsam:::ltsa_fixed_ritz_eig(
+    problem$matrix,
+    ndim = 2L,
+    provider = fixture$provider,
+    eig_k = 4L
+  )
+
+  expect_identical(res$eigen$status, "invalid")
+  expect_identical(res$eigen$backend$nconv, 3L)
+  expect_identical(res$eigen$backend$niter, 11L)
+  expect_identical(res$eigen$backend$nops, 101L)
+  expect_true(any(grepl("3 / 4", res$eigen$messages, fixed = TRUE)))
+})
+
+test_that("fixed-width diagnostics do not invent non-RSpectra convergence", {
+  problem <- synthetic_ltsa_problem(c(0, 0.1, 0.2, 1, 2, 3))
+  fixture <- fixed_width_provider_factory(
+    problem,
+    backend = "irlba",
+    convergence_known = FALSE,
+    converged_columns = function(eig_k) NA_integer_,
+    niter = 7L,
+    mprod = 31L
+  )
+
+  res <- flotsam:::ltsa_fixed_ritz_eig(
+    problem$matrix,
+    ndim = 2L,
+    provider = fixture$provider,
+    eig_k = 4L
+  )
+
+  expect_identical(res$eigen$status, "warning")
+  expect_identical(res$eigen$backend$name, "irlba")
+  expect_false(res$eigen$backend$convergence_known)
+  expect_identical(res$eigen$backend$iter, 7L)
+  expect_identical(res$eigen$backend$mprod, 31L)
+  expect_false("nconv" %in% names(res$eigen$backend))
+  expect_true(any(grepl(
+    "native convergence certificate",
+    res$eigen$messages,
+    fixed = TRUE
+  )))
+})
+
+test_that("fixed-width driver handles arbitrary normalized-style null vectors", {
+  nullvec <- c(1, 2, 3, 2, 1, 4)
+  nullvec <- nullvec / sqrt(sum(nullvec * nullvec))
+  Z <- cbind(
+    c(1, -1, 0, 0, 0, 0),
+    c(0, 1, -1, 0, 0, 0),
+    c(0, 0, 1, -1, 0, 0),
+    c(0, 0, 0, 1, -1, 0),
+    c(0, 0, 0, 0, 1, -1)
+  )
+  Z <- Z - nullvec %*% crossprod(nullvec, Z)
+  Q <- qr.Q(qr(cbind(nullvec, Z)))
+  basis <- Q[, seq_len(6L), drop = FALSE]
+  B <- basis %*% diag(c(0, 0.1, 0.2, 1, 3, 5)) %*% t(basis)
+  candidates <- basis[, c(3L, 1L, 4L, 2L, 5L), drop = FALSE]
+  # fmt: skip
+  candidates <- candidates %*% qr.Q(qr(matrix(c(
+    1, 0, 2, 0, -1,
+    0, 1, 1, -1, 0,
+    1, -1, 0, 1, 2,
+    2, 0, -1, 0, 1,
+    0, 2, 0, 1, -1
+  ), nrow = 5L)))
+  provider <- function(B, eig_k, lambda_max = NULL, verbose = FALSE) {
+    flotsam:::ltsa_candidate_result(
+      vectors = candidates[, seq_len(eig_k), drop = FALSE],
+      backend = "synthetic",
+      eig_k = eig_k,
+      matrix = B,
+      lambda_max = 5,
+      convergence_known = TRUE,
+      returned_columns = eig_k,
+      converged_columns = eig_k
+    )
+  }
+
+  res <- flotsam:::ltsa_fixed_ritz_eig(
+    B,
+    ndim = 2L,
+    provider = provider,
+    nullvec = nullvec,
+    eig_k = 5L
+  )
+
+  expect_equal(res$values, c(0.1, 0.2), tolerance = 1e-12)
+  expect_same_subspace(res$vectors, basis[, 2:3], tolerance = 1e-7)
+  expect_lt(max(res$eigen$residuals), 1e-12)
+  expect_identical(res$eigen$status, "ok")
 })
 
 test_that("LTSA symmetrization returns a general sparse solver matrix", {
