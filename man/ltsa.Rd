@@ -10,9 +10,11 @@ ltsa(
   ndim = 2,
   nn_method = "nnd",
   eig_method = "rspectra",
+  eig_k = NULL,
+  output = c("embedding", "result", "B"),
+  include_B = FALSE,
   include_self = TRUE,
   normalize = FALSE,
-  ret_B = FALSE,
   n_threads = 0,
   n_assembly_threads = 1,
   copy_max_mib = 256,
@@ -72,6 +74,24 @@ only. Dense \code{"eig"} is the better diagnostic reference when algebraic
 eigenvalue ordering matters.
 }}
 
+\item{eig_k}{Number of candidate vectors requested from the final
+eigensolver. If \code{NULL}, the default is
+\code{min(n - 1L, max(12L, ndim + 2L))}, where \code{n} is the number of
+observations. Must satisfy \code{ndim + 1 <= eig_k < n}.}
+
+\item{output}{What to return:
+\itemize{
+\item \code{"embedding"} Return the embedding matrix. This is the default.
+\item \code{"result"} Return a list containing the embedding, compact eigenanalysis
+diagnostics, assembly diagnostics, and optionally \code{B}.
+\item \code{"B"} Return the assembled unnormalized LTSA matrix and skip final
+eigenanalysis.
+}}
+
+\item{include_B}{If \code{TRUE} and \code{output = "result"}, include the assembled
+unnormalized LTSA matrix \code{B} in the result object. Ignored for other output
+modes.}
+
 \item{include_self}{Should an item be part of its own neighborhood? This has
 a minor effect on most results, but work by Zhang and co-workers (2017)
 suggests that this is in effect the main difference between LTSA and the
@@ -86,9 +106,6 @@ selected vectors back to output coordinates. This may be slightly easier to
 converge while giving similar results to the unnormalized case. It may also
 have better properties if clustering is to be carried out on the
 eigenvectors.}
-
-\item{ret_B}{If \code{TRUE}, return the matrix instead of the eigenvectors. This
-is mainly useful for diagnostic purposes if eigendecomposition is failing.}
 
 \item{n_threads}{Number of threads to use. Applies only to the nearest
 neighbor calculation.}
@@ -134,23 +151,11 @@ include:
 \item \code{it}  Maximum number of iterations.
 }
 
-The iterative methods all use shared Rayleigh-Ritz postprocessing, residual
-diagnostics, and adaptive candidate expansion. However, only RSpectra reports
-explicit convergence counts; \code{"irlba"} and \code{"svdr"} rely on post-hoc residual
-diagnostics instead.
-
-Advanced LTSA eigenanalysis controls are also accepted here. \code{initial_extra}
-and \code{max_extra} control how many candidate vectors beyond the constant null
-vector, \code{ndim} embedding vectors, and one boundary-gap vector may be
-requested. \code{gap_expansion_steps} controls how many extra attempts are made
-when rank and residual diagnostics are good but the boundary gap is weak. The
-default is one extra attempt, confirming a weak-gap result once before returning
-it.
-\code{resid_tol} and \code{gap_tol} set the scaled residual and global boundary-gap
-diagnostic tolerances. \code{strict_rescue}, \code{strict_rescue_tol},
-\code{strict_rescue_maxitr}, \code{strict_rescue_maxit}, \code{strict_rescue_it}, and
-\code{strict_rescue_extra} control the stricter rerun used when the selected
-block appears to contain only part of a near-zero nonconstant eigenspace.
+The iterative methods all use shared fixed-width Rayleigh-Ritz
+postprocessing and residual diagnostics. Only RSpectra reports explicit
+convergence counts; \code{"irlba"} and \code{"svdr"} rely on post-hoc residual
+diagnostics instead. \code{resid_tol} and \code{gap_tol} set the scaled residual and
+global boundary-gap diagnostic tolerances.
 
 For more details see the documentation for \code{\link[RSpectra:eigs_sym]{RSpectra::eigs_sym()}},
 \code{\link[irlba:irlba]{irlba::irlba()}} and \code{\link[irlba:svdr]{irlba::svdr()}} functions, respectively. Don't pass
@@ -171,13 +176,10 @@ original LTSA matrix, sorts by the resulting Ritz values, and returns the
 first \code{ndim} nonconstant Ritz vectors.
 
 This postprocessing is intended to make clustered low-energy spectra less
-fragile. The iterative methods over-request candidate vectors by default,
-check post-null rank, compute scaled residuals against \code{B}, inspect the
-boundary gap after the selected block, and report near-zero nonconstant mode
-counts when \code{verbose = TRUE}. A weak boundary gap does not make the result
-fail, but it can trigger a small number of diagnostic expansion attempts and
-an ambiguity warning because the requested \code{ndim} may cut through a larger
-low-energy eigenspace.
+fragile. The iterative methods request \code{eig_k} candidate vectors, check
+post-null rank, compute scaled residuals against the solved operator, and
+inspect the boundary after the selected block. Diagnostics classify the
+result but do not trigger wider rescue solves.
 
 The \code{"rspectra"} path first estimates the largest eigenvalue and solves a
 shifted largest-algebraic problem instead of using shift-invert near zero.

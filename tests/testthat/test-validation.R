@@ -23,6 +23,10 @@ test_that("invalid methods are rejected early", {
     ltsa(iris[1:10, ], eig_method = NA_character_),
     "eig_method"
   )
+  expect_error(
+    ltsa(iris[1:10, ], output = "bad"),
+    "should be one of"
+  )
 })
 
 test_that("eigen is accepted as an eig alias", {
@@ -85,6 +89,14 @@ test_that("dimension and neighborhood arguments are validated", {
   expect_error(
     ltsa(iris[1:10, ], ndim = 10),
     "ndim must be less than the number of observations"
+  )
+  expect_error(
+    ltsa(iris[1:10, ], ndim = 2, eig_k = 2L),
+    "eig_k"
+  )
+  expect_error(
+    ltsa(iris[1:10, ], ndim = 2, eig_k = 10L),
+    "eig_k"
   )
   expect_error(
     ltsa(iris[1:10, ], n_neighbors = 2.5),
@@ -158,8 +170,8 @@ test_that("logical arguments must be scalar TRUE or FALSE", {
     "normalize"
   )
   expect_error(
-    ltsa(iris[1:10, ], ret_B = 1),
-    "ret_B"
+    ltsa(iris[1:10, ], include_B = 1),
+    "include_B"
   )
   expect_error(
     ltsa(iris[1:10, ], verbose = NA),

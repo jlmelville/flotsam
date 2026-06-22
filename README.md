@@ -75,9 +75,9 @@ Laplacian eigenmaps or diffusion maps.
 
 ## Current Status
 
-*June 16 2026*: Version 0.0.0.9001 uses C++ local-weight construction,
-triangular sparse matrix assembly, and more robust postprocessing for
-iterative final eigenanalysis.
+*June 22 2026*: Version 0.0.0.9002 uses C++ local-weight construction,
+triangular sparse matrix assembly, and fixed-width Rayleigh-Ritz
+postprocessing for final eigenanalysis.
 
 Still experimental, but now less accurately described as only "Finicky". Its
 speed relies on the interaction of:
@@ -92,9 +92,9 @@ use direct SVD.
 controlled by `n_assembly_threads`.
 * Using [RSpectra](https://cran.r-project.org/package=RSpectra) by default to
 recover the small-eigenvalue directions of `B`. The iterative backends
-(`"rspectra"`, `"irlba"`, and `"svdr"`) then use null-vector projection,
-Rayleigh-Ritz postprocessing, adaptive candidate expansion, and residual
-diagnostics before returning embedding vectors.
+(`"rspectra"`, `"irlba"`, and `"svdr"`) request a fixed-width candidate block
+controlled by `eig_k`, then use null-vector projection, Rayleigh-Ritz
+postprocessing, and residual diagnostics before returning embedding vectors.
 
 It's not a great idea to use large values of `k` to define the neighborhoods:
 you will get something that approaches a "global" SVD/PCA at much greater
@@ -126,8 +126,9 @@ options, like `tol` (the tolerance), `ncv` (the number of Lanczos basis vectors
 for RSpectra), or equivalent controls for the selected solver.
 * The candidate subspace has weak residuals or a weak gap after the requested
 embedding block. Some `B` matrices have several directions with very similar
-low eigenvalues, so the returned raw columns are not always meaningful on their
-own.
+low eigenvalues. Use `output = "result"` to inspect diagnostics, and rerun with
+a larger `eig_k` or stricter backend settings if the candidate block is too
+narrow.
 * Shift-invert sparse factorizations can hang or skip vectors near zero. The
 default path avoids shift-invert and solves a shifted largest-algebraic problem
 instead.
@@ -140,6 +141,12 @@ diagnostics rather than hard backend convergence counts. For small diagnostic
 cases, `eig_method = "eig"` and `eig_method = "eigen"` are synonyms for base
 `eigen()`, and `eig_method = "fullsvd"` uses base `svd()`. Dense `eig` is the
 better diagnostic reference when algebraic eigenvalue ordering matters.
+
+The default `ltsa()` return is still the embedding matrix. Use `output = "B"`
+to return the assembled unnormalized LTSA matrix without final eigenanalysis,
+or `output = "result"` to return the embedding together with compact
+eigenanalysis and assembly diagnostics. Set `include_B = TRUE` with
+`output = "result"` if the detailed result should carry the assembled matrix.
 
 ## See Also
 

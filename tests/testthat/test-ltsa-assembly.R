@@ -185,7 +185,7 @@ test_that("default assembly behavior remains serial", {
     ndim = 2L,
     nn_method = "exact",
     include_self = TRUE,
-    ret_B = TRUE
+    output = "B"
   )
   explicit_ltsa <- ltsa(
     X,
@@ -193,7 +193,7 @@ test_that("default assembly behavior remains serial", {
     ndim = 2L,
     nn_method = "exact",
     include_self = TRUE,
-    ret_B = TRUE,
+    output = "B",
     n_assembly_threads = 1L
   )
   expect_sparse_equivalent(default_ltsa, explicit_ltsa, tolerance = 0)
@@ -208,7 +208,7 @@ test_that("n_threads remains nearest-neighbor-only", {
     ndim = 2L,
     nn_method = "exact",
     include_self = TRUE,
-    ret_B = TRUE,
+    output = "B",
     n_threads = 0L,
     n_assembly_threads = 1L
   )
@@ -218,12 +218,68 @@ test_that("n_threads remains nearest-neighbor-only", {
     ndim = 2L,
     nn_method = "exact",
     include_self = TRUE,
-    ret_B = TRUE,
+    output = "B",
     n_threads = 2L,
     n_assembly_threads = 1L
   )
 
   expect_sparse_equivalent(serial_nn2, serial_nn0, tolerance = 0)
+})
+
+test_that("public output modes control B and detailed result contents", {
+  X <- as.matrix(iris[seq_len(18L), seq_len(4L)])
+
+  B <- ltsa(
+    X,
+    n_neighbors = 6L,
+    ndim = 2L,
+    nn_method = "exact",
+    include_self = TRUE,
+    output = "B",
+    not_an_eigensolver_argument = TRUE
+  )
+  expect_s4_class(B, "dgCMatrix")
+
+  embedding <- ltsa(
+    X,
+    n_neighbors = 6L,
+    ndim = 2L,
+    nn_method = "exact",
+    include_self = TRUE,
+    eig_method = "eig",
+    include_B = TRUE
+  )
+  expect_true(is.matrix(embedding))
+
+  result_without_B <- ltsa(
+    X,
+    n_neighbors = 6L,
+    ndim = 2L,
+    nn_method = "exact",
+    include_self = TRUE,
+    eig_method = "eig",
+    eig_k = 4L,
+    output = "result"
+  )
+  expect_true(is.list(result_without_B))
+  expect_null(result_without_B$B)
+
+  result_with_B <- ltsa(
+    X,
+    n_neighbors = 6L,
+    ndim = 2L,
+    nn_method = "exact",
+    include_self = TRUE,
+    eig_method = "eig",
+    eig_k = 4L,
+    output = "result",
+    include_B = TRUE
+  )
+  expect_sparse_equivalent(result_with_B$B, B, tolerance = 0)
+  expect_named(result_with_B, c("embedding", "eigen", "assembly", "B"))
+  expect_equal(dim(result_with_B$embedding), c(nrow(X), 2L))
+  expect_identical(result_with_B$assembly$n_neighbors, 6L)
+  expect_true(result_with_B$assembly$include_self)
 })
 
 test_that("parallel assembly matches serial on high-p Gram route", {
@@ -408,7 +464,7 @@ test_that("parallel assembly handles more requested threads than observations", 
   expect_identical(parallel$diagnostics$effective_assembly_threads, 5L)
 })
 
-test_that("ltsa ret_B and embedding paths agree between serial and parallel assembly", {
+test_that("ltsa B and embedding paths agree between serial and parallel assembly", {
   set.seed(14)
   X <- matrix(rnorm(16L * 8L), nrow = 16L)
 
@@ -418,7 +474,7 @@ test_that("ltsa ret_B and embedding paths agree between serial and parallel asse
     ndim = 2L,
     nn_method = "exact",
     include_self = TRUE,
-    ret_B = TRUE,
+    output = "B",
     n_assembly_threads = 1L
   )
   parallel_B <- ltsa(
@@ -427,7 +483,7 @@ test_that("ltsa ret_B and embedding paths agree between serial and parallel asse
     ndim = 2L,
     nn_method = "exact",
     include_self = TRUE,
-    ret_B = TRUE,
+    output = "B",
     n_assembly_threads = 4L
   )
   expect_sparse_equivalent(parallel_B, serial_B, tolerance = 1e-11)
@@ -441,7 +497,6 @@ test_that("ltsa ret_B and embedding paths agree between serial and parallel asse
       eig_method = "eig",
       include_self = TRUE,
       normalize = normalize,
-      ret_B = FALSE,
       n_assembly_threads = 1L
     )
     parallel_embedding <- ltsa(
@@ -452,7 +507,6 @@ test_that("ltsa ret_B and embedding paths agree between serial and parallel asse
       eig_method = "eig",
       include_self = TRUE,
       normalize = normalize,
-      ret_B = FALSE,
       n_assembly_threads = 4L
     )
     expect_embedding_subspace_equivalent(
@@ -739,7 +793,7 @@ test_that("Gram local weights document near-machine SVD-rank boundary", {
   expect_gt(max(abs(candidate$Wi - reference$Wi)), 0.1)
 })
 
-test_that("ltsa ret_B uses append/finalize assembly", {
+test_that("ltsa output B uses append/finalize assembly", {
   X <- as.matrix(iris[seq_len(15L), seq_len(4L)])
   nn_idx <- exact_nn_idx(X, n_neighbors = 5L, include_self = FALSE)
   reference <- assemble_ltsa_B_r_triplet_reference(
@@ -755,14 +809,14 @@ test_that("ltsa ret_B uses append/finalize assembly", {
     ndim = 2L,
     nn_method = "exact",
     include_self = FALSE,
-    ret_B = TRUE
+    output = "B"
   )
 
   expect_sparse_equivalent(candidate, reference$B)
   expect_equal(sum(candidate@x == 0), 0)
 })
 
-test_that("ret_B returns the unchanged full dgCMatrix class", {
+test_that("output B returns the unchanged full dgCMatrix class", {
   X <- as.matrix(iris[seq_len(18L), seq_len(4L)])
 
   candidate <- ltsa(
@@ -771,7 +825,7 @@ test_that("ret_B returns the unchanged full dgCMatrix class", {
     ndim = 2L,
     nn_method = "exact",
     include_self = TRUE,
-    ret_B = TRUE
+    output = "B"
   )
 
   expect_s4_class(candidate, "dgCMatrix")

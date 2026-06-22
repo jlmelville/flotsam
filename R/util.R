@@ -60,9 +60,11 @@ validate_ltsa_args <- function(
   nn_method,
   nn_idx,
   eig_method,
+  eig_k,
+  output,
+  include_B,
   include_self,
   normalize,
-  ret_B,
   n_threads,
   n_assembly_threads,
   copy_max_mib,
@@ -95,7 +97,7 @@ validate_ltsa_args <- function(
 
   include_self <- check_scalar_logical(include_self, "include_self")
   normalize <- check_scalar_logical(normalize, "normalize")
-  ret_B <- check_scalar_logical(ret_B, "ret_B")
+  include_B <- check_scalar_logical(include_B, "include_B")
   verbose <- check_scalar_logical(verbose, "verbose")
 
   nn_method <- check_choice(
@@ -115,6 +117,7 @@ validate_ltsa_args <- function(
   if (ndim >= nrow(X)) {
     stop("ndim must be less than the number of observations", call. = FALSE)
   }
+  eig_k <- ltsa_validate_eig_k(eig_k, ndim = ndim, n = nrow(X))
 
   if (is.null(nn_idx)) {
     if (is.null(n_neighbors)) {
@@ -146,9 +149,11 @@ validate_ltsa_args <- function(
     ndim = ndim,
     nn_method = nn_method,
     eig_method = eig_method,
+    eig_k = eig_k,
+    output = output,
+    include_B = include_B,
     include_self = include_self,
     normalize = normalize,
-    ret_B = ret_B,
     n_threads = n_threads,
     n_assembly_threads = n_assembly_threads,
     copy_max_mib = copy_max_mib,

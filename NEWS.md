@@ -1,11 +1,10 @@
 # flotsam 0.0.0.9002
 
-* Weak LTSA boundary-gap confirmations now default to one extra candidate
-  expansion instead of two, while keeping strict rescue enabled for incomplete
-  near-zero selected blocks.
-* When `strict_rescue = FALSE` and only part of a near-zero block is returned,
-  `ltsa` will warn and suggest `strict_rescue = TRUE` or a larger candidate
-  budget.
+* `ltsa()` now uses explicit fixed-width final eigenanalysis. New arguments
+  `eig_k`, `output`, and `include_B` control candidate width and return shape.
+  The default return remains the embedding matrix; `output = "B"` replaces the
+  old matrix-return switch, and `output = "result"` returns compact
+  eigenanalysis and assembly diagnostics.
 
 # flotsam 0.0.0.9001
 

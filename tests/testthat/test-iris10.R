@@ -154,3 +154,103 @@ test_that("normalized", {
     )
   expect_equal(abs(iris10_ltsa), abs(iris10_ltsa_expected), tolerance = 1e-2)
 })
+
+expect_ltsa_public_result <- function(
+  result,
+  method,
+  normalized = FALSE,
+  n = 10L,
+  ndim = 2L,
+  eig_k = 4L
+) {
+  expect_named(result, c("embedding", "eigen", "assembly", "B"))
+  expect_true(is.matrix(result$embedding))
+  expect_equal(dim(result$embedding), c(n, ndim))
+  expect_named(
+    result$eigen,
+    c(
+      "method",
+      "normalized",
+      "eig_k",
+      "values",
+      "ritz_values",
+      "residuals",
+      "rank",
+      "lambda_max",
+      "status",
+      "messages",
+      "backend"
+    )
+  )
+  expect_identical(result$eigen$method, method)
+  expect_identical(result$eigen$normalized, normalized)
+  expect_identical(result$eigen$eig_k, eig_k)
+  expect_length(result$eigen$values, ndim)
+  expect_length(result$eigen$residuals, ndim)
+  expect_gte(length(result$eigen$ritz_values), ndim)
+  expect_gte(result$eigen$rank, ndim)
+  expect_true(result$eigen$status %in% c("ok", "warning", "invalid"))
+  expect_true(is.list(result$eigen$backend))
+  expect_null(result$B)
+  expect_identical(result$assembly$n_neighbors, 8L)
+}
+
+test_that("default public return remains an embedding matrix", {
+  iris10_ltsa <- ltsa(
+    iris[1:10, ],
+    nn_method = "exact",
+    n_neighbors = 8,
+    include_self = FALSE,
+    eig_method = "rspectra"
+  )
+
+  expect_true(is.matrix(iris10_ltsa))
+  expect_equal(dim(iris10_ltsa), c(10L, 2L))
+})
+
+test_that("all solver methods support detailed public results", {
+  methods <- c("rspectra", "irlba", "svdr", "eig", "eigen", "fullsvd")
+
+  for (method in methods) {
+    set.seed(7)
+    result <- ltsa(
+      iris[1:10, ],
+      nn_method = "exact",
+      n_neighbors = 8,
+      include_self = FALSE,
+      eig_method = method,
+      eig_k = 4L,
+      output = "result"
+    )
+
+    expect_ltsa_public_result(
+      result,
+      method = if (identical(method, "eigen")) "eig" else method
+    )
+  }
+})
+
+test_that("normalized iterative detailed results have consistent diagnostics", {
+  methods <- c("rspectra", "irlba", "svdr")
+
+  for (method in methods) {
+    set.seed(8)
+    result <- ltsa(
+      iris[1:10, ],
+      nn_method = "exact",
+      n_neighbors = 8,
+      include_self = TRUE,
+      normalize = TRUE,
+      eig_method = method,
+      eig_k = 4L,
+      output = "result",
+      dense_n = 0L
+    )
+
+    expect_ltsa_public_result(
+      result,
+      method = method,
+      normalized = TRUE
+    )
+  }
+})

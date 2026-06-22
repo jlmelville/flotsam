@@ -12,7 +12,7 @@ test_that("constant neighborhoods warn and use valid local projections", {
       nn_method = "exact",
       n_neighbors = 4,
       eig_method = "eig",
-      ret_B = TRUE
+      output = "B"
     ),
     "local neighborhoods had numerical rank below ndim"
   )
@@ -28,7 +28,7 @@ test_that("collinear neighborhoods warn and use valid local projections", {
       nn_method = "exact",
       n_neighbors = 4,
       eig_method = "eig",
-      ret_B = TRUE
+      output = "B"
     ),
     "local neighborhoods had numerical rank below ndim"
   )

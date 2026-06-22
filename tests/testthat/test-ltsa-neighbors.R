@@ -55,7 +55,7 @@ test_that("precomputed exact neighborhoods match computed exact LTSA B", {
       ndim = 2L,
       nn_method = "exact",
       include_self = include_self,
-      ret_B = TRUE
+      output = "B"
     )
     precomputed <- ltsa(
       X,
@@ -63,7 +63,7 @@ test_that("precomputed exact neighborhoods match computed exact LTSA B", {
       ndim = 2L,
       nn_method = nn_idx,
       include_self = include_self,
-      ret_B = TRUE
+      output = "B"
     )
 
     expect_sparse_equivalent(precomputed, computed, tolerance = 0)
@@ -88,7 +88,7 @@ test_that("precomputed graph supplied as nn_method skips nearest-neighbor search
     ndim = 2L,
     nn_method = nn_idx,
     include_self = TRUE,
-    ret_B = TRUE
+    output = "B"
   )
 
   expect_sparse_equivalent(candidate, reference$B, tolerance = 1e-11)
@@ -103,7 +103,7 @@ test_that("nn_method can carry a precomputed neighbor graph", {
     ndim = 2L,
     nn_method = nn_idx,
     include_self = TRUE,
-    ret_B = TRUE
+    output = "B"
   )
 
   from_matrix <- ltsa(
@@ -112,7 +112,7 @@ test_that("nn_method can carry a precomputed neighbor graph", {
     ndim = 2L,
     nn_method = nn_idx,
     include_self = TRUE,
-    ret_B = TRUE
+    output = "B"
   )
   from_result <- ltsa(
     X,
@@ -120,7 +120,7 @@ test_that("nn_method can carry a precomputed neighbor graph", {
     ndim = 2L,
     nn_method = list(idx = nn_idx),
     include_self = TRUE,
-    ret_B = TRUE
+    output = "B"
   )
 
   expect_sparse_equivalent(from_matrix, reference, tolerance = 0)
@@ -138,7 +138,7 @@ test_that("precomputed duplicate neighborhoods work with serial and parallel ass
     ndim = 2L,
     nn_method = nn_idx,
     include_self = TRUE,
-    ret_B = TRUE,
+    output = "B",
     n_assembly_threads = 1L
   )
   parallel <- ltsa(
@@ -146,7 +146,7 @@ test_that("precomputed duplicate neighborhoods work with serial and parallel ass
     ndim = 2L,
     nn_method = nn_idx,
     include_self = TRUE,
-    ret_B = TRUE,
+    output = "B",
     n_assembly_threads = 3L
   )
 
@@ -158,21 +158,21 @@ test_that("precomputed neighbor graph validation rejects invalid graphs", {
   nn_idx <- exact_nn_idx(X, n_neighbors = 4L, include_self = TRUE)
 
   expect_error(
-    ltsa(X, ndim = 2L, nn_method = nn_idx[-1L, ], ret_B = TRUE),
+    ltsa(X, ndim = 2L, nn_method = nn_idx[-1L, ], output = "B"),
     "one row per observation"
   )
 
   bad <- nn_idx
   bad[1L, 2L] <- 9L
   expect_error(
-    ltsa(X, ndim = 2L, nn_method = bad, ret_B = TRUE),
+    ltsa(X, ndim = 2L, nn_method = bad, output = "B"),
     "between 1 and nrow"
   )
 
   bad <- nn_idx
   bad[1L, 2L] <- NA_integer_
   expect_error(
-    ltsa(X, ndim = 2L, nn_method = bad, ret_B = TRUE),
+    ltsa(X, ndim = 2L, nn_method = bad, output = "B"),
     "finite whole-number"
   )
 
@@ -180,17 +180,17 @@ test_that("precomputed neighbor graph validation rejects invalid graphs", {
   storage.mode(bad) <- "double"
   bad[1L, 2L] <- bad[1L, 2L] + 0.5
   expect_error(
-    ltsa(X, ndim = 2L, nn_method = bad, ret_B = TRUE),
+    ltsa(X, ndim = 2L, nn_method = bad, output = "B"),
     "whole-number"
   )
 
   expect_error(
-    ltsa(X, ndim = 2L, nn_method = as.vector(nn_idx), ret_B = TRUE),
+    ltsa(X, ndim = 2L, nn_method = as.vector(nn_idx), output = "B"),
     "nn_method"
   )
 
   expect_error(
-    ltsa(X, ndim = 2L, nn_method = nn_idx[, 1:2], ret_B = TRUE),
+    ltsa(X, ndim = 2L, nn_method = nn_idx[, 1:2], output = "B"),
     "greater than ndim"
   )
 
@@ -200,7 +200,7 @@ test_that("precomputed neighbor graph validation rejects invalid graphs", {
       n_neighbors = 5L,
       ndim = 2L,
       nn_method = nn_idx,
-      ret_B = TRUE
+      output = "B"
     ),
     "ncol\\(nn_method\\)"
   )
@@ -208,7 +208,7 @@ test_that("precomputed neighbor graph validation rejects invalid graphs", {
   bad <- nn_idx
   bad[1L, ] <- c(2L, 3L, 4L, 5L)
   expect_error(
-    ltsa(X, ndim = 2L, nn_method = bad, include_self = TRUE, ret_B = TRUE),
+    ltsa(X, ndim = 2L, nn_method = bad, include_self = TRUE, output = "B"),
     "own row index"
   )
 
@@ -221,7 +221,7 @@ test_that("precomputed neighbor graph validation rejects invalid graphs", {
       ndim = 2L,
       nn_method = bad,
       include_self = FALSE,
-      ret_B = TRUE
+      output = "B"
     ),
     "first column"
   )
@@ -237,7 +237,7 @@ test_that("precomputed graph with n_threads does not warn", {
       ndim = 2L,
       nn_method = nn_idx,
       include_self = TRUE,
-      ret_B = TRUE,
+      output = "B",
       n_threads = 2L
     )),
     NA
@@ -254,7 +254,7 @@ test_that("verbose output describes computed and precomputed neighbor handling",
     ndim = 2L,
     nn_method = "exact",
     include_self = TRUE,
-    ret_B = TRUE,
+    output = "B",
     n_threads = 2L,
     verbose = TRUE
   )
@@ -269,7 +269,7 @@ test_that("verbose output describes computed and precomputed neighbor handling",
     ndim = 2L,
     nn_method = nn_idx,
     include_self = TRUE,
-    ret_B = TRUE,
+    output = "B",
     n_threads = 2L,
     n_assembly_threads = 3L,
     verbose = TRUE

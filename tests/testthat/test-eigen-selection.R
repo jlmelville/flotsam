@@ -603,6 +603,30 @@ test_that("fixed-width driver calls the provider exactly once", {
   expect_identical(res$eigen$status, "ok")
 })
 
+test_that("public iterative LTSA honors explicit fixed eig_k", {
+  methods <- c("rspectra", "irlba", "svdr")
+
+  for (method in methods) {
+    set.seed(17)
+    result <- ltsa(
+      iris[1:10, ],
+      nn_method = "exact",
+      n_neighbors = 8,
+      include_self = FALSE,
+      eig_method = method,
+      eig_k = 4L,
+      output = "result",
+      dense_n = 0L
+    )
+
+    expect_identical(result$eigen$method, method)
+    expect_identical(result$eigen$eig_k, 4L)
+    expect_false("attempts" %in% names(result))
+    expect_false("acceptance" %in% names(result$eigen))
+    expect_false("boundary_gap" %in% names(result$eigen))
+  }
+})
+
 test_that("fixed-width diagnostics use compact solver-neutral shape", {
   problem <- synthetic_ltsa_problem(c(0, 0.1, 0.2, 1, 2, 3))
   fixture <- fixed_width_provider_factory(problem)

@@ -13,13 +13,10 @@
 #' first `ndim` nonconstant Ritz vectors.
 #'
 #' This postprocessing is intended to make clustered low-energy spectra less
-#' fragile. The iterative methods over-request candidate vectors by default,
-#' check post-null rank, compute scaled residuals against `B`, inspect the
-#' boundary gap after the selected block, and report near-zero nonconstant mode
-#' counts when `verbose = TRUE`. A weak boundary gap does not make the result
-#' fail, but it can trigger a small number of diagnostic expansion attempts and
-#' an ambiguity warning because the requested `ndim` may cut through a larger
-#' low-energy eigenspace.
+#' fragile. The iterative methods request `eig_k` candidate vectors, check
+#' post-null rank, compute scaled residuals against the solved operator, and
+#' inspect the boundary after the selected block. Diagnostics classify the
+#' result but do not trigger wider rescue solves.
 #'
 #' The `"rspectra"` path first estimates the largest eigenvalue and solves a
 #' shifted largest-algebraic problem instead of using shift-invert near zero.
@@ -70,6 +67,19 @@
 #'      feasible for small datasets and should be used for diagnostic purposes
 #'      only. Dense `"eig"` is the better diagnostic reference when algebraic
 #'      eigenvalue ordering matters.
+#' @param eig_k Number of candidate vectors requested from the final
+#'   eigensolver. If `NULL`, the default is
+#'   `min(n - 1L, max(12L, ndim + 2L))`, where `n` is the number of
+#'   observations. Must satisfy `ndim + 1 <= eig_k < n`.
+#' @param output What to return:
+#'   * `"embedding"` Return the embedding matrix. This is the default.
+#'   * `"result"` Return a list containing the embedding, compact eigenanalysis
+#'     diagnostics, assembly diagnostics, and optionally `B`.
+#'   * `"B"` Return the assembled unnormalized LTSA matrix and skip final
+#'     eigenanalysis.
+#' @param include_B If `TRUE` and `output = "result"`, include the assembled
+#'   unnormalized LTSA matrix `B` in the result object. Ignored for other output
+#'   modes.
 #' @param include_self Should an item be part of its own neighborhood? This has
 #'   a minor effect on most results, but work by Zhang and co-workers (2017)
 #'   suggests that this is in effect the main difference between LTSA and the
@@ -83,8 +93,6 @@
 #'   converge while giving similar results to the unnormalized case. It may also
 #'   have better properties if clustering is to be carried out on the
 #'   eigenvectors.
-#' @param ret_B If `TRUE`, return the matrix instead of the eigenvectors. This
-#'   is mainly useful for diagnostic purposes if eigendecomposition is failing.
 #' @param n_threads Number of threads to use. Applies only to the nearest
 #'   neighbor calculation.
 #' @param n_assembly_threads Number of threads to use when constructing the LTSA
@@ -122,23 +130,11 @@
 #'   * `tol` Tolerance.
 #'   * `it`  Maximum number of iterations.
 #'
-#' The iterative methods all use shared Rayleigh-Ritz postprocessing, residual
-#' diagnostics, and adaptive candidate expansion. However, only RSpectra reports
-#' explicit convergence counts; `"irlba"` and `"svdr"` rely on post-hoc residual
-#' diagnostics instead.
-#'
-#' Advanced LTSA eigenanalysis controls are also accepted here. `initial_extra`
-#' and `max_extra` control how many candidate vectors beyond the constant null
-#' vector, `ndim` embedding vectors, and one boundary-gap vector may be
-#' requested. `gap_expansion_steps` controls how many extra attempts are made
-#' when rank and residual diagnostics are good but the boundary gap is weak.
-#' The default is one extra attempt, confirming a weak-gap result once before
-#' returning it.
-#' `resid_tol` and `gap_tol` set the scaled residual and global boundary-gap
-#' diagnostic tolerances. `strict_rescue`, `strict_rescue_tol`,
-#' `strict_rescue_maxitr`, `strict_rescue_maxit`, `strict_rescue_it`, and
-#' `strict_rescue_extra` control the stricter rerun used when the selected
-#' block appears to contain only part of a near-zero nonconstant eigenspace.
+#' The iterative methods all use shared fixed-width Rayleigh-Ritz
+#' postprocessing and residual diagnostics. Only RSpectra reports explicit
+#' convergence counts; `"irlba"` and `"svdr"` rely on post-hoc residual
+#' diagnostics instead. `resid_tol` and `gap_tol` set the scaled residual and
+#' global boundary-gap diagnostic tolerances.
 #'
 #' For more details see the documentation for [RSpectra::eigs_sym()],
 #' [irlba::irlba()] and [irlba::svdr()] functions, respectively. Don't pass
@@ -182,15 +178,18 @@ ltsa <-
     ndim = 2,
     nn_method = "nnd",
     eig_method = "rspectra",
+    eig_k = NULL,
+    output = c("embedding", "result", "B"),
+    include_B = FALSE,
     include_self = TRUE,
     normalize = FALSE,
-    ret_B = FALSE,
     n_threads = 0,
     n_assembly_threads = 1,
     copy_max_mib = 256,
     verbose = FALSE,
     ...
   ) {
+    output <- match.arg(output)
     X <- x2m(X)
     neighbor_args <- normalize_ltsa_neighbor_args(
       nn_method = nn_method
@@ -205,9 +204,11 @@ ltsa <-
       nn_method = nn_method,
       nn_idx = nn_idx,
       eig_method = eig_method,
+      eig_k = eig_k,
+      output = output,
+      include_B = include_B,
       include_self = include_self,
       normalize = normalize,
-      ret_B = ret_B,
       n_threads = n_threads,
       n_assembly_threads = n_assembly_threads,
       copy_max_mib = copy_max_mib,
@@ -219,9 +220,11 @@ ltsa <-
     ndim <- args$ndim
     nn_method <- args$nn_method
     eig_method <- args$eig_method
+    eig_k <- args$eig_k
+    output <- args$output
+    include_B <- args$include_B
     include_self <- args$include_self
     normalize <- args$normalize
-    ret_B <- args$ret_B
     n_threads <- args$n_threads
     n_assembly_threads <- args$n_assembly_threads
     copy_max_mib <- args$copy_max_mib
@@ -264,130 +267,243 @@ ltsa <-
       )
     }
 
-    if (ret_B) {
+    if (identical(output, "B")) {
       return(B)
     }
 
-    Dinvs <- NULL
-    normalized_nullvec <- NULL
+    eigen_args <- ltsa_split_public_eigen_args(list(...))
+    B_operator <- B
+    nullvec <- ltsa_default_null_vector(nrow(B_operator))
     if (normalize) {
-      if (eig_method %in% c("rspectra", "irlba", "svdr")) {
-        tsmessage("Forming normalized Lsym")
-        nres <- norm_lsym_L(B)
-        Dinvs <- nres$Dinvs
-        normalized_nullvec <- nres$nullvec
-        B <- nres$Lsym
-      } else {
-        tsmessage("Forming shifted Lsym")
-        sres <- norm_and_shift_L(B)
-        Dinvs <- sres$Dinvs
-        B <- sres$Lshift
-      }
+      tsmessage("Forming normalized Lsym")
+      nres <- norm_lsym_L(B_operator)
+      Dinvs <- nres$Dinvs
+      nullvec <- nres$nullvec
+      B_operator <- nres$Lsym
     }
 
     tsmessage("Performing eigenanalysis")
 
-    out <- tryCatch(
+    eig_res <- tryCatch(
       {
-        if (normalize) {
-          switch(
-            eig_method,
-            irlba = {
-              tsmessage("Calling irlba")
-              eig_res <- ltsa_irlba_ritz_eig(
-                B,
-                ndim = ndim,
-                ...,
-                nullvec = normalized_nullvec,
-                verbose = verbose
-              )
-              res <- eig_res$vectors
-            },
-            svdr = {
-              tsmessage("Calling irlba svdr")
-              eig_res <- ltsa_svdr_ritz_eig(
-                B,
-                ndim = ndim,
-                ...,
-                nullvec = normalized_nullvec,
-                verbose = verbose
-              )
-              res <- eig_res$vectors
-            },
-            rspectra = {
-              tsmessage("Calling rspectra")
-              eig_res <- ltsa_rspectra_ritz_eig(
-                B,
-                ndim = ndim,
-                ...,
-                nullvec = normalized_nullvec,
-                verbose = verbose
-              )
-              res <- eig_res$vectors
-            },
-            fullsvd = {
-              tsmessage("Using full SVD")
-              res <-
-                svd(as.matrix(B), nv = ndim + 1, nu = 0)$v[, 2:(ndim + 1)]
-            },
-            eig = {
-              tsmessage("Using full eigenvalue decomposition")
-              res <- eigen(as.matrix(B))$vectors[, 2:(ndim + 1)]
-            }
-          )
-          Dinvs * res
-        } else {
-          switch(
-            eig_method,
-            rspectra = {
-              tsmessage("Calling rspectra")
-              eig_res <- ltsa_rspectra_ritz_eig(
-                B,
-                ndim = ndim,
-                ...,
-                verbose = verbose
-              )
-              eig_res$vectors
-            },
-            irlba = {
-              tsmessage("Calling irlba")
-              eig_res <- ltsa_irlba_ritz_eig(
-                B,
-                ndim = ndim,
-                ...,
-                verbose = verbose
-              )
-              eig_res$vectors
-            },
-            svdr = {
-              tsmessage("Calling irlba svdr")
-              eig_res <- ltsa_svdr_ritz_eig(
-                B,
-                ndim = ndim,
-                ...,
-                verbose = verbose
-              )
-              eig_res$vectors
-            },
-            fullsvd = {
-              tsmessage("Using full SVD")
-              res <- svd(as.matrix(B))$v
-              nvec <- ncol(res)
-              res <- res[, rev((nvec - ndim):(nvec - 1))]
-            },
-            eig = {
-              tsmessage("Using full eigenvalue decomposition")
-              res <- eigen(as.matrix(B), symmetric = TRUE)$vectors
-              nvec <- ncol(res)
-              res <- res[, rev((nvec - ndim):(nvec - 1))]
-            }
-          )
-        }
+        ltsa_run_fixed_eigenanalysis(
+          B = B_operator,
+          ndim = ndim,
+          eig_method = eig_method,
+          eig_k = eig_k,
+          eigen_args = eigen_args,
+          nullvec = nullvec,
+          verbose = verbose
+        )
       },
       error = function(e) {
         stop("Eigenanalysis failed: ", conditionMessage(e), call. = FALSE)
       }
     )
+    embedding <- eig_res$vectors
+    if (normalize) {
+      embedding <- Dinvs * embedding
+    }
+    eigen <- ltsa_public_eigen_diagnostics(
+      eig_res$eigen,
+      method = eig_method,
+      normalized = normalize
+    )
+    assembly_diagnostics <- ltsa_public_assembly_diagnostics(
+      assembly = assembly,
+      n_neighbors = k,
+      include_self = include_self
+    )
     tsmessage("Finished")
-    out
+    if (identical(output, "embedding")) {
+      return(embedding)
+    }
+
+    list(
+      embedding = embedding,
+      eigen = eigen,
+      assembly = assembly_diagnostics,
+      B = if (include_B) B else NULL
+    )
   }
+
+ltsa_split_public_eigen_args <- function(args) {
+  if (is.null(args)) {
+    args <- list()
+  }
+  arg_names <- names(args)
+  if (is.null(arg_names)) {
+    arg_names <- rep.int("", length(args))
+  }
+
+  resid_tol <- args$resid_tol %||% 1e-5
+  gap_tol <- args$gap_tol %||% 1e-4
+  resid_tol <- ltsa_check_positive_finite(resid_tol, "resid_tol")
+  gap_tol <- ltsa_check_positive_finite(gap_tol, "gap_tol")
+
+  fixed_names <- c("resid_tol", "gap_tol")
+  adaptive_names <- c(
+    "initial_extra",
+    "max_extra",
+    "gap_expansion_steps",
+    "strict_rescue",
+    "strict_rescue_tol",
+    "strict_rescue_maxitr",
+    "strict_rescue_maxit",
+    "strict_rescue_it",
+    "strict_rescue_extra",
+    "attempt_reference_vectors",
+    "retain_attempt_candidate_spaces",
+    "width_first_rescue",
+    "width_first_rescue_max_expansions"
+  )
+  provider_args <- args[!(arg_names %in% c(fixed_names, adaptive_names))]
+
+  list(
+    provider_args = provider_args,
+    resid_tol = resid_tol,
+    gap_tol = gap_tol
+  )
+}
+
+ltsa_check_positive_finite <- function(x, name) {
+  if (
+    !is.numeric(x) ||
+      length(x) != 1L ||
+      is.na(x) ||
+      !is.finite(x) ||
+      x <= 0
+  ) {
+    stop(name, " must be a finite positive number", call. = FALSE)
+  }
+  as.numeric(x)
+}
+
+ltsa_run_fixed_eigenanalysis <- function(
+  B,
+  ndim,
+  eig_method,
+  eig_k,
+  eigen_args,
+  nullvec,
+  verbose
+) {
+  provider <- switch(
+    eig_method,
+    rspectra = {
+      tsmessage("Calling rspectra")
+      ltsa_rspectra_candidate_provider
+    },
+    irlba = {
+      tsmessage("Calling irlba")
+      ltsa_irlba_candidate_provider
+    },
+    svdr = {
+      tsmessage("Calling irlba svdr")
+      ltsa_svdr_candidate_provider
+    },
+    fullsvd = {
+      tsmessage("Using full SVD")
+      ltsa_fullsvd_candidate_provider
+    },
+    eig = {
+      tsmessage("Using full eigenvalue decomposition")
+      ltsa_eig_candidate_provider
+    }
+  )
+
+  ltsa_fixed_ritz_eig(
+    B = B,
+    ndim = ndim,
+    provider = provider,
+    provider_args = eigen_args$provider_args,
+    nullvec = nullvec,
+    eig_k = eig_k,
+    resid_tol = eigen_args$resid_tol,
+    gap_tol = eigen_args$gap_tol,
+    verbose = verbose
+  )
+}
+
+ltsa_eig_candidate_provider <- function(
+  B,
+  eig_k,
+  ...,
+  lambda_max = NULL,
+  verbose = FALSE
+) {
+  dense_ltsa_eig(B, eig_k, backend = "eig")
+}
+
+ltsa_fullsvd_candidate_provider <- function(
+  B,
+  eig_k,
+  ...,
+  lambda_max = NULL,
+  verbose = FALSE
+) {
+  dense <- as.matrix(B)
+  sv <- svd(dense, nu = 0, nv = ncol(dense))
+  nvec <- ncol(sv$v)
+  take <- rev(seq.int(nvec - eig_k + 1L, nvec))
+  vectors <- sv$v[, take, drop = FALSE]
+  values <- ltsa_rayleigh_values(B, vectors)
+  ord <- order(values)
+  values <- values[ord]
+  vectors <- vectors[, ord, drop = FALSE]
+  lambda_max <- max(ltsa_rayleigh_values(B, sv$v))
+  residuals <- ltsa_ritz_residuals(B, vectors, values, lambda_max)
+
+  candidate <- ltsa_candidate_result(
+    vectors = vectors,
+    values = values,
+    backend = "fullsvd",
+    eig_k = eig_k,
+    matrix = B,
+    lambda_max = lambda_max,
+    nconv = eig_k,
+    convergence_known = TRUE,
+    returned_columns = ncol(vectors),
+    converged_columns = eig_k
+  )
+  lmerge(
+    candidate,
+    list(
+      absolute_residuals = residuals$absolute_residuals,
+      scaled_residuals = residuals$scaled_residuals,
+      residual_scale = residuals$residual_scale
+    )
+  )
+}
+
+ltsa_public_eigen_diagnostics <- function(eigen, method, normalized) {
+  list(
+    method = method,
+    normalized = isTRUE(normalized),
+    eig_k = eigen$eig_k,
+    values = eigen$values,
+    ritz_values = eigen$ritz_values,
+    residuals = eigen$residuals,
+    rank = eigen$rank,
+    lambda_max = eigen$lambda_max,
+    status = eigen$status,
+    messages = eigen$messages,
+    backend = eigen$backend
+  )
+}
+
+ltsa_public_assembly_diagnostics <- function(
+  assembly,
+  n_neighbors,
+  include_self
+) {
+  lmerge(
+    list(
+      n_neighbors = as.integer(n_neighbors),
+      include_self = isTRUE(include_self),
+      rank_deficient_count = assembly$rank_deficient_count,
+      min_local_rank = assembly$min_local_rank
+    ),
+    assembly$diagnostics %||% list()
+  )
+}
