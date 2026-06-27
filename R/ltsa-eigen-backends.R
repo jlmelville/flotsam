@@ -1,6 +1,3 @@
-# Low-level eigensolver calls retained for compatibility with existing internal
-# LTSA tests and helper wrappers.
-
 # RSpectra backend call. This avoids shift-invert near zero by estimating the
 # largest eigenvalue, forming shift * I - B, and solving for largest algebraic
 # eigenvectors of the shifted problem. nconv is treated as a hard convergence
@@ -133,30 +130,3 @@ rs_eig <-
       matrix = B
     )
   }
-
-irlba_eig <-
-  function(X, k = ncol(X) - 1, ..., lambda_max = NULL, verbose = FALSE) {
-    ltsa_irlba_candidate_provider(
-      B = X,
-      eig_k = k,
-      ...,
-      lambda_max = lambda_max,
-      verbose = verbose
-    )$vectors
-  }
-
-svdr_eig <- function(
-  X,
-  k = ncol(X) - 1,
-  ...,
-  lambda_max = NULL,
-  verbose = FALSE
-) {
-  ltsa_svdr_candidate_provider(
-    B = X,
-    eig_k = k,
-    ...,
-    lambda_max = lambda_max,
-    verbose = verbose
-  )$vectors
-}

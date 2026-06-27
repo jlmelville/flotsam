@@ -168,19 +168,6 @@ ltsa_default_null_vector <- function(n) {
   rep(1, n)
 }
 
-ltsa_null_vector_is_constant <- function(nullvec, n, tol = 1e-12) {
-  candidate <- tryCatch(
-    ltsa_normalize_null_vector(nullvec, n),
-    error = function(e) NULL
-  )
-  if (is.null(candidate)) {
-    return(FALSE)
-  }
-
-  constant <- rep(1 / sqrt(n), n)
-  abs(abs(drop(crossprod(candidate, constant))) - 1) <= tol
-}
-
 ltsa_normalize_null_vector <- function(nullvec, n) {
   if (length(nullvec) != n || any(!is.finite(nullvec))) {
     stop(
@@ -231,21 +218,6 @@ ltsa_near_zero_counts <- function(values, thresholds) {
     ),
     names(thresholds)
   )
-}
-
-ltsa_format_ritz_values <- function(values, n = 10L) {
-  values <- as.numeric(values)
-  if (length(values) == 0L) {
-    return("")
-  }
-  paste(signif(values[seq_len(min(n, length(values)))], 4), collapse = ", ")
-}
-
-ltsa_format_named_counts <- function(counts) {
-  if (length(counts) == 0L) {
-    return("")
-  }
-  paste(paste0(names(counts), "=", as.integer(counts)), collapse = ", ")
 }
 
 ltsa_validate_lambda_max <- function(lambda_max, B) {
