@@ -193,6 +193,11 @@ expect_ltsa_public_result <- function(
   expect_true(is.list(result$eigen$backend))
   expect_null(result$B)
   expect_identical(result$assembly$n_neighbors, 8L)
+  expect_identical(result$assembly$neighbor_source, "exact")
+  expect_type(result$assembly$neighbor_elapsed, "double")
+  expect_length(result$assembly$neighbor_elapsed, 1L)
+  expect_true(is.finite(result$assembly$neighbor_elapsed))
+  expect_gte(result$assembly$neighbor_elapsed, 0)
 }
 
 test_that("default public return remains an embedding matrix", {

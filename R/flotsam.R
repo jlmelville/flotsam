@@ -22,11 +22,11 @@
 #' normalized formulation was used, `eig_k`, selected values, all post-null
 #' Ritz values available inside the candidate span, scaled residuals, post-null
 #' rank, an estimated largest eigenvalue, solver-neutral status, messages, and
-#' backend metadata. The `assembly` component records neighborhood and matrix
-#' assembly diagnostics. These diagnostics classify the requested fixed-width
-#' solve, but they are not completeness certificates for the full low-energy
-#' eigenspace. If diagnostics look suspicious, rerun with a larger `eig_k` or
-#' stricter backend settings.
+#' backend metadata. The `assembly` component records nearest-neighbor source
+#' and timing alongside matrix assembly diagnostics. These diagnostics classify
+#' the requested fixed-width solve, but they are not completeness certificates
+#' for the full low-energy eigenspace. If diagnostics look suspicious, rerun
+#' with a larger `eig_k` or stricter backend settings.
 #'
 #' The `"rspectra"` path first estimates the largest eigenvalue and solves a
 #' shifted largest-algebraic problem instead of using shift-invert near zero.
@@ -372,6 +372,8 @@ ltsa <-
       list(
         n_neighbors = as.integer(validated$n_neighbors),
         include_self = isTRUE(validated$include_self),
+        neighbor_source = neighbors$source,
+        neighbor_elapsed = as.numeric(neighbors$elapsed),
         rank_deficient_count = assembly$rank_deficient_count,
         min_local_rank = assembly$min_local_rank
       ),

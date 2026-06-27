@@ -127,6 +127,25 @@ test_that("nn_method can carry a precomputed neighbor graph", {
   expect_sparse_equivalent(from_result, reference, tolerance = 0)
 })
 
+test_that("detailed results report precomputed neighbor diagnostics", {
+  X <- as.matrix(iris[seq_len(18L), seq_len(4L)])
+  nn_idx <- exact_nn_idx(X, n_neighbors = 6L, include_self = TRUE)
+
+  result <- ltsa(
+    X,
+    n_neighbors = NULL,
+    ndim = 2L,
+    nn_method = nn_idx,
+    eig_method = "eig",
+    include_self = TRUE,
+    output = "result"
+  )
+
+  expect_identical(result$assembly$n_neighbors, 6L)
+  expect_identical(result$assembly$neighbor_source, "precomputed")
+  expect_true(is.na(result$assembly$neighbor_elapsed))
+})
+
 test_that("precomputed duplicate neighborhoods work with serial and parallel assembly", {
   set.seed(21)
   X <- matrix(rnorm(8L * 10L), nrow = 8L)

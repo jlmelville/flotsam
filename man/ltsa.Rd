@@ -187,11 +187,11 @@ solve. The \code{eigen} component records the backend method, whether the
 normalized formulation was used, \code{eig_k}, selected values, all post-null
 Ritz values available inside the candidate span, scaled residuals, post-null
 rank, an estimated largest eigenvalue, solver-neutral status, messages, and
-backend metadata. The \code{assembly} component records neighborhood and matrix
-assembly diagnostics. These diagnostics classify the requested fixed-width
-solve, but they are not completeness certificates for the full low-energy
-eigenspace. If diagnostics look suspicious, rerun with a larger \code{eig_k} or
-stricter backend settings.
+backend metadata. The \code{assembly} component records nearest-neighbor source
+and timing alongside matrix assembly diagnostics. These diagnostics classify
+the requested fixed-width solve, but they are not completeness certificates
+for the full low-energy eigenspace. If diagnostics look suspicious, rerun
+with a larger \code{eig_k} or stricter backend settings.
 
 The \code{"rspectra"} path first estimates the largest eigenvalue and solves a
 shifted largest-algebraic problem instead of using shift-invert near zero.
