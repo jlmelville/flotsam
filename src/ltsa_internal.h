@@ -93,6 +93,11 @@ void fill_weights_from_basis(std::size_t n_nbrs, const std::vector<int>& keep,
                              const std::vector<double>& basis,
                              std::vector<double>& weights);
 
+int select_local_basis_columns(const std::vector<double>& values, int n_values,
+                               int n_nbrs, int n_dim, int requested,
+                               bool values_ascending,
+                               std::vector<int>& keep);
+
 int query_dsyev_workspace(int n, std::vector<double>& gram,
                           std::vector<double>& values);
 

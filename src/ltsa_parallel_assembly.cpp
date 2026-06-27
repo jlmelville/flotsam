@@ -119,30 +119,9 @@ int compute_svd_weights_workspace(ParallelLocalWeightsWorkspace& workspace,
     return info;
   }
 
-  double max_d = 0.0;
-  for (int i = 0; i < workspace.min_dim; i++) {
-    max_d = std::max(max_d, workspace.d[i]);
-  }
-
-  const double tol =
-      max_d == 0.0
-          ? 0.0
-          : static_cast<double>(std::max(workspace.n_nbrs, workspace.n_dim)) *
-                max_d * std::numeric_limits<double>::epsilon();
-
-  rank = 0;
-  if (max_d > 0.0) {
-    for (int i = 0; i < workspace.min_dim; i++) {
-      rank += workspace.d[i] > tol;
-    }
-  }
-
-  workspace.keep.clear();
-  for (int col = 0; col < workspace.requested; col++) {
-    if (workspace.d[col] > tol) {
-      workspace.keep.push_back(col);
-    }
-  }
+  rank = select_local_basis_columns(workspace.d, workspace.min_dim,
+                                    workspace.n_nbrs, workspace.n_dim,
+                                    workspace.requested, false, workspace.keep);
 
   fill_weights_from_basis(workspace.n_nbrs_size, workspace.keep, workspace.u,
                           workspace.weights);
@@ -183,31 +162,9 @@ int compute_gram_weights_workspace_info(
     return info;
   }
 
-  double max_eval = 0.0;
-  for (int i = 0; i < workspace.n_nbrs; i++) {
-    max_eval = std::max(max_eval, workspace.values[i]);
-  }
-
-  const double eval_tol =
-      max_eval <= 0.0
-          ? 0.0
-          : static_cast<double>(std::max(workspace.n_nbrs, workspace.n_dim)) *
-                max_eval * std::numeric_limits<double>::epsilon();
-
-  rank = 0;
-  if (max_eval > 0.0) {
-    for (int i = 0; i < workspace.n_nbrs; i++) {
-      rank += workspace.values[i] > eval_tol;
-    }
-  }
-
-  workspace.keep.clear();
-  for (int col = 0; col < workspace.requested; col++) {
-    const int eig_col = workspace.n_nbrs - 1 - col;
-    if (workspace.values[eig_col] > eval_tol) {
-      workspace.keep.push_back(eig_col);
-    }
-  }
+  rank = select_local_basis_columns(
+      workspace.values, workspace.n_nbrs, workspace.n_nbrs, workspace.n_dim,
+      workspace.requested, true, workspace.keep);
 
   fill_weights_from_basis(workspace.n_nbrs_size, workspace.keep, workspace.gram,
                           workspace.weights);

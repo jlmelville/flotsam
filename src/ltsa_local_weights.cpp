@@ -212,6 +212,40 @@ void fill_weights_from_basis(std::size_t n_nbrs, const std::vector<int>& keep,
   }
 }
 
+int select_local_basis_columns(const std::vector<double>& values, int n_values,
+                               int n_nbrs, int n_dim, int requested,
+                               bool values_ascending,
+                               std::vector<int>& keep) {
+  double max_value = 0.0;
+  for (int i = 0; i < n_values; i++) {
+    max_value = std::max(max_value, values[i]);
+  }
+
+  const double tol =
+      max_value <= 0.0
+          ? 0.0
+          : static_cast<double>(std::max(n_nbrs, n_dim)) * max_value *
+                std::numeric_limits<double>::epsilon();
+
+  int rank = 0;
+  if (max_value > 0.0) {
+    for (int i = 0; i < n_values; i++) {
+      rank += values[i] > tol;
+    }
+  }
+
+  keep.clear();
+  const int n_keep_candidates = std::min(requested, n_values);
+  for (int col = 0; col < n_keep_candidates; col++) {
+    const int basis_col = values_ascending ? n_values - 1 - col : col;
+    if (values[basis_col] > tol) {
+      keep.push_back(basis_col);
+    }
+  }
+
+  return rank;
+}
+
 namespace {
 
 LocalWeights compute_local_weights_svd(const cpp11::doubles_matrix<>& x,
@@ -261,30 +295,11 @@ LocalWeights compute_local_weights_svd(const cpp11::doubles_matrix<>& x,
     cpp11::stop("LAPACK dgesdd failed with info = %d", info);
   }
 
-  double max_d = 0.0;
-  for (int i = 0; i < min_dim; i++) {
-    max_d = std::max(max_d, d[i]);
-  }
-
-  const double tol = max_d == 0.0
-                         ? 0.0
-                         : static_cast<double>(std::max(n_nbrs, n_dim)) *
-                               max_d * std::numeric_limits<double>::epsilon();
-
   LocalWeights out;
-  if (max_d > 0.0) {
-    for (int i = 0; i < min_dim; i++) {
-      out.rank += d[i] > tol;
-    }
-  }
-
   std::vector<int> keep;
   keep.reserve(requested);
-  for (int col = 0; col < requested; col++) {
-    if (d[col] > tol) {
-      keep.push_back(col);
-    }
-  }
+  out.rank = select_local_basis_columns(d, min_dim, n_nbrs, n_dim, requested,
+                                        false, keep);
 
   fill_weights_from_basis(n_nbrs_size, keep, u, out.weights);
   return out;
@@ -336,31 +351,11 @@ LocalWeights compute_local_weights_gram(const cpp11::doubles_matrix<>& x,
     cpp11::stop("LAPACK dsyev failed with info = %d", info);
   }
 
-  double max_eval = 0.0;
-  for (int i = 0; i < n_nbrs; i++) {
-    max_eval = std::max(max_eval, values[i]);
-  }
-
-  const double eval_tol =
-      max_eval <= 0.0 ? 0.0
-                      : static_cast<double>(std::max(n_nbrs, n_dim)) *
-                            max_eval * std::numeric_limits<double>::epsilon();
-
   LocalWeights out;
-  if (max_eval > 0.0) {
-    for (int i = 0; i < n_nbrs; i++) {
-      out.rank += values[i] > eval_tol;
-    }
-  }
-
   std::vector<int> keep;
   keep.reserve(requested);
-  for (int col = 0; col < requested; col++) {
-    const int eig_col = n_nbrs - 1 - col;
-    if (values[eig_col] > eval_tol) {
-      keep.push_back(eig_col);
-    }
-  }
+  out.rank = select_local_basis_columns(values, n_nbrs, n_nbrs, n_dim,
+                                        requested, true, keep);
 
   fill_weights_from_basis(n_nbrs_size, keep, gram, out.weights);
   return out;
@@ -402,31 +397,9 @@ int compute_local_weights_gram_workspace(const double* x_data,
     cpp11::stop("LAPACK dsyev failed with info = %d", info);
   }
 
-  double max_eval = 0.0;
-  for (int i = 0; i < workspace.n_nbrs; i++) {
-    max_eval = std::max(max_eval, workspace.values[i]);
-  }
-
-  const double eval_tol =
-      max_eval <= 0.0
-          ? 0.0
-          : static_cast<double>(std::max(workspace.n_nbrs, workspace.n_dim)) *
-                max_eval * std::numeric_limits<double>::epsilon();
-
-  int rank = 0;
-  if (max_eval > 0.0) {
-    for (int i = 0; i < workspace.n_nbrs; i++) {
-      rank += workspace.values[i] > eval_tol;
-    }
-  }
-
-  workspace.keep.clear();
-  for (int col = 0; col < workspace.requested; col++) {
-    const int eig_col = workspace.n_nbrs - 1 - col;
-    if (workspace.values[eig_col] > eval_tol) {
-      workspace.keep.push_back(eig_col);
-    }
-  }
+  const int rank = select_local_basis_columns(
+      workspace.values, workspace.n_nbrs, workspace.n_nbrs, workspace.n_dim,
+      workspace.requested, true, workspace.keep);
 
   fill_weights_from_basis(workspace.n_nbrs_size, workspace.keep, workspace.gram,
                           workspace.weights);
