@@ -1,18 +1,13 @@
 # flotsam 0.0.0.9002
 
-* `ltsa()` now uses explicit fixed-width final eigenanalysis. New arguments
-  `eig_k`, `output`, and `include_B` control candidate width and return shape.
-  The default return remains the embedding matrix; `output = "B"` replaces the
-  old matrix-return switch, and `output = "result"` returns compact
-  eigenanalysis and assembly diagnostics. Runtime eigenanalysis no longer
-  accepts adaptive rescue-policy controls; if diagnostics look suspicious, use
-  a larger `eig_k` or stricter backend settings. Diagnostics are not
-  completeness certificates.
-* LTSA eigenanalysis documentation now explains the fixed-width `eig_k`
-  request, null-vector projection, Rayleigh-Ritz postprocessing, compact
-  diagnostics, backend-specific tuning settings, and the fact that
-  `normalize = TRUE` is a separate normalized LTSA formulation rather than a
-  rescue path for the unnormalized objective.
+* New argument: `eig_k`, controls the number of eigenvectors to return before
+  the Rayleigh-Ritz processing step and final `ndim` return. Increasing the
+  total number of eigenvectors to return seems to work better than other
+  parameters in cases where there are clusters of eigenvalues: RSpectra may
+  entirely miss one of these results even if it reports full convergence.
+* New argument: `output`. `output = "result"` returns compact
+  eigenanalysis and assembly diagnostics. `output = "B"` replaces the older
+  `ret_B = TRUE` argument.
 
 # flotsam 0.0.0.9001
 
