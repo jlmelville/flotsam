@@ -121,14 +121,16 @@ ltsa_ritz_select <- function(
   )
 }
 
-ltsa_fixed_exact_dense_backend <- function(backend) {
-  backend %in% c("dense_eigen", "eig", "eigen", "fullsvd", "dense_svd")
-}
-
 ltsa_fixed_backend_metadata <- function(eig_res) {
   backend <- eig_res$backend %||% "unknown"
   backend <- as.character(backend[[1L]])
-  exact_dense <- ltsa_fixed_exact_dense_backend(backend)
+  exact_dense <- backend %in% c(
+    "dense_eigen",
+    "eig",
+    "eigen",
+    "fullsvd",
+    "dense_svd"
+  )
   out <- list(
     name = backend,
     convergence_known = isTRUE(eig_res$convergence_known) || exact_dense
@@ -186,14 +188,6 @@ ltsa_fixed_backend_failure_messages <- function(eig_res, eig_k) {
   }
 
   character()
-}
-
-ltsa_fixed_diagnostic_guidance <- function() {
-  paste0(
-    "These diagnostics are not completeness certificates; consider ",
-    "increasing eig_k or using stricter backend settings if the result ",
-    "looks suspicious."
-  )
 }
 
 ltsa_fixed_ritz_diagnostics <- function(
@@ -316,7 +310,14 @@ ltsa_fixed_ritz_diagnostics <- function(
   }
   messages <- c(invalid_messages, warning_messages)
   if (length(messages) > 0L) {
-    messages <- c(messages, ltsa_fixed_diagnostic_guidance())
+    messages <- c(
+      messages,
+      paste0(
+        "These diagnostics are not completeness certificates; consider ",
+        "increasing eig_k or using stricter backend settings if the result ",
+        "looks suspicious."
+      )
+    )
   }
 
   list(
