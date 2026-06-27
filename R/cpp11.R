@@ -8,18 +8,6 @@ ltsa_assemble_local_weights <- function(x, value_nnt, value_n_nbrs, ndim, row_ma
   .Call(`_flotsam_ltsa_assemble_local_weights`, x, value_nnt, value_n_nbrs, ndim, row_major_copy_max_bytes)
 }
 
-ltsa_triplet_builder_create <- function(value_nnt, value_n_nbrs) {
-  .Call(`_flotsam_ltsa_triplet_builder_create`, value_nnt, value_n_nbrs)
-}
-
-ltsa_triplet_builder_append <- function(builder_xptr, nni, weights) {
-  invisible(.Call(`_flotsam_ltsa_triplet_builder_append`, builder_xptr, nni, weights))
-}
-
-ltsa_triplet_builder_finalize <- function(builder_xptr) {
-  .Call(`_flotsam_ltsa_triplet_builder_finalize`, builder_xptr)
-}
-
 spm_times_scalar <- function(ps, xs, ds) {
   .Call(`_flotsam_spm_times_scalar`, ps, xs, ds)
 }

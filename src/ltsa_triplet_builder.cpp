@@ -47,30 +47,6 @@ LtsaTripletAssemblyBuilder::LtsaTripletAssemblyBuilder(
   }
 }
 
-void LtsaTripletAssemblyBuilder::append(const integers& nni,
-                                        const doubles& weights) {
-  if (finalized_) {
-    stop("LTSA triplet builder has already been finalized");
-  }
-  if (n_appended_ >= n_obs_) {
-    stop("Too many LTSA neighborhoods appended");
-  }
-  if (static_cast<std::size_t>(nni.size()) != value_n_nbrs_) {
-    stop("Inconsistent value neighborhood dimensions");
-  }
-
-  std::vector<int> checked_nni(nni.size());
-  for (R_xlen_t i = 0; i < nni.size(); i++) {
-    checked_nni[i] = checked_neighbor_index(nni[i], n_obs_);
-  }
-
-  std::vector<double> checked_weights(weights.size());
-  for (R_xlen_t i = 0; i < weights.size(); i++) {
-    checked_weights[i] = weights[i];
-  }
-  append_prechecked(checked_nni, checked_weights);
-}
-
 void LtsaTripletAssemblyBuilder::append_prechecked(
     const std::vector<int>& nni, const std::vector<double>& weights) {
   if (finalized_) {
@@ -147,11 +123,6 @@ SparseComponents LtsaTripletAssemblyBuilder::finalize_components() {
   full_columns_.shrink_to_fit();
 
   return out;
-}
-
-list LtsaTripletAssemblyBuilder::finalize() {
-  SparseComponents out = finalize_components();
-  return writable::list({"i"_nm = out.i, "p"_nm = out.p, "x"_nm = out.x});
 }
 
 std::size_t LtsaTripletAssemblyBuilder::raw_entries_estimate() const {
@@ -232,53 +203,4 @@ void LtsaTripletAssemblyBuilder::expand_canonical_to_full(
 
   canonical_columns_.clear();
   canonical_columns_.shrink_to_fit();
-}
-
-using LtsaTripletAssemblyBuilderPtr =
-    external_pointer<LtsaTripletAssemblyBuilder>;
-
-LtsaTripletAssemblyBuilder* checked_ltsa_triplet_builder(SEXP builder_xptr) {
-  LtsaTripletAssemblyBuilderPtr builder(builder_xptr);
-  LtsaTripletAssemblyBuilder* ptr = builder.get();
-  if (ptr == nullptr) {
-    stop("Invalid LTSA triplet builder");
-  }
-  return ptr;
-}
-
-[[cpp11::register]] sexp ltsa_triplet_builder_create(const integers& value_nnt,
-                                                     std::size_t value_n_nbrs) {
-  if (value_nnt.size() == 0 || value_n_nbrs == 0) {
-    stop("Value neighborhoods must not be empty");
-  }
-  if (value_nnt.size() % value_n_nbrs != 0) {
-    stop("Inconsistent value neighborhood dimensions");
-  }
-
-  std::size_t n_obs = value_nnt.size() / value_n_nbrs;
-  if (static_cast<std::size_t>(value_nnt.size()) != n_obs * value_n_nbrs) {
-    stop("Inconsistent value neighborhood dimensions");
-  }
-
-  checked_triplet_count(n_obs, value_n_nbrs, "value_n_nbrs");
-
-  const auto max_int =
-      static_cast<std::size_t>(std::numeric_limits<int>::max());
-  if (n_obs + 1 > max_int) {
-    stop("Too many observations for a dgCMatrix");
-  }
-
-  LtsaTripletAssemblyBuilderPtr builder(
-      new LtsaTripletAssemblyBuilder(value_nnt, value_n_nbrs, n_obs, max_int));
-  return sexp(static_cast<SEXP>(builder));
-}
-
-[[cpp11::register]] void ltsa_triplet_builder_append(SEXP builder_xptr,
-                                                     const integers& nni,
-                                                     const doubles& weights) {
-  checked_ltsa_triplet_builder(builder_xptr)->append(nni, weights);
-}
-
-[[cpp11::register]] list ltsa_triplet_builder_finalize(SEXP builder_xptr) {
-  return checked_ltsa_triplet_builder(builder_xptr)->finalize();
 }

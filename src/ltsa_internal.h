@@ -5,7 +5,6 @@
 #include <cmath>
 #include <cpp11.hpp>
 #include <cpp11/doubles.hpp>
-#include <cpp11/external_pointer.hpp>
 #include <cpp11/integers.hpp>
 #include <cpp11/matrix.hpp>
 #include <limits>
@@ -143,14 +142,10 @@ public:
                              std::size_t value_n_nbrs, std::size_t n_obs,
                              std::size_t max_int);
 
-  void append(const integers& nni, const doubles& weights);
-
   void append_prechecked(const std::vector<int>& nni,
                          const std::vector<double>& weights);
 
   SparseComponents finalize_components();
-
-  list finalize();
 
   std::size_t raw_entries_estimate() const;
 
