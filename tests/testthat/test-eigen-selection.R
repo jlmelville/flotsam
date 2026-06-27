@@ -533,20 +533,6 @@ test_that("fixed-width diagnostics give eig_k and backend-setting guidance", {
   )))
 })
 
-test_that("public LTSA rejects rescue-policy arguments", {
-  expect_error(
-    ltsa(
-      iris[1:10, ],
-      nn_method = "exact",
-      n_neighbors = 8,
-      include_self = FALSE,
-      eig_k = 4L,
-      initial_extra = 4L
-    ),
-    "no longer supports rescue-policy"
-  )
-})
-
 test_that("fixed-width driver handles arbitrary normalized-style null vectors", {
   nullvec <- c(1, 2, 3, 2, 1, 4)
   nullvec <- nullvec / sqrt(sum(nullvec * nullvec))

@@ -78,8 +78,7 @@ eigenvalue ordering matters.
 the final eigensolver. If \code{NULL}, the default is
 \code{min(n - 1L, max(12L, ndim + 2L))}, where \code{n} is the number of
 observations. Must satisfy \verb{ndim + 1 <= eig_k < n}. Larger values give
-the Rayleigh-Ritz postprocessing a wider candidate span, but the public
-solve does not increase this width automatically.}
+the Rayleigh-Ritz postprocessing a wider candidate span.}
 
 \item{output}{What to return:
 \itemize{
@@ -102,11 +101,10 @@ may allow emulating the HLLE method.}
 
 \item{normalize}{If \code{TRUE}, calculate the final decomposition on a normalized
 LTSA formulation rather than the unnormalized alignment matrix. This is a
-separate spectral objective, not a rescue path and not candidate
-enrichment for the unnormalized objective. For iterative methods
-(\code{"rspectra"}, \code{"irlba"}, and \code{"svdr"}), the normalized operator uses the
-same fixed-width null-aware Rayleigh-Ritz selection as the unnormalized
-path, then transforms the selected vectors back to output coordinates. The
+separate spectral objective. For iterative methods (\code{"rspectra"},
+\code{"irlba"}, and \code{"svdr"}), the normalized operator uses the same
+fixed-width null-aware Rayleigh-Ritz selection as the unnormalized path,
+then transforms the selected vectors back to output coordinates. The
 normalized formulation may have different downstream properties, for
 example when clustering on the eigenvectors.}
 
@@ -130,9 +128,9 @@ synthetic datasets, you are quite likely to hit this code path.}
 
 \item{...}{Extra arguments to be passed to the eigendecomposition method
 specified by \code{eig_method}. These backend settings affect how the requested
-fixed-width candidate block is computed; they do not enable adaptive
-widening. For \code{"rspectra"}, arguments are passed to the \code{opts} list used by
-\code{\link[RSpectra:eigs_sym]{RSpectra::eigs_sym()}}. Common tuning parameters are:
+fixed-width candidate block is computed. For \code{"rspectra"}, arguments are
+passed to the \code{opts} list used by \code{\link[RSpectra:eigs_sym]{RSpectra::eigs_sym()}}. Common tuning
+parameters are:
 \itemize{
 \item \code{tol} Tolerance.
 \item \code{maxitr} Maximum number of iterations.
@@ -174,9 +172,8 @@ for dimensionality reduction.
 LTSA forms a sparse alignment matrix \code{B} and then returns the low-energy
 nonconstant eigenvectors of that matrix. The public iterative final
 eigenanalysis path is a fixed-width solve: \code{eig_k} is the number of
-candidate vectors requested from the selected backend. \code{flotsam} makes that
-request once, then classifies the requested solve; it does not adaptively
-widen the candidate block or run a separate rescue pass.
+candidate vectors requested from the selected backend before Rayleigh-Ritz
+selection and diagnostic classification.
 
 After the backend returns its candidate block, \code{flotsam} projects out the
 known constant null vector, orthonormalizes the remaining candidate span,
@@ -203,12 +200,10 @@ The \code{"irlba"} and \code{"svdr"} paths use the same Rayleigh-Ritz selection 
 diagnostics, but they rely on post-hoc residual checks because those
 backends do not expose RSpectra-style convergence counts.
 
-\code{normalize = TRUE} selects a separate normalized LTSA formulation. It is not
-a rescue path for a difficult unnormalized solve, and it is not candidate
-enrichment for the unnormalized objective. For iterative methods, the
-normalized operator still uses the same fixed-width, null-aware
-Rayleigh-Ritz workflow and then transforms the selected vectors back to
-output coordinates.
+\code{normalize = TRUE} selects a separate normalized LTSA formulation. For
+iterative methods, the normalized operator uses the same fixed-width,
+null-aware Rayleigh-Ritz workflow and then transforms the selected vectors
+back to output coordinates.
 }
 \examples{
 n <- 1000

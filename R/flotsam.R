@@ -7,9 +7,8 @@
 #' LTSA forms a sparse alignment matrix `B` and then returns the low-energy
 #' nonconstant eigenvectors of that matrix. The public iterative final
 #' eigenanalysis path is a fixed-width solve: `eig_k` is the number of
-#' candidate vectors requested from the selected backend. `flotsam` makes that
-#' request once, then classifies the requested solve; it does not adaptively
-#' widen the candidate block or run a separate rescue pass.
+#' candidate vectors requested from the selected backend before Rayleigh-Ritz
+#' selection and diagnostic classification.
 #'
 #' After the backend returns its candidate block, `flotsam` projects out the
 #' known constant null vector, orthonormalizes the remaining candidate span,
@@ -36,12 +35,10 @@
 #' diagnostics, but they rely on post-hoc residual checks because those
 #' backends do not expose RSpectra-style convergence counts.
 #'
-#' `normalize = TRUE` selects a separate normalized LTSA formulation. It is not
-#' a rescue path for a difficult unnormalized solve, and it is not candidate
-#' enrichment for the unnormalized objective. For iterative methods, the
-#' normalized operator still uses the same fixed-width, null-aware
-#' Rayleigh-Ritz workflow and then transforms the selected vectors back to
-#' output coordinates.
+#' `normalize = TRUE` selects a separate normalized LTSA formulation. For
+#' iterative methods, the normalized operator uses the same fixed-width,
+#' null-aware Rayleigh-Ritz workflow and then transforms the selected vectors
+#' back to output coordinates.
 #'
 #' @param X The input data matrix or data frame with one observation per row. If
 #'   a data frame is supplied, non-numeric columns are ignored. At least one
@@ -89,8 +86,7 @@
 #'   the final eigensolver. If `NULL`, the default is
 #'   `min(n - 1L, max(12L, ndim + 2L))`, where `n` is the number of
 #'   observations. Must satisfy `ndim + 1 <= eig_k < n`. Larger values give
-#'   the Rayleigh-Ritz postprocessing a wider candidate span, but the public
-#'   solve does not increase this width automatically.
+#'   the Rayleigh-Ritz postprocessing a wider candidate span.
 #' @param output What to return:
 #'   * `"embedding"` Return the embedding matrix. This is the default.
 #'   * `"result"` Return a list containing the embedding, compact eigenanalysis
@@ -107,11 +103,10 @@
 #'   may allow emulating the HLLE method.
 #' @param normalize If `TRUE`, calculate the final decomposition on a normalized
 #'   LTSA formulation rather than the unnormalized alignment matrix. This is a
-#'   separate spectral objective, not a rescue path and not candidate
-#'   enrichment for the unnormalized objective. For iterative methods
-#'   (`"rspectra"`, `"irlba"`, and `"svdr"`), the normalized operator uses the
-#'   same fixed-width null-aware Rayleigh-Ritz selection as the unnormalized
-#'   path, then transforms the selected vectors back to output coordinates. The
+#'   separate spectral objective. For iterative methods (`"rspectra"`,
+#'   `"irlba"`, and `"svdr"`), the normalized operator uses the same
+#'   fixed-width null-aware Rayleigh-Ritz selection as the unnormalized path,
+#'   then transforms the selected vectors back to output coordinates. The
 #'   normalized formulation may have different downstream properties, for
 #'   example when clustering on the eigenvectors.
 #' @param n_threads Number of threads to use. Applies only to the nearest
@@ -130,9 +125,9 @@
 #' @param verbose If `TRUE` log information about progress to the console.
 #' @param ... Extra arguments to be passed to the eigendecomposition method
 #' specified by `eig_method`. These backend settings affect how the requested
-#' fixed-width candidate block is computed; they do not enable adaptive
-#' widening. For `"rspectra"`, arguments are passed to the `opts` list used by
-#' [RSpectra::eigs_sym()]. Common tuning parameters are:
+#' fixed-width candidate block is computed. For `"rspectra"`, arguments are
+#' passed to the `opts` list used by [RSpectra::eigs_sym()]. Common tuning
+#' parameters are:
 #'
 #'   * `tol` Tolerance.
 #'   * `maxitr` Maximum number of iterations.
@@ -411,7 +406,6 @@ ltsa_split_public_eigen_args <- function(args) {
   gap_tol <- args$gap_tol %||% 1e-4
   resid_tol <- ltsa_check_positive_finite(resid_tol, "resid_tol")
   gap_tol <- ltsa_check_positive_finite(gap_tol, "gap_tol")
-  ltsa_reject_rescue_policy_args(args)
 
   fixed_names <- c("resid_tol", "gap_tol")
   provider_args <- args[!(arg_names %in% fixed_names)]

@@ -30,49 +30,6 @@ ltsa_validate_eig_k <- function(eig_k, ndim, n) {
   as.integer(eig_k)
 }
 
-ltsa_rescue_policy_arg_names <- function() {
-  c(
-    "initial_extra",
-    "max_extra",
-    "gap_expansion_steps",
-    "strict_rescue",
-    "strict_rescue_tol",
-    "strict_rescue_maxitr",
-    "strict_rescue_maxit",
-    "strict_rescue_it",
-    "strict_rescue_extra",
-    "retain_attempt_candidate_spaces",
-    "attempt_reference_vectors",
-    "width_first_rescue",
-    "width_first_rescue_max_expansions"
-  )
-}
-
-ltsa_reject_rescue_policy_args <- function(args) {
-  arg_names <- names(args)
-  if (is.null(arg_names)) {
-    return(invisible(NULL))
-  }
-
-  obsolete <- intersect(arg_names, ltsa_rescue_policy_arg_names())
-  obsolete <- obsolete[nzchar(obsolete)]
-  if (length(obsolete) > 0L) {
-    stop(
-      "LTSA fixed-width eigenanalysis no longer supports rescue-policy ",
-      "argument",
-      if (length(obsolete) == 1L) "" else "s",
-      ": ",
-      paste(obsolete, collapse = ", "),
-      ". Use eig_k to request more candidate vectors and backend settings ",
-      "such as tol, maxitr, maxit, it, or ncv for stricter solves. ",
-      "Diagnostics are not completeness certificates.",
-      call. = FALSE
-    )
-  }
-
-  invisible(NULL)
-}
-
 symmetrize_ltsa_matrix <- function(B) {
   B <- 0.5 * (B + Matrix::t(B))
 
