@@ -370,15 +370,27 @@ ltsa <-
     if (normalize) {
       embedding <- Dinvs * embedding
     }
-    eigen <- ltsa_public_eigen_diagnostics(
-      eig_res$eigen,
+    eigen <- list(
       method = eig_method,
-      normalized = normalize
+      normalized = isTRUE(normalize),
+      eig_k = eig_res$eigen$eig_k,
+      values = eig_res$eigen$values,
+      ritz_values = eig_res$eigen$ritz_values,
+      residuals = eig_res$eigen$residuals,
+      rank = eig_res$eigen$rank,
+      lambda_max = eig_res$eigen$lambda_max,
+      status = eig_res$eigen$status,
+      messages = eig_res$eigen$messages,
+      backend = eig_res$eigen$backend
     )
-    assembly_diagnostics <- ltsa_public_assembly_diagnostics(
-      assembly = assembly,
-      n_neighbors = k,
-      include_self = include_self
+    assembly_diagnostics <- lmerge(
+      list(
+        n_neighbors = as.integer(k),
+        include_self = isTRUE(include_self),
+        rank_deficient_count = assembly$rank_deficient_count,
+        min_local_rank = assembly$min_local_rank
+      ),
+      assembly$diagnostics %||% list()
     )
     tsmessage("Finished")
     if (identical(output, "embedding")) {
@@ -524,37 +536,5 @@ ltsa_fullsvd_candidate_provider <- function(
       scaled_residuals = residuals$scaled_residuals,
       residual_scale = residuals$residual_scale
     )
-  )
-}
-
-ltsa_public_eigen_diagnostics <- function(eigen, method, normalized) {
-  list(
-    method = method,
-    normalized = isTRUE(normalized),
-    eig_k = eigen$eig_k,
-    values = eigen$values,
-    ritz_values = eigen$ritz_values,
-    residuals = eigen$residuals,
-    rank = eigen$rank,
-    lambda_max = eigen$lambda_max,
-    status = eigen$status,
-    messages = eigen$messages,
-    backend = eigen$backend
-  )
-}
-
-ltsa_public_assembly_diagnostics <- function(
-  assembly,
-  n_neighbors,
-  include_self
-) {
-  lmerge(
-    list(
-      n_neighbors = as.integer(n_neighbors),
-      include_self = isTRUE(include_self),
-      rank_deficient_count = assembly$rank_deficient_count,
-      min_local_rank = assembly$min_local_rank
-    ),
-    assembly$diagnostics %||% list()
   )
 }
