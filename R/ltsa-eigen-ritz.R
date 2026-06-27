@@ -124,13 +124,14 @@ ltsa_ritz_select <- function(
 ltsa_fixed_backend_metadata <- function(eig_res) {
   backend <- eig_res$backend %||% "unknown"
   backend <- as.character(backend[[1L]])
-  exact_dense <- backend %in% c(
-    "dense_eigen",
-    "eig",
-    "eigen",
-    "fullsvd",
-    "dense_svd"
-  )
+  exact_dense <- backend %in%
+    c(
+      "dense_eigen",
+      "eig",
+      "eigen",
+      "fullsvd",
+      "dense_svd"
+    )
   out <- list(
     name = backend,
     convergence_known = isTRUE(eig_res$convergence_known) || exact_dense

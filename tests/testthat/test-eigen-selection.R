@@ -76,11 +76,13 @@ fixed_width_provider_factory <- function(
   mprod = NA_integer_
 ) {
   if (is.null(lambda_max)) {
-    lambda_max <- max(eigen(
-      problem$matrix,
-      symmetric = TRUE,
-      only.values = TRUE
-    )$values)
+    lambda_max <- max(
+      eigen(
+        problem$matrix,
+        symmetric = TRUE,
+        only.values = TRUE
+      )$values
+    )
   }
   lambda_max_value <- lambda_max
   calls <- data.frame(eig_k = integer())
@@ -358,8 +360,22 @@ test_that("fixed-width eig_k validation rejects values at least n", {
 
 test_that("fixed-width driver calls the provider exactly once", {
   problem <- synthetic_ltsa_problem(c(
-    0, 0.1, 0.2, 1, 2, 3, 5, 8,
-    13, 21, 34, 55, 89, 144, 233, 377
+    0,
+    0.1,
+    0.2,
+    1,
+    2,
+    3,
+    5,
+    8,
+    13,
+    21,
+    34,
+    55,
+    89,
+    144,
+    233,
+    377
   ))
   fixture <- fixed_width_provider_factory(problem)
 
@@ -429,15 +445,18 @@ test_that("fixed-width diagnostics use compact solver-neutral shape", {
   expect_equal(res$eigen$residuals, rep(0, 2L), tolerance = 1e-12)
   expect_identical(res$eigen$method, "synthetic")
   expect_identical(res$eigen$backend$name, "synthetic")
-  expect_false(any(c(
-    "attempts",
-    "acceptance",
-    "boundary_gap",
-    "global_gap",
-    "local_gap",
-    "zero_tol",
-    "near_zero_tol"
-  ) %in% names(res$eigen)))
+  expect_false(any(
+    c(
+      "attempts",
+      "acceptance",
+      "boundary_gap",
+      "global_gap",
+      "local_gap",
+      "zero_tol",
+      "near_zero_tol"
+    ) %in%
+      names(res$eigen)
+  ))
   expect_false(any(c("attempts", "acceptance", "ritz") %in% names(res)))
 })
 
@@ -674,8 +693,26 @@ test_that("RSpectra candidate provider returns backend-neutral fields", {
 
 test_that("fixed-width RSpectra driver returns diagnostics", {
   B <- synthetic_ltsa_matrix(c(
-    0, 0.1, 0.2, 1, 3, 5, 8, 13, 21, 34,
-    55, 89, 144, 233, 377, 610, 987, 1597, 2584, 4181
+    0,
+    0.1,
+    0.2,
+    1,
+    3,
+    5,
+    8,
+    13,
+    21,
+    34,
+    55,
+    89,
+    144,
+    233,
+    377,
+    610,
+    987,
+    1597,
+    2584,
+    4181
   ))
   dense <- eigen(B, symmetric = TRUE)
   ord <- order(dense$values)
