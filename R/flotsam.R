@@ -263,7 +263,7 @@ ltsa <-
     nn_method <- neighbor_args$nn_method
     nn_idx <- neighbor_args$nn_idx
 
-    args <- validate_ltsa_args(
+    validated <- validate_ltsa_args(
       X = X,
       n_neighbors = n_neighbors,
       ndim = ndim,
@@ -280,30 +280,15 @@ ltsa <-
       copy_max_mib = copy_max_mib,
       verbose = verbose
     )
-    X <- args$X
-    k <- args$n_neighbors
-    nn_idx <- args$nn_idx
-    ndim <- args$ndim
-    nn_method <- args$nn_method
-    eig_method <- args$eig_method
-    eig_k <- args$eig_k
-    output <- args$output
-    include_B <- args$include_B
-    include_self <- args$include_self
-    normalize <- args$normalize
-    n_threads <- args$n_threads
-    n_assembly_threads <- args$n_assembly_threads
-    copy_max_mib <- args$copy_max_mib
-    verbose <- args$verbose
 
     neighbors <- prepare_ltsa_neighbors(
       X = X,
-      n_neighbors = k,
-      nn_method = nn_method,
-      nn_idx = nn_idx,
-      include_self = include_self,
-      n_threads = n_threads,
-      verbose = verbose
+      n_neighbors = validated$n_neighbors,
+      nn_method = validated$nn_method,
+      nn_idx = validated$nn_idx,
+      include_self = validated$include_self,
+      n_threads = validated$n_threads,
+      verbose = validated$verbose
     )
     nn_idx <- neighbors$nn_idx
 
@@ -311,11 +296,11 @@ ltsa <-
     assembly <- assemble_ltsa_B(
       X = X,
       nn_idx = nn_idx,
-      ndim = ndim,
-      include_self = include_self,
-      n_assembly_threads = n_assembly_threads,
-      copy_max_mib = copy_max_mib,
-      verbose = verbose
+      ndim = validated$ndim,
+      include_self = validated$include_self,
+      n_assembly_threads = validated$n_assembly_threads,
+      copy_max_mib = validated$copy_max_mib,
+      verbose = validated$verbose
     )
     B <- assembly$B
     rank_deficient_count <- assembly$rank_deficient_count
@@ -325,7 +310,7 @@ ltsa <-
       warning(
         rank_deficient_count,
         " local neighborhoods had numerical rank below ndim = ",
-        ndim,
+        validated$ndim,
         "; lower-dimensional local bases were used. Minimum local rank was ",
         min_local_rank,
         ".",
@@ -333,14 +318,14 @@ ltsa <-
       )
     }
 
-    if (identical(output, "B")) {
+    if (identical(validated$output, "B")) {
       return(B)
     }
 
     eigen_args <- ltsa_split_public_eigen_args(list(...))
     B_operator <- B
     nullvec <- ltsa_default_null_vector(nrow(B_operator))
-    if (normalize) {
+    if (validated$normalize) {
       tsmessage("Forming normalized Lsym")
       nres <- norm_lsym_L(B_operator)
       Dinvs <- nres$Dinvs
@@ -354,12 +339,12 @@ ltsa <-
       {
         ltsa_run_fixed_eigenanalysis(
           B = B_operator,
-          ndim = ndim,
-          eig_method = eig_method,
-          eig_k = eig_k,
+          ndim = validated$ndim,
+          eig_method = validated$eig_method,
+          eig_k = validated$eig_k,
           eigen_args = eigen_args,
           nullvec = nullvec,
-          verbose = verbose
+          verbose = validated$verbose
         )
       },
       error = function(e) {
@@ -367,12 +352,12 @@ ltsa <-
       }
     )
     embedding <- eig_res$vectors
-    if (normalize) {
+    if (validated$normalize) {
       embedding <- Dinvs * embedding
     }
     eigen <- list(
-      method = eig_method,
-      normalized = isTRUE(normalize),
+      method = validated$eig_method,
+      normalized = isTRUE(validated$normalize),
       eig_k = eig_res$eigen$eig_k,
       values = eig_res$eigen$values,
       ritz_values = eig_res$eigen$ritz_values,
@@ -385,15 +370,15 @@ ltsa <-
     )
     assembly_diagnostics <- lmerge(
       list(
-        n_neighbors = as.integer(k),
-        include_self = isTRUE(include_self),
+        n_neighbors = as.integer(validated$n_neighbors),
+        include_self = isTRUE(validated$include_self),
         rank_deficient_count = assembly$rank_deficient_count,
         min_local_rank = assembly$min_local_rank
       ),
       assembly$diagnostics %||% list()
     )
     tsmessage("Finished")
-    if (identical(output, "embedding")) {
+    if (identical(validated$output, "embedding")) {
       return(embedding)
     }
 
@@ -401,7 +386,7 @@ ltsa <-
       embedding = embedding,
       eigen = eigen,
       assembly = assembly_diagnostics,
-      B = if (include_B) B else NULL
+      B = if (validated$include_B) B else NULL
     )
   }
 
