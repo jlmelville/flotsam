@@ -133,31 +133,124 @@ ltsa_call_candidate_provider <- function(
   )
 }
 
-# RSpectra candidate provider. The actual solve is delegated to rs_eig(), which
-# uses the shifted largest-algebraic formulation and enforces RSpectra nconv.
+# RSpectra uses a shifted largest-algebraic formulation and treats nconv as a
+# hard convergence gate before shared LTSA postprocessing sees the candidates.
 ltsa_rspectra_candidate_provider <- function(
   B,
   eig_k,
   ...,
   lambda_max = NULL,
-  verbose = FALSE
+  verbose = FALSE,
+  shift_eps = 1e-6,
+  dense_n = 100L,
+  dense_fraction = 0.5
 ) {
-  res <- do.call(
-    rs_eig,
-    c(
-      list(X = B, k = eig_k, lambda_max = lambda_max, verbose = verbose),
-      list(...)
+  varargs <- list(...)
+  B <- symmetrize_ltsa_matrix(B)
+  n <- ncol(B)
+  eig_k <- ltsa_validate_candidate_eig_k(eig_k, n)
+
+  if (
+    length(varargs) == 0L &&
+      ltsa_use_dense_eig(
+        n,
+        eig_k,
+        dense_n = dense_n,
+        dense_fraction = dense_fraction
+      )
+  ) {
+    tsmessage("Using dense eigenvalue decomposition")
+    return(ltsa_as_candidate_result(
+      dense_ltsa_eig(B, eig_k),
+      B = B,
+      eig_k = eig_k,
+      backend = "dense_eigen",
+      convergence_known = TRUE
+    ))
+  }
+
+  lambda_probe <- NULL
+  if (is.null(lambda_max)) {
+    tsmessage("Finding largest eigenvalue")
+    lambda_probe <- ltsa_lambda_max_probe(B, varargs)
+    lambda_max <- lambda_probe$value
+  } else {
+    lambda_max <- ltsa_validate_lambda_max(lambda_max, B)
+  }
+  shift <- lambda_max + ltsa_shift_margin(lambda_max, shift_eps)
+  X_shift <- ltsa_shift_for_smallest(B, shift)
+
+  tsmessage("Decomposing shifted matrix")
+  opts <- ltsa_rspectra_opts(eig_k = eig_k, n = n)
+  opts <- lmerge(opts, varargs)
+  args <- list(
+    A = X_shift,
+    k = eig_k,
+    which = "LA",
+    opts = opts
+  )
+  res <- do.call(RSpectra::eigs_sym, args)
+  nconv <- res$nconv %||% NA_integer_
+  if (!is.na(nconv) && nconv < eig_k) {
+    stop(
+      "RSpectra failed to converge enough LTSA candidate vectors: ",
+      nconv,
+      " / ",
+      eig_k,
+      call. = FALSE
     )
+  }
+  if (is.null(res$vectors) || ncol(res$vectors) < eig_k) {
+    stop(
+      "RSpectra returned fewer LTSA candidate vectors than requested",
+      call. = FALSE
+    )
+  }
+
+  vectors <- as.matrix(res$vectors[, seq_len(eig_k), drop = FALSE])
+  values <- ltsa_rayleigh_values(B, vectors)
+  ord <- order(values)
+  values <- values[ord]
+  vectors <- vectors[, ord, drop = FALSE]
+  shifted_values <- res$values
+  if (!is.null(shifted_values) && length(shifted_values) >= eig_k) {
+    shifted_values <- shifted_values[seq_len(eig_k)][ord]
+  }
+  residuals <- ltsa_ritz_residuals(B, vectors, values, lambda_max)
+  tsmessage(
+    "RSpectra converged ",
+    ifelse(is.na(nconv), eig_k, nconv),
+    " / ",
+    eig_k,
+    " LTSA candidate vectors; max scaled residual = ",
+    signif(max(residuals$scaled_residuals), 4)
   )
 
-  ltsa_as_candidate_result(
-    res,
-    B = B,
+  candidate <- ltsa_candidate_result(
+    vectors = vectors,
+    values = values,
+    shifted_values = shifted_values,
+    backend = "rspectra",
     eig_k = eig_k,
-    backend = res$backend %||% "rspectra",
+    matrix = B,
     lambda_max = lambda_max,
-    convergence_known = TRUE
+    lambda_probe = lambda_probe,
+    nconv = nconv,
+    niter = res$niter %||% NA_integer_,
+    nops = res$nops %||% NA_integer_,
+    opts = opts,
+    convergence_known = TRUE,
+    returned_columns = ncol(res$vectors),
+    converged_columns = ifelse(is.na(nconv), eig_k, nconv)
   )
+  candidate$absolute_residuals <- residuals$absolute_residuals
+  candidate$scaled_residuals <- residuals$scaled_residuals
+  candidate$residual_scale <- residuals$residual_scale
+  candidate$shift <- shift
+  candidate$shift_eps <- shift_eps
+  candidate$shift_policy <- "lambda_max_plus_margin"
+  candidate$solve_which <- "LA"
+  candidate
 }
 
 ltsa_irlba_lambda_max_probe <- function(B) {

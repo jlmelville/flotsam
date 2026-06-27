@@ -602,7 +602,7 @@ test_that("LTSA symmetrization returns a general sparse solver matrix", {
 test_that("dense LTSA eigensolver fallback reports small residuals", {
   B <- Matrix::Diagonal(x = seq(0, 11))
 
-  res <- flotsam:::rs_eig(B, k = 6L)
+  res <- flotsam:::ltsa_rspectra_candidate_provider(B, eig_k = 6L)
 
   expect_identical(res$backend, "dense_eigen")
   expect_identical(res$eig_k, 6L)
@@ -614,9 +614,9 @@ test_that("dense LTSA eigensolver fallback reports small residuals", {
 test_that("RSpectra path uses shifted largest-algebraic solve with residual metadata", {
   B <- Matrix::Diagonal(x = seq(0, 29))
 
-  res <- flotsam:::rs_eig(
+  res <- flotsam:::ltsa_rspectra_candidate_provider(
     B,
-    k = 6L,
+    eig_k = 6L,
     dense_n = 0L,
     tol = 1e-10,
     maxitr = 5000L
@@ -783,9 +783,9 @@ test_that("RSpectra partial convergence is a hard LTSA error", {
 
   expect_error(
     suppressWarnings(
-      flotsam:::rs_eig(
+      flotsam:::ltsa_rspectra_candidate_provider(
         B,
-        k = 20L,
+        eig_k = 20L,
         lambda_max = lambda_max,
         dense_n = 0L,
         ncv = 21L,

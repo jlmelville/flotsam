@@ -61,6 +61,14 @@ ltsa_default_ncv <- function(n, eig_k) {
   min(n, max(20L, 4L * eig_k + 10L))
 }
 
+ltsa_rspectra_opts <- function(eig_k = NULL, n = NULL) {
+  opts <- list(tol = 1e-6)
+  if (!is.null(eig_k) && !is.null(n)) {
+    opts$ncv <- ltsa_default_ncv(n, eig_k)
+  }
+  opts
+}
+
 ltsa_use_dense_eig <- function(n, eig_k, dense_n = 100L, dense_fraction = 0.5) {
   n <= dense_n || eig_k >= dense_fraction * n
 }
@@ -212,7 +220,7 @@ ltsa_validate_lambda_probe <- function(probe, B) {
 }
 
 ltsa_lambda_max_probe <- function(B, varargs) {
-  opts <- rs_opt(eig_k = 1L, n = nrow(B))
+  opts <- ltsa_rspectra_opts(eig_k = 1L, n = nrow(B))
   opts <- lmerge(opts, varargs)
   opts$retvec <- FALSE
 
