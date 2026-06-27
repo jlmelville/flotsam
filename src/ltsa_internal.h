@@ -19,8 +19,6 @@
 
 #include "pforr.h"
 
-using namespace cpp11;
-
 struct CompactEntry {
   int row;
   double value;
@@ -71,11 +69,11 @@ int checked_lapack_dim(std::size_t value, const char* name);
 
 std::size_t checked_row_major_copy_max_bytes(double max_bytes);
 
-std::vector<int> flat_neighbors_zero_based(const integers& value_nnt,
+std::vector<int> flat_neighbors_zero_based(const cpp11::integers& value_nnt,
                                            std::size_t offset,
                                            std::size_t n_nbrs);
 
-void fill_flat_neighbors_zero_based(const integers& value_nnt,
+void fill_flat_neighbors_zero_based(const cpp11::integers& value_nnt,
                                     std::size_t offset, std::size_t n_nbrs,
                                     std::vector<int>& out);
 
@@ -114,7 +112,7 @@ int compute_local_weights_gram_workspace(const double* x_data,
                                          GramLocalWeightsWorkspace& workspace,
                                          const std::vector<double>* row_major);
 
-LocalWeights compute_local_weights_shape_routed(const doubles_matrix<>& x,
+LocalWeights compute_local_weights_shape_routed(const cpp11::doubles_matrix<>& x,
                                                 const std::vector<int>& nni,
                                                 int ndim);
 
@@ -138,7 +136,7 @@ std::string row_major_fallback_reason(bool use_gram_workspace,
 
 class LtsaTripletAssemblyBuilder {
 public:
-  LtsaTripletAssemblyBuilder(const integers& value_nnt,
+  LtsaTripletAssemblyBuilder(const cpp11::integers& value_nnt,
                              std::size_t value_n_nbrs, std::size_t n_obs,
                              std::size_t max_int);
 

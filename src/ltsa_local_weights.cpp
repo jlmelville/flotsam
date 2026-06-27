@@ -11,10 +11,10 @@ int query_dsyev_workspace(int n, std::vector<double>& gram,
   F77_CALL(dsyev)(&jobz, &uplo, &n, gram.data(), &n, values.data(), &work_query,
                   &lwork, &info FCONE FCONE);
   if (info != 0) {
-    stop("LAPACK dsyev workspace query failed with info = %d", info);
+    cpp11::stop("LAPACK dsyev workspace query failed with info = %d", info);
   }
   if (work_query > std::numeric_limits<int>::max()) {
-    stop("LAPACK dsyev workspace is too large");
+    cpp11::stop("LAPACK dsyev workspace is too large");
   }
 
   return std::max(1, static_cast<int>(work_query));
@@ -38,10 +38,10 @@ int query_dgesdd_workspace(int n_nbrs, int n_dim, int min_dim,
                    vt.data(), &ldvt, &work_query, &lwork, iwork.data(),
                    &info FCONE);
   if (info != 0) {
-    stop("LAPACK dgesdd workspace query failed with info = %d", info);
+    cpp11::stop("LAPACK dgesdd workspace query failed with info = %d", info);
   }
   if (work_query > std::numeric_limits<int>::max()) {
-    stop("LAPACK dgesdd workspace is too large");
+    cpp11::stop("LAPACK dgesdd workspace is too large");
   }
 
   return std::max(1, static_cast<int>(work_query));
@@ -65,7 +65,7 @@ GramLocalWeightsWorkspace::GramLocalWeightsWorkspace(std::size_t n_nbrs,
   work.resize(query_dsyev_workspace(this->n_nbrs, gram, values));
 }
 
-std::vector<int> flat_neighbors_zero_based(const integers& value_nnt,
+std::vector<int> flat_neighbors_zero_based(const cpp11::integers& value_nnt,
                                            std::size_t offset,
                                            std::size_t n_nbrs) {
   std::vector<int> out(n_nbrs);
@@ -73,7 +73,7 @@ std::vector<int> flat_neighbors_zero_based(const integers& value_nnt,
   return out;
 }
 
-void fill_flat_neighbors_zero_based(const integers& value_nnt,
+void fill_flat_neighbors_zero_based(const cpp11::integers& value_nnt,
                                     std::size_t offset, std::size_t n_nbrs,
                                     std::vector<int>& out) {
   out.resize(n_nbrs);
@@ -82,7 +82,7 @@ void fill_flat_neighbors_zero_based(const integers& value_nnt,
   }
 }
 
-void fill_centered_neighborhood(const doubles_matrix<>& x,
+void fill_centered_neighborhood(const cpp11::doubles_matrix<>& x,
                                 const std::vector<int>& nni,
                                 std::vector<double>& centered) {
   const std::size_t n_nbrs = nni.size();
@@ -208,7 +208,7 @@ void fill_weights_from_basis(std::size_t n_nbrs, const std::vector<int>& keep,
   }
 }
 
-LocalWeights compute_local_weights_svd(const doubles_matrix<>& x,
+LocalWeights compute_local_weights_svd(const cpp11::doubles_matrix<>& x,
                                        const std::vector<int>& nni, int ndim) {
   const std::size_t n_nbrs_size = nni.size();
   const std::size_t n_dim_size = x.ncol();
@@ -240,10 +240,10 @@ LocalWeights compute_local_weights_svd(const doubles_matrix<>& x,
                    vt.data(), &ldvt, &work_query, &lwork, iwork.data(),
                    &info FCONE);
   if (info != 0) {
-    stop("LAPACK dgesdd workspace query failed with info = %d", info);
+    cpp11::stop("LAPACK dgesdd workspace query failed with info = %d", info);
   }
   if (work_query > std::numeric_limits<int>::max()) {
-    stop("LAPACK dgesdd workspace is too large");
+    cpp11::stop("LAPACK dgesdd workspace is too large");
   }
 
   lwork = std::max(1, static_cast<int>(work_query));
@@ -252,7 +252,7 @@ LocalWeights compute_local_weights_svd(const doubles_matrix<>& x,
                    vt.data(), &ldvt, work.data(), &lwork, iwork.data(),
                    &info FCONE);
   if (info != 0) {
-    stop("LAPACK dgesdd failed with info = %d", info);
+    cpp11::stop("LAPACK dgesdd failed with info = %d", info);
   }
 
   double max_d = 0.0;
@@ -284,7 +284,7 @@ LocalWeights compute_local_weights_svd(const doubles_matrix<>& x,
   return out;
 }
 
-LocalWeights compute_local_weights_gram(const doubles_matrix<>& x,
+LocalWeights compute_local_weights_gram(const cpp11::doubles_matrix<>& x,
                                         const std::vector<int>& nni, int ndim) {
   const std::size_t n_nbrs_size = nni.size();
   const std::size_t n_dim_size = x.ncol();
@@ -316,10 +316,10 @@ LocalWeights compute_local_weights_gram(const doubles_matrix<>& x,
   F77_CALL(dsyev)(&jobz, &uplo, &n, gram.data(), &n, values.data(), &work_query,
                   &lwork, &info FCONE FCONE);
   if (info != 0) {
-    stop("LAPACK dsyev workspace query failed with info = %d", info);
+    cpp11::stop("LAPACK dsyev workspace query failed with info = %d", info);
   }
   if (work_query > std::numeric_limits<int>::max()) {
-    stop("LAPACK dsyev workspace is too large");
+    cpp11::stop("LAPACK dsyev workspace is too large");
   }
 
   lwork = std::max(1, static_cast<int>(work_query));
@@ -327,7 +327,7 @@ LocalWeights compute_local_weights_gram(const doubles_matrix<>& x,
   F77_CALL(dsyev)(&jobz, &uplo, &n, gram.data(), &n, values.data(), work.data(),
                   &lwork, &info FCONE FCONE);
   if (info != 0) {
-    stop("LAPACK dsyev failed with info = %d", info);
+    cpp11::stop("LAPACK dsyev failed with info = %d", info);
   }
 
   double max_eval = 0.0;
@@ -391,7 +391,7 @@ int compute_local_weights_gram_workspace(const double* x_data,
                   workspace.values.data(), workspace.work.data(), &lwork,
                   &info FCONE FCONE);
   if (info != 0) {
-    stop("LAPACK dsyev failed with info = %d", info);
+    cpp11::stop("LAPACK dsyev failed with info = %d", info);
   }
 
   double max_eval = 0.0;
@@ -425,11 +425,11 @@ int compute_local_weights_gram_workspace(const double* x_data,
   return rank;
 }
 
-LocalWeights compute_local_weights_shape_routed(const doubles_matrix<>& x,
+LocalWeights compute_local_weights_shape_routed(const cpp11::doubles_matrix<>& x,
                                                 const std::vector<int>& nni,
                                                 int ndim) {
   if (x.ncol() == 0) {
-    stop("X must contain at least one column");
+    cpp11::stop("X must contain at least one column");
   }
   if (static_cast<std::size_t>(x.ncol()) <= nni.size()) {
     return compute_local_weights_svd(x, nni, ndim);

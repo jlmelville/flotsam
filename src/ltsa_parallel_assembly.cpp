@@ -247,14 +247,14 @@ template <typename T>
 void checked_resize_vector(std::vector<T>& out, std::size_t n,
                            const char* name) {
   if (n > std::numeric_limits<std::size_t>::max() / sizeof(T)) {
-    stop("%s is too large", name);
+    cpp11::stop("%s is too large", name);
   }
   try {
     out.resize(n);
   } catch (const std::bad_alloc&) {
-    stop("Unable to allocate %s", name);
+    cpp11::stop("Unable to allocate %s", name);
   } catch (const std::length_error&) {
-    stop("%s is too large", name);
+    cpp11::stop("%s is too large", name);
   }
 }
 
@@ -576,42 +576,42 @@ void stop_on_parallel_worker_failure(
     const ParallelWorkerDiagnostics& current = diagnostics[worker];
     if (current.failed_step != 0) {
       const char* routine = current.failed_step == 1 ? "dgesdd" : "dsyev";
-      stop("LAPACK %s failed in LTSA assembly worker %d at neighborhood %d "
-           "with info = %d",
-           routine, static_cast<int>(worker + 1), current.failed_obs,
-           current.failed_info);
+      cpp11::stop("LAPACK %s failed in LTSA assembly worker %d at neighborhood "
+                  "%d with info = %d",
+                  routine, static_cast<int>(worker + 1), current.failed_obs,
+                  current.failed_info);
     }
   }
 }
-[[cpp11::register]] list ltsa_assemble_local_weights_parallel(
-    const doubles_matrix<>& x, const integers& value_nnt,
+[[cpp11::register]] cpp11::list ltsa_assemble_local_weights_parallel(
+    const cpp11::doubles_matrix<>& x, const cpp11::integers& value_nnt,
     std::size_t value_n_nbrs, int ndim, int requested_threads,
     double row_major_copy_max_bytes) {
   checked_ndim(ndim);
   const std::size_t row_major_copy_max =
       checked_row_major_copy_max_bytes(row_major_copy_max_bytes);
   if (requested_threads < 1) {
-    stop("n_assembly_threads must be positive");
+    cpp11::stop("n_assembly_threads must be positive");
   }
   if (value_nnt.size() == 0 || value_n_nbrs == 0) {
-    stop("Value neighborhoods must not be empty");
+    cpp11::stop("Value neighborhoods must not be empty");
   }
   if (value_nnt.size() % value_n_nbrs != 0) {
-    stop("Inconsistent value neighborhood dimensions");
+    cpp11::stop("Inconsistent value neighborhood dimensions");
   }
 
   const std::size_t n_obs = value_nnt.size() / value_n_nbrs;
   if (static_cast<std::size_t>(x.nrow()) != n_obs) {
-    stop("Inconsistent input and neighborhood dimensions");
+    cpp11::stop("Inconsistent input and neighborhood dimensions");
   }
   if (x.ncol() == 0) {
-    stop("X must contain at least one column");
+    cpp11::stop("X must contain at least one column");
   }
 
   const auto max_int =
       static_cast<std::size_t>(std::numeric_limits<int>::max());
   if (n_obs + 1 > max_int) {
-    stop("Too many observations for a dgCMatrix");
+    cpp11::stop("Too many observations for a dgCMatrix");
   }
 
   const int* value_ptr = INTEGER(value_nnt.data());
@@ -698,17 +698,24 @@ void stop_on_parallel_worker_failure(
   const std::string fallback_reason = row_major_fallback_reason(
       !use_svd_route, row_major_ptr != nullptr, row_major_within_limit);
 
-  return writable::list(
-      {"i"_nm = components.i, "p"_nm = components.p, "x"_nm = components.x,
-       "rank_deficient_count"_nm = diagnostics.rank_deficient_count,
-       "min_local_rank"_nm = diagnostics.min_local_rank,
-       "assembly_route"_nm = "parallel_triangular_two_pass",
-       "requested_assembly_threads"_nm = requested_threads,
-       "effective_assembly_threads"_nm = static_cast<int>(effective_threads),
-       "raw_entries_estimate"_nm = static_cast<double>(slot_plan.raw_entries),
-       "raw_bytes_estimate"_nm = static_cast<double>(slot_plan.raw_bytes),
-       "duplicate_fallback_count"_nm = diagnostics.duplicate_fallback_count,
-       "row_major_used"_nm = row_major_ptr != nullptr,
-       "row_major_fallback_reason"_nm = fallback_reason,
-       "parallel_fallback_reason"_nm = ""});
+  return cpp11::writable::list(
+      {cpp11::named_arg("i") = components.i,
+       cpp11::named_arg("p") = components.p,
+       cpp11::named_arg("x") = components.x,
+       cpp11::named_arg("rank_deficient_count") =
+           diagnostics.rank_deficient_count,
+       cpp11::named_arg("min_local_rank") = diagnostics.min_local_rank,
+       cpp11::named_arg("assembly_route") = "parallel_triangular_two_pass",
+       cpp11::named_arg("requested_assembly_threads") = requested_threads,
+       cpp11::named_arg("effective_assembly_threads") =
+           static_cast<int>(effective_threads),
+       cpp11::named_arg("raw_entries_estimate") =
+           static_cast<double>(slot_plan.raw_entries),
+       cpp11::named_arg("raw_bytes_estimate") =
+           static_cast<double>(slot_plan.raw_bytes),
+       cpp11::named_arg("duplicate_fallback_count") =
+           diagnostics.duplicate_fallback_count,
+       cpp11::named_arg("row_major_used") = row_major_ptr != nullptr,
+       cpp11::named_arg("row_major_fallback_reason") = fallback_reason,
+       cpp11::named_arg("parallel_fallback_reason") = ""});
 }

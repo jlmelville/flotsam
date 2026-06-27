@@ -1,8 +1,8 @@
 #include "ltsa_internal.h"
 
 LtsaTripletAssemblyBuilder::LtsaTripletAssemblyBuilder(
-    const integers& value_nnt, std::size_t value_n_nbrs, std::size_t n_obs,
-    std::size_t max_int)
+    const cpp11::integers& value_nnt, std::size_t value_n_nbrs,
+    std::size_t n_obs, std::size_t max_int)
     : n_obs_(n_obs), value_n_nbrs_(value_n_nbrs), max_int_(max_int),
       canonical_columns_(n_obs), full_columns_(n_obs), append_seen_(n_obs, -1) {
   checked_triplet_count(n_obs_, value_n_nbrs_, "value_n_nbrs");
@@ -50,19 +50,19 @@ LtsaTripletAssemblyBuilder::LtsaTripletAssemblyBuilder(
 void LtsaTripletAssemblyBuilder::append_prechecked(
     const std::vector<int>& nni, const std::vector<double>& weights) {
   if (finalized_) {
-    stop("LTSA triplet builder has already been finalized");
+    cpp11::stop("LTSA triplet builder has already been finalized");
   }
   if (n_appended_ >= n_obs_) {
-    stop("Too many LTSA neighborhoods appended");
+    cpp11::stop("Too many LTSA neighborhoods appended");
   }
   if (nni.size() != value_n_nbrs_) {
-    stop("Inconsistent value neighborhood dimensions");
+    cpp11::stop("Inconsistent value neighborhood dimensions");
   }
 
   std::size_t value_k2 =
       checked_triplet_count(1, value_n_nbrs_, "value_n_nbrs");
   if (weights.size() != value_k2) {
-    stop("Inconsistent local weight dimensions");
+    cpp11::stop("Inconsistent local weight dimensions");
   }
 
   if (has_duplicate_neighbors(nni)) {
@@ -77,10 +77,10 @@ void LtsaTripletAssemblyBuilder::append_prechecked(
 
 SparseComponents LtsaTripletAssemblyBuilder::finalize_components() {
   if (finalized_) {
-    stop("LTSA triplet builder has already been finalized");
+    cpp11::stop("LTSA triplet builder has already been finalized");
   }
   if (n_appended_ != n_obs_) {
-    stop("Not all LTSA neighborhoods were appended");
+    cpp11::stop("Not all LTSA neighborhoods were appended");
   }
 
   SparseComponents out;

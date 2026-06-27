@@ -2,16 +2,17 @@
 
 // calculates M * d where M is a sparse matrix with pointer ps and values
 // xs, and d is the vector ds
-[[cpp11::register]] doubles
-spm_times_scalar(const integers& ps, const doubles& xs, const doubles& ds) {
+[[cpp11::register]] cpp11::doubles
+spm_times_scalar(const cpp11::integers& ps, const cpp11::doubles& xs,
+                 const cpp11::doubles& ds) {
   auto nrow = ds.size();
   if (nrow != ps.size() - 1) {
-    stop("Inconsistent diagonal and pointer lengths");
+    cpp11::stop("Inconsistent diagonal and pointer lengths");
   }
   if (xs.size() != ps[nrow]) {
-    stop("Inconsistent value and pointers");
+    cpp11::stop("Inconsistent value and pointers");
   }
-  writable::doubles dxs(xs.size());
+  cpp11::writable::doubles dxs(xs.size());
 
   for (R_xlen_t i = 0; i < nrow; i++) {
     R_xlen_t begin = ps[i];

@@ -6,24 +6,24 @@
 #include <R_ext/Visibility.h>
 
 // ltsa_parallel_assembly.cpp
-list ltsa_assemble_local_weights_parallel(const doubles_matrix<>& x, const integers& value_nnt, std::size_t value_n_nbrs, int ndim, int requested_threads, double row_major_copy_max_bytes);
+cpp11::list ltsa_assemble_local_weights_parallel(const cpp11::doubles_matrix<>& x, const cpp11::integers& value_nnt, std::size_t value_n_nbrs, int ndim, int requested_threads, double row_major_copy_max_bytes);
 extern "C" SEXP _flotsam_ltsa_assemble_local_weights_parallel(SEXP x, SEXP value_nnt, SEXP value_n_nbrs, SEXP ndim, SEXP requested_threads, SEXP row_major_copy_max_bytes) {
   BEGIN_CPP11
-    return cpp11::as_sexp(ltsa_assemble_local_weights_parallel(cpp11::as_cpp<cpp11::decay_t<const doubles_matrix<>&>>(x), cpp11::as_cpp<cpp11::decay_t<const integers&>>(value_nnt), cpp11::as_cpp<cpp11::decay_t<std::size_t>>(value_n_nbrs), cpp11::as_cpp<cpp11::decay_t<int>>(ndim), cpp11::as_cpp<cpp11::decay_t<int>>(requested_threads), cpp11::as_cpp<cpp11::decay_t<double>>(row_major_copy_max_bytes)));
+    return cpp11::as_sexp(ltsa_assemble_local_weights_parallel(cpp11::as_cpp<cpp11::decay_t<const cpp11::doubles_matrix<>&>>(x), cpp11::as_cpp<cpp11::decay_t<const cpp11::integers&>>(value_nnt), cpp11::as_cpp<cpp11::decay_t<std::size_t>>(value_n_nbrs), cpp11::as_cpp<cpp11::decay_t<int>>(ndim), cpp11::as_cpp<cpp11::decay_t<int>>(requested_threads), cpp11::as_cpp<cpp11::decay_t<double>>(row_major_copy_max_bytes)));
   END_CPP11
 }
 // ltsa_serial_assembly.cpp
-list ltsa_assemble_local_weights(const doubles_matrix<>& x, const integers& value_nnt, std::size_t value_n_nbrs, int ndim, double row_major_copy_max_bytes);
+cpp11::list ltsa_assemble_local_weights(const cpp11::doubles_matrix<>& x, const cpp11::integers& value_nnt, std::size_t value_n_nbrs, int ndim, double row_major_copy_max_bytes);
 extern "C" SEXP _flotsam_ltsa_assemble_local_weights(SEXP x, SEXP value_nnt, SEXP value_n_nbrs, SEXP ndim, SEXP row_major_copy_max_bytes) {
   BEGIN_CPP11
-    return cpp11::as_sexp(ltsa_assemble_local_weights(cpp11::as_cpp<cpp11::decay_t<const doubles_matrix<>&>>(x), cpp11::as_cpp<cpp11::decay_t<const integers&>>(value_nnt), cpp11::as_cpp<cpp11::decay_t<std::size_t>>(value_n_nbrs), cpp11::as_cpp<cpp11::decay_t<int>>(ndim), cpp11::as_cpp<cpp11::decay_t<double>>(row_major_copy_max_bytes)));
+    return cpp11::as_sexp(ltsa_assemble_local_weights(cpp11::as_cpp<cpp11::decay_t<const cpp11::doubles_matrix<>&>>(x), cpp11::as_cpp<cpp11::decay_t<const cpp11::integers&>>(value_nnt), cpp11::as_cpp<cpp11::decay_t<std::size_t>>(value_n_nbrs), cpp11::as_cpp<cpp11::decay_t<int>>(ndim), cpp11::as_cpp<cpp11::decay_t<double>>(row_major_copy_max_bytes)));
   END_CPP11
 }
 // ltsa_sparse_normalization.cpp
-doubles spm_times_scalar(const integers& ps, const doubles& xs, const doubles& ds);
+cpp11::doubles spm_times_scalar(const cpp11::integers& ps, const cpp11::doubles& xs, const cpp11::doubles& ds);
 extern "C" SEXP _flotsam_spm_times_scalar(SEXP ps, SEXP xs, SEXP ds) {
   BEGIN_CPP11
-    return cpp11::as_sexp(spm_times_scalar(cpp11::as_cpp<cpp11::decay_t<const integers&>>(ps), cpp11::as_cpp<cpp11::decay_t<const doubles&>>(xs), cpp11::as_cpp<cpp11::decay_t<const doubles&>>(ds)));
+    return cpp11::as_sexp(spm_times_scalar(cpp11::as_cpp<cpp11::decay_t<const cpp11::integers&>>(ps), cpp11::as_cpp<cpp11::decay_t<const cpp11::doubles&>>(xs), cpp11::as_cpp<cpp11::decay_t<const cpp11::doubles&>>(ds)));
   END_CPP11
 }
 

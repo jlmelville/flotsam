@@ -1,28 +1,29 @@
 #include "ltsa_internal.h"
 
-[[cpp11::register]] list
-ltsa_assemble_local_weights(const doubles_matrix<>& x,
-                            const integers& value_nnt, std::size_t value_n_nbrs,
-                            int ndim, double row_major_copy_max_bytes) {
+[[cpp11::register]] cpp11::list
+ltsa_assemble_local_weights(const cpp11::doubles_matrix<>& x,
+                            const cpp11::integers& value_nnt,
+                            std::size_t value_n_nbrs, int ndim,
+                            double row_major_copy_max_bytes) {
   checked_ndim(ndim);
   const std::size_t row_major_copy_max =
       checked_row_major_copy_max_bytes(row_major_copy_max_bytes);
   if (value_nnt.size() == 0 || value_n_nbrs == 0) {
-    stop("Value neighborhoods must not be empty");
+    cpp11::stop("Value neighborhoods must not be empty");
   }
   if (value_nnt.size() % value_n_nbrs != 0) {
-    stop("Inconsistent value neighborhood dimensions");
+    cpp11::stop("Inconsistent value neighborhood dimensions");
   }
 
   std::size_t n_obs = value_nnt.size() / value_n_nbrs;
   if (static_cast<std::size_t>(x.nrow()) != n_obs) {
-    stop("Inconsistent input and neighborhood dimensions");
+    cpp11::stop("Inconsistent input and neighborhood dimensions");
   }
 
   const auto max_int =
       static_cast<std::size_t>(std::numeric_limits<int>::max());
   if (n_obs + 1 > max_int) {
-    stop("Too many observations for a dgCMatrix");
+    cpp11::stop("Too many observations for a dgCMatrix");
   }
 
   LtsaTripletAssemblyBuilder builder(value_nnt, value_n_nbrs, n_obs, max_int);
@@ -88,17 +89,21 @@ ltsa_assemble_local_weights(const doubles_matrix<>& x,
   const std::string fallback_reason = row_major_fallback_reason(
       use_gram_workspace, use_row_major_gram, row_major_within_limit);
 
-  return writable::list(
-      {"i"_nm = components.i, "p"_nm = components.p, "x"_nm = components.x,
-       "rank_deficient_count"_nm = rank_deficient_count,
-       "min_local_rank"_nm = min_local_rank,
-       "assembly_route"_nm = "serial_triangular",
-       "requested_assembly_threads"_nm = 1, "effective_assembly_threads"_nm = 1,
-       "raw_entries_estimate"_nm = static_cast<double>(raw_entries),
-       "raw_bytes_estimate"_nm = static_cast<double>(raw_bytes),
-       "duplicate_fallback_count"_nm =
+  return cpp11::writable::list(
+      {cpp11::named_arg("i") = components.i,
+       cpp11::named_arg("p") = components.p,
+       cpp11::named_arg("x") = components.x,
+       cpp11::named_arg("rank_deficient_count") = rank_deficient_count,
+       cpp11::named_arg("min_local_rank") = min_local_rank,
+       cpp11::named_arg("assembly_route") = "serial_triangular",
+       cpp11::named_arg("requested_assembly_threads") = 1,
+       cpp11::named_arg("effective_assembly_threads") = 1,
+       cpp11::named_arg("raw_entries_estimate") =
+           static_cast<double>(raw_entries),
+       cpp11::named_arg("raw_bytes_estimate") = static_cast<double>(raw_bytes),
+       cpp11::named_arg("duplicate_fallback_count") =
            static_cast<int>(builder.duplicate_fallback_count()),
-       "row_major_used"_nm = use_row_major_gram,
-       "row_major_fallback_reason"_nm = fallback_reason,
-       "parallel_fallback_reason"_nm = "not_requested"});
+       cpp11::named_arg("row_major_used") = use_row_major_gram,
+       cpp11::named_arg("row_major_fallback_reason") = fallback_reason,
+       cpp11::named_arg("parallel_fallback_reason") = "not_requested"});
 }
