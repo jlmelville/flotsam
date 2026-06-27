@@ -290,12 +290,11 @@ ltsa <-
       n_threads = validated$n_threads,
       verbose = validated$verbose
     )
-    nn_idx <- neighbors$nn_idx
 
     tsmessage("Getting neighborhoods")
     assembly <- assemble_ltsa_B(
       X = X,
-      nn_idx = nn_idx,
+      nn_idx = neighbors$nn_idx,
       ndim = validated$ndim,
       include_self = validated$include_self,
       n_assembly_threads = validated$n_assembly_threads,
@@ -303,16 +302,14 @@ ltsa <-
       verbose = validated$verbose
     )
     B <- assembly$B
-    rank_deficient_count <- assembly$rank_deficient_count
-    min_local_rank <- assembly$min_local_rank
 
-    if (rank_deficient_count > 0) {
+    if (assembly$rank_deficient_count > 0) {
       warning(
-        rank_deficient_count,
+        assembly$rank_deficient_count,
         " local neighborhoods had numerical rank below ndim = ",
         validated$ndim,
         "; lower-dimensional local bases were used. Minimum local rank was ",
-        min_local_rank,
+        assembly$min_local_rank,
         ".",
         call. = FALSE
       )
@@ -327,10 +324,10 @@ ltsa <-
     nullvec <- ltsa_default_null_vector(nrow(B_operator))
     if (validated$normalize) {
       tsmessage("Forming normalized Lsym")
-      nres <- ltsa_normalize_sparse_operator(B_operator)
-      Dinvs <- nres$Dinvs
-      nullvec <- nres$nullvec
-      B_operator <- nres$Lsym
+      normalized <- ltsa_normalize_sparse_operator(B_operator)
+      Dinvs <- normalized$Dinvs
+      nullvec <- normalized$nullvec
+      B_operator <- normalized$Lsym
     }
 
     tsmessage("Performing eigenanalysis")
@@ -355,30 +352,7 @@ ltsa <-
     if (validated$normalize) {
       embedding <- Dinvs * embedding
     }
-    eigen <- list(
-      method = validated$eig_method,
-      normalized = isTRUE(validated$normalize),
-      eig_k = eig_res$eigen$eig_k,
-      values = eig_res$eigen$values,
-      ritz_values = eig_res$eigen$ritz_values,
-      residuals = eig_res$eigen$residuals,
-      rank = eig_res$eigen$rank,
-      lambda_max = eig_res$eigen$lambda_max,
-      status = eig_res$eigen$status,
-      messages = eig_res$eigen$messages,
-      backend = eig_res$eigen$backend
-    )
-    assembly_diagnostics <- lmerge(
-      list(
-        n_neighbors = as.integer(validated$n_neighbors),
-        include_self = isTRUE(validated$include_self),
-        neighbor_source = neighbors$source,
-        neighbor_elapsed = as.numeric(neighbors$elapsed),
-        rank_deficient_count = assembly$rank_deficient_count,
-        min_local_rank = assembly$min_local_rank
-      ),
-      assembly$diagnostics %||% list()
-    )
+
     tsmessage("Finished")
     if (identical(validated$output, "embedding")) {
       return(embedding)
@@ -386,8 +360,30 @@ ltsa <-
 
     list(
       embedding = embedding,
-      eigen = eigen,
-      assembly = assembly_diagnostics,
+      eigen = list(
+        method = validated$eig_method,
+        normalized = isTRUE(validated$normalize),
+        eig_k = eig_res$eigen$eig_k,
+        values = eig_res$eigen$values,
+        ritz_values = eig_res$eigen$ritz_values,
+        residuals = eig_res$eigen$residuals,
+        rank = eig_res$eigen$rank,
+        lambda_max = eig_res$eigen$lambda_max,
+        status = eig_res$eigen$status,
+        messages = eig_res$eigen$messages,
+        backend = eig_res$eigen$backend
+      ),
+      assembly = lmerge(
+        list(
+          n_neighbors = as.integer(validated$n_neighbors),
+          include_self = isTRUE(validated$include_self),
+          neighbor_source = neighbors$source,
+          neighbor_elapsed = as.numeric(neighbors$elapsed),
+          rank_deficient_count = assembly$rank_deficient_count,
+          min_local_rank = assembly$min_local_rank
+        ),
+        assembly$diagnostics %||% list()
+      ),
       B = if (validated$include_B) B else NULL
     )
   }
