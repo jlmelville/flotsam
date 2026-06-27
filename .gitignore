@@ -4,5 +4,4 @@
 .Ruserdata
 flotsam.Rproj
 **/*DONTCHECKMEIN*
-bench/cache/
-bench/results/
+plans/

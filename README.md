@@ -117,37 +117,110 @@ export MKL_THREADING_LAYER=GNU
 export MKL_NUM_THREADS=1
 ```
 
-Iterative eigenanalysis is fast when it works, but there are a variety of
-failure states:
+### LTSA eigenanalysis and diagnostics
+
+The default `ltsa()` return is still the embedding matrix:
+
+``` r
+embedding <- ltsa(swiss_roll)
+```
+
+For the public iterative backends, `eig_k` is an explicit fixed-width candidate
+request. `flotsam` asks the selected backend for that candidate block, projects
+out the known constant null vector, performs Rayleigh-Ritz postprocessing on the
+operator being solved, and returns the first `ndim` nonconstant Ritz vectors. It
+does not adaptively widen the request, run strict rescue, or use a candidate
+bank to recover additional vectors.
+
+Use `output = "result"` to inspect compact diagnostics for the requested solve:
+
+``` r
+ltsa_result <- ltsa(
+  swiss_roll,
+  eig_k = 16,
+  output = "result"
+)
+
+ltsa_result$eigen[c("status", "eig_k", "rank")]
+ltsa_result$eigen$messages
+```
+
+The `eigen` component records the method, normalized flag, requested `eig_k`,
+selected values, available post-null Ritz values, scaled residuals, post-null
+rank, status, messages, and backend metadata. The `assembly` component records
+neighborhood and matrix assembly diagnostics. These diagnostics classify the
+requested fixed-width solve; they are not completeness certificates for the full
+low-energy eigenspace.
+
+Use `output = "B"` to return the assembled unnormalized LTSA matrix without
+final eigenanalysis:
+
+``` r
+B <- ltsa(swiss_roll, output = "B")
+```
+
+If diagnostics look suspicious, rerun with a wider fixed candidate request:
+
+``` r
+ltsa_wider <- ltsa(
+  swiss_roll,
+  eig_k = 32,
+  output = "result"
+)
+```
+
+Or rerun with stricter backend settings. For the default RSpectra backend, the
+main controls are `tol`, `maxitr`, and `ncv`:
+
+``` r
+ltsa_strict <- ltsa(
+  swiss_roll,
+  eig_k = 16,
+  output = "result",
+  tol = 1e-8,
+  maxitr = 5000,
+  ncv = 40
+)
+```
+
+Backend-specific tuning is passed through `...`:
+
+* `eig_method = "rspectra"`: `tol`, `maxitr`, and `ncv`.
+* `eig_method = "irlba"`: `tol`, `maxit`, and `reorth`.
+* `eig_method = "svdr"`: `tol` and `it`.
+
+`resid_tol` and `gap_tol` control diagnostic classification thresholds for the
+requested solve. They do not trigger a wider solve.
+
+Failure states are still possible:
 
 * The solver doesn't converge. You'll see an `Eigenanalysis failed: ...` error
-that keeps the underlying solver message. This can be due to a bad choice of
-options, like `tol` (the tolerance), `ncv` (the number of Lanczos basis vectors
-for RSpectra), or equivalent controls for the selected solver.
+that keeps the underlying solver message. This can be due to backend settings
+such as `tol`, iteration limits, or backend workspace controls.
 * The candidate subspace has weak residuals or a weak gap after the requested
 embedding block. Some `B` matrices have several directions with very similar
-low eigenvalues. Use `output = "result"` to inspect diagnostics, and rerun with
-a larger `eig_k` or stricter backend settings if the candidate block is too
-narrow. Diagnostics are not completeness certificates for the full low-energy
-eigenspace.
+low eigenvalues; increase `eig_k` or tighten backend settings if the result
+looks suspect.
 * Shift-invert sparse factorizations can hang or skip vectors near zero. The
 default path avoids shift-invert and solves a shifted largest-algebraic problem
 instead.
 
 If you use `eig_method = "irlba"` or `eig_method = "svdr"` then different
-functions in irlba will be used instead of RSpectra. These are more likely to
-finish under circumstances where RSpectra stalls, but they do not expose the
+functions in irlba will be used instead of RSpectra. They do not expose the
 same convergence metadata as RSpectra, so they rely on post-hoc residual
 diagnostics rather than hard backend convergence counts. For small diagnostic
 cases, `eig_method = "eig"` and `eig_method = "eigen"` are synonyms for base
 `eigen()`, and `eig_method = "fullsvd"` uses base `svd()`. Dense `eig` is the
 better diagnostic reference when algebraic eigenvalue ordering matters.
 
-The default `ltsa()` return is still the embedding matrix. Use `output = "B"`
-to return the assembled unnormalized LTSA matrix without final eigenanalysis,
-or `output = "result"` to return the embedding together with compact
-eigenanalysis and assembly diagnostics. Set `include_B = TRUE` with
-`output = "result"` if the detailed result should carry the assembled matrix.
+`normalize = TRUE` selects a separate normalized LTSA formulation. It is not a
+rescue path for a difficult unnormalized solve, and it is not candidate
+enrichment for the unnormalized objective. The normalized operator uses the same
+fixed-width Rayleigh-Ritz workflow and then transforms the selected vectors back
+to output coordinates.
+
+Set `include_B = TRUE` with `output = "result"` if the detailed result should
+also carry the assembled unnormalized matrix.
 
 ## See Also
 

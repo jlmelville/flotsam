@@ -8,6 +8,11 @@
   accepts adaptive rescue-policy controls; if diagnostics look suspicious, use
   a larger `eig_k` or stricter backend settings. Diagnostics are not
   completeness certificates.
+* LTSA eigenanalysis documentation now explains the fixed-width `eig_k`
+  request, null-vector projection, Rayleigh-Ritz postprocessing, compact
+  diagnostics, backend-specific tuning settings, and the fact that
+  `normalize = TRUE` is a separate normalized LTSA formulation rather than a
+  rescue path for the unnormalized objective.
 
 # flotsam 0.0.0.9001
 
