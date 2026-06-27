@@ -19,7 +19,7 @@ extern "C" SEXP _flotsam_ltsa_assemble_local_weights(SEXP x, SEXP value_nnt, SEX
     return cpp11::as_sexp(ltsa_assemble_local_weights(cpp11::as_cpp<cpp11::decay_t<const doubles_matrix<>&>>(x), cpp11::as_cpp<cpp11::decay_t<const integers&>>(value_nnt), cpp11::as_cpp<cpp11::decay_t<std::size_t>>(value_n_nbrs), cpp11::as_cpp<cpp11::decay_t<int>>(ndim), cpp11::as_cpp<cpp11::decay_t<double>>(row_major_copy_max_bytes)));
   END_CPP11
 }
-// sparse_utils.cpp
+// ltsa_sparse_normalization.cpp
 doubles spm_times_scalar(const integers& ps, const doubles& xs, const doubles& ds);
 extern "C" SEXP _flotsam_spm_times_scalar(SEXP ps, SEXP xs, SEXP ds) {
   BEGIN_CPP11
