@@ -1,12 +1,6 @@
 # Matrix, scaling, residual, near-zero, and lambda-probe helpers shared by all
 # LTSA iterative eigenanalysis backends.
 
-ltsa_iterative_search_k <- function(ndim, n) {
-  base_eig_k <- ndim + 1L
-  search_eig_k <- max(ndim + 3L, 2L * base_eig_k)
-  min(n - 1L, search_eig_k)
-}
-
 ltsa_default_eig_k <- function(ndim, n) {
   ndim <- check_whole_number(ndim, "ndim", min = 1)
   n <- check_whole_number(n, "n", min = 2)

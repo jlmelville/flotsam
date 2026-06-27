@@ -2,7 +2,7 @@
 # RSpectra, irlba, svdr, and dense LTSA diagnostic solves.
 
 # Backend-neutral candidate result contract. Providers may use different
-# eigensolver APIs, but the adaptive LTSA driver only needs candidate vectors,
+# eigensolver APIs, but the fixed-width LTSA path only needs candidate vectors,
 # Rayleigh values against the matrix of interest, convergence metadata when
 # available, and residual diagnostics.
 ltsa_candidate_result <- function(
@@ -158,47 +158,6 @@ ltsa_rspectra_candidate_provider <- function(
     lambda_max = lambda_max,
     convergence_known = TRUE
   )
-}
-
-# irlba and svdr do not expose an RSpectra-style nconv count. These mappers keep
-# strict-rescue reruns at least as rigorous as the user-supplied settings, while
-# the shared driver judges success using post-hoc residual diagnostics.
-ltsa_irlba_strict_rescue_args <- function(
-  varargs,
-  strict_rescue_tol,
-  strict_rescue_maxit
-) {
-  strict_args <- varargs
-  if (is.null(strict_args$tol)) {
-    strict_args$tol <- strict_rescue_tol
-  } else {
-    strict_args$tol <- min(strict_args$tol, strict_rescue_tol)
-  }
-  if (is.null(strict_args$maxit)) {
-    strict_args$maxit <- strict_rescue_maxit
-  } else {
-    strict_args$maxit <- max(strict_args$maxit, strict_rescue_maxit)
-  }
-  strict_args
-}
-
-ltsa_svdr_strict_rescue_args <- function(
-  varargs,
-  strict_rescue_tol,
-  strict_rescue_it
-) {
-  strict_args <- varargs
-  if (is.null(strict_args$tol)) {
-    strict_args$tol <- strict_rescue_tol
-  } else {
-    strict_args$tol <- min(strict_args$tol, strict_rescue_tol)
-  }
-  if (is.null(strict_args$it)) {
-    strict_args$it <- strict_rescue_it
-  } else {
-    strict_args$it <- max(strict_args$it, strict_rescue_it)
-  }
-  strict_args
 }
 
 ltsa_irlba_lambda_max_probe <- function(B) {
