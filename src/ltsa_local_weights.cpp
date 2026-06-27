@@ -82,6 +82,8 @@ void fill_flat_neighbors_zero_based(const cpp11::integers& value_nnt,
   }
 }
 
+namespace {
+
 void fill_centered_neighborhood(const cpp11::doubles_matrix<>& x,
                                 const std::vector<int>& nni,
                                 std::vector<double>& centered) {
@@ -104,6 +106,8 @@ void fill_centered_neighborhood(const cpp11::doubles_matrix<>& x,
     }
   }
 }
+
+} // namespace
 
 void fill_centered_neighborhood_ptr(const double* x_data, std::size_t n_obs,
                                     const std::vector<int>& nni,
@@ -207,6 +211,8 @@ void fill_weights_from_basis(std::size_t n_nbrs, const std::vector<int>& keep,
     weights[i + i * n_nbrs] += 1.0;
   }
 }
+
+namespace {
 
 LocalWeights compute_local_weights_svd(const cpp11::doubles_matrix<>& x,
                                        const std::vector<int>& nni, int ndim) {
@@ -359,6 +365,8 @@ LocalWeights compute_local_weights_gram(const cpp11::doubles_matrix<>& x,
   fill_weights_from_basis(n_nbrs_size, keep, gram, out.weights);
   return out;
 }
+
+} // namespace
 
 int compute_local_weights_gram_workspace(const double* x_data,
                                          std::size_t n_obs,

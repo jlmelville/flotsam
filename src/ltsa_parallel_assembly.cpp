@@ -1,5 +1,7 @@
 #include "ltsa_internal.h"
 
+namespace {
+
 struct ParallelLocalWeightsWorkspace {
   ParallelLocalWeightsWorkspace(std::size_t n_nbrs, std::size_t n_dim, int ndim,
                                 bool use_svd, bool use_row_major)
@@ -583,6 +585,9 @@ void stop_on_parallel_worker_failure(
     }
   }
 }
+
+} // namespace
+
 [[cpp11::register]] cpp11::list ltsa_assemble_local_weights_parallel(
     const cpp11::doubles_matrix<>& x, const cpp11::integers& value_nnt,
     std::size_t value_n_nbrs, int ndim, int requested_threads,
