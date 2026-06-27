@@ -179,7 +179,9 @@ This postprocessing is intended to make clustered low-energy spectra less
 fragile. The iterative methods request \code{eig_k} candidate vectors, check
 post-null rank, compute scaled residuals against the solved operator, and
 inspect the boundary after the selected block. Diagnostics classify the
-result but do not trigger wider rescue solves.
+result but do not trigger wider rescue solves. These diagnostics are not
+completeness certificates; if they look suspicious, consider increasing
+\code{eig_k} or using stricter backend settings.
 
 The \code{"rspectra"} path first estimates the largest eigenvalue and solves a
 shifted largest-algebraic problem instead of using shift-invert near zero.

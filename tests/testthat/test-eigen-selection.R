@@ -39,6 +39,14 @@ expect_same_subspace <- function(actual, expected, tolerance = 1e-10) {
   expect_lt(projection_distance, tolerance)
 }
 
+skip_runtime_rescue_policy_test <- function() {
+  testthat::skip(
+    paste(
+      "quarantined: adaptive/rescue policy is no longer runtime LTSA behavior"
+    )
+  )
+}
+
 centered_test_basis <- function(n, rank) {
   set.seed(123)
   nullvec <- rep(1, n) / sqrt(n)
@@ -436,6 +444,8 @@ test_that("near-zero Ritz counts are reported at multiple thresholds", {
 })
 
 test_that("near-zero trigger calibration documents synthetic spectra", {
+  skip_runtime_rescue_policy_test()
+
   case_a <- calibrated_synthetic_ritz(
     c(0, 1e-10, 2e-10, 1e-3, 1),
     ndim = 3L
@@ -481,6 +491,8 @@ test_that("near-zero trigger calibration documents synthetic spectra", {
 })
 
 test_that("multiple exact zeros use ambiguity diagnostics, not partial-block rescue", {
+  skip_runtime_rescue_policy_test()
+
   exact_equal_ndim <- calibrated_synthetic_ritz(
     c(0, 0, 0, 1e-3, 1),
     ndim = 2L
@@ -726,6 +738,60 @@ test_that("fixed-width diagnostics do not invent non-RSpectra convergence", {
   )))
 })
 
+test_that("fixed-width diagnostics give eig_k and backend-setting guidance", {
+  problem <- synthetic_ltsa_problem(c(0, 1e-10, 1e-3, 2e-3, 1))
+  fixture <- fixed_width_provider_factory(problem)
+
+  res <- flotsam:::ltsa_fixed_ritz_eig(
+    problem$matrix,
+    ndim = 2L,
+    provider = fixture$provider,
+    eig_k = 4L
+  )
+
+  expect_equal(nrow(fixture$calls()), 1L)
+  expect_identical(res$eigen$status, "warning")
+  expect_true(any(grepl(
+    "consider increasing eig_k",
+    res$eigen$messages,
+    fixed = TRUE
+  )))
+  expect_true(any(grepl(
+    "stricter backend settings",
+    res$eigen$messages,
+    fixed = TRUE
+  )))
+  expect_true(any(grepl(
+    "not completeness certificates",
+    res$eigen$messages,
+    fixed = TRUE
+  )))
+})
+
+test_that("runtime eigensolver surfaces reject rescue-policy arguments", {
+  B <- synthetic_ltsa_matrix(c(0, 0.1, 0.2, 1, 2, 3))
+
+  expect_error(
+    flotsam:::ltsa_rspectra_ritz_eig(
+      Matrix::Matrix(B, sparse = TRUE),
+      ndim = 2L,
+      strict_rescue = FALSE
+    ),
+    "no longer supports rescue-policy"
+  )
+  expect_error(
+    ltsa(
+      iris[1:10, ],
+      nn_method = "exact",
+      n_neighbors = 8,
+      include_self = FALSE,
+      eig_k = 4L,
+      initial_extra = 4L
+    ),
+    "no longer supports rescue-policy"
+  )
+})
+
 test_that("fixed-width driver handles arbitrary normalized-style null vectors", {
   nullvec <- c(1, 2, 3, 2, 1, 4)
   nullvec <- nullvec / sqrt(sum(nullvec * nullvec))
@@ -865,27 +931,33 @@ test_that("RSpectra candidate provider returns backend-neutral fields", {
   expect_s4_class(res$matrix, "dgCMatrix")
 })
 
-test_that("RSpectra Ritz wrapper forwards backend tolerance and ncv controls", {
+test_that("RSpectra Ritz wrapper returns fixed-width diagnostics", {
   B <- synthetic_ltsa_matrix(c(
     0, 0.1, 0.2, 1, 3, 5, 8, 13, 21, 34,
     55, 89, 144, 233, 377, 610, 987, 1597, 2584, 4181
   ))
+  dense <- eigen(B, symmetric = TRUE)
+  ord <- order(dense$values)
+  reference <- dense$vectors[, ord[2:3], drop = FALSE]
 
   res <- flotsam:::ltsa_rspectra_ritz_eig(
     Matrix::Matrix(B, sparse = TRUE),
     ndim = 2L,
+    eig_k = 6L,
     dense_n = 0L,
     tol = 1e-8,
     ncv = 18L,
-    maxitr = 5000L,
-    strict_rescue = FALSE
+    maxitr = 5000L
   )
 
-  expect_identical(res$opts$tol, 1e-8)
-  expect_identical(res$opts$ncv, 18L)
-  expect_identical(res$attempts[[1L]]$backend, "rspectra")
-  expect_identical(res$attempts[[1L]]$ncv, 18L)
-  expect_equal(res$attempts[[1L]]$eig_k, 8L)
+  expect_identical(res$eigen$method, "rspectra")
+  expect_identical(res$eigen$eig_k, 6L)
+  expect_identical(res$eigen$backend$name, "rspectra")
+  expect_gte(res$eigen$backend$nconv, 6L)
+  expect_false("attempts" %in% names(res))
+  expect_equal(res$values, dense$values[ord[2:3]], tolerance = 1e-8)
+  expect_same_subspace(res$vectors, reference, tolerance = 1e-7)
+  expect_lt(max(res$eigen$residuals), 1e-8)
 })
 
 test_that("irlba and svdr candidate providers return backend-neutral fields", {
@@ -921,6 +993,8 @@ test_that("irlba and svdr candidate providers return backend-neutral fields", {
 })
 
 test_that("generic adaptive Ritz driver consumes the RSpectra provider", {
+  skip_runtime_rescue_policy_test()
+
   B <- synthetic_ltsa_matrix(c(0, 0.1, 0.2, 1, 3, 5, 8, 13))
   dense <- eigen(B, symmetric = TRUE)
   ord <- order(dense$values)
@@ -945,7 +1019,7 @@ test_that("generic adaptive Ritz driver consumes the RSpectra provider", {
   expect_lt(max(res$scaled_residuals), 1e-8)
 })
 
-test_that("adaptive irlba and svdr paths agree with dense reference subspaces", {
+test_that("fixed-width irlba and svdr wrappers agree with dense reference subspaces", {
   # fmt: skip
   B <- synthetic_ltsa_matrix(c(
     0, 0.1, 0.2, 1, 3, 5, 8, 13, 21, 34,
@@ -973,20 +1047,24 @@ test_that("adaptive irlba and svdr paths agree with dense reference subspaces", 
         list(
           B = Matrix::Matrix(B, sparse = TRUE),
           ndim = 2L,
-          strict_rescue = FALSE
+          eig_k = 8L
         ),
         backends[[backend]]$args
       )
     )
 
-    expect_identical(res$backend, backend)
+    expect_identical(res$eigen$backend$name, backend)
+    expect_identical(res$eigen$eig_k, 8L)
+    expect_false("attempts" %in% names(res))
     expect_equal(res$values, dense$values[ord[2:3]], tolerance = 1e-6)
     expect_same_subspace(res$vectors, reference, tolerance = 1e-5)
-    expect_lt(max(res$scaled_residuals), 1e-6)
+    expect_lt(max(res$eigen$residuals), 1e-6)
   }
 })
 
 test_that("adaptive Ritz driver handles rotated normalized null vectors", {
+  skip_runtime_rescue_policy_test()
+
   nullvec <- c(1, 2, 3, 2, 1, 4)
   nullvec <- nullvec / sqrt(sum(nullvec * nullvec))
   Z <- cbind(
@@ -1036,6 +1114,8 @@ test_that("adaptive Ritz driver handles rotated normalized null vectors", {
 })
 
 test_that("adaptive attempt summaries include backend work and coverage metadata", {
+  skip_runtime_rescue_policy_test()
+
   problem <- synthetic_ltsa_problem(c(0, 0.1, 0.2, 1, 2, 3, 4, 5, 6, 7))
   provider <- function(B, eig_k, lambda_max = NULL, verbose = FALSE) {
     flotsam:::ltsa_candidate_result(
@@ -1085,6 +1165,8 @@ test_that("adaptive attempt summaries include backend work and coverage metadata
 })
 
 test_that("candidate reference projection pads missing reference directions", {
+  skip_runtime_rescue_policy_test()
+
   basis <- selection_test_basis()
   candidates <- cbind(basis$u, basis$v1)
   reference <- cbind(basis$v1, basis$v2)
@@ -1103,6 +1185,8 @@ test_that("candidate reference projection pads missing reference directions", {
 })
 
 test_that("adaptive Ritz driver can retain attempts and use a fixed reference", {
+  skip_runtime_rescue_policy_test()
+
   problem <- synthetic_ltsa_problem(c(0, 0.1, 0.2, 1, 2, 3, 4, 5, 6, 7))
   fixed_reference <- problem$basis[, 3:4, drop = FALSE]
   provider <- function(B, eig_k, lambda_max = NULL, verbose = FALSE) {
@@ -1134,6 +1218,8 @@ test_that("adaptive Ritz driver can retain attempts and use a fixed reference", 
 })
 
 test_that("adaptive RSpectra path returns Ritz-polished vectors", {
+  skip_runtime_rescue_policy_test()
+
   B <- synthetic_ltsa_matrix(c(0, 0.1, 0.2, 1, 3, 5, 8, 13))
   dense <- eigen(B, symmetric = TRUE)
   ord <- order(dense$values)
@@ -1157,6 +1243,8 @@ test_that("adaptive RSpectra path returns Ritz-polished vectors", {
 })
 
 test_that("strict rescue trigger is limited to partial near-zero selected blocks", {
+  skip_runtime_rescue_policy_test()
+
   fake_result <- function(near_zero_count, rank_ok = TRUE, resid_ok = TRUE) {
     list(
       values = c(1e-9, 8e-7),
@@ -1186,6 +1274,8 @@ test_that("strict rescue trigger is limited to partial near-zero selected blocks
 })
 
 test_that("partial near-zero helpers mark and warn only no-rescue partial blocks", {
+  skip_runtime_rescue_policy_test()
+
   fake_result <- function(near_zero_count, rank_ok = TRUE, resid_ok = TRUE) {
     list(
       values = c(1e-8, 1e-4),
@@ -1234,6 +1324,8 @@ test_that("partial near-zero helpers mark and warn only no-rescue partial blocks
 })
 
 test_that("strict rescue result ranking prefers lower selected block energy", {
+  skip_runtime_rescue_policy_test()
+
   fake_result <- function(
     values,
     near_zero_count,
@@ -1266,6 +1358,8 @@ test_that("strict rescue result ranking prefers lower selected block energy", {
 })
 
 test_that("energy rescue predicate handles synthetic acceptance fixtures", {
+  skip_runtime_rescue_policy_test()
+
   cases <- list(
     list(
       name = "accept_better_lambda_and_trace",
@@ -1373,6 +1467,8 @@ test_that("energy rescue predicate handles synthetic acceptance fixtures", {
 })
 
 test_that("strict rescue arguments tighten tolerance and preserve stricter user opts", {
+  skip_runtime_rescue_policy_test()
+
   expect_equal(
     flotsam:::ltsa_strict_rescue_args(
       list(),
@@ -1400,6 +1496,8 @@ test_that("strict rescue arguments tighten tolerance and preserve stricter user 
 })
 
 test_that("strict rescue candidate count includes expanded diagnostic attempts", {
+  skip_runtime_rescue_policy_test()
+
   selected <- list(
     eig_k = 8L,
     acceptance = list(diagnostic_final_eig_k = 18L),
@@ -1445,6 +1543,8 @@ test_that("strict rescue candidate count includes expanded diagnostic attempts",
 })
 
 test_that("adaptive Ritz driver keeps strict rescue enabled by default", {
+  skip_runtime_rescue_policy_test()
+
   # fmt: skip
   problem <- synthetic_ltsa_problem(c(
     0, 1e-7, 2e-7, 5e-5, 1e-4, 2e-4, 5e-4, 1e-3,
@@ -1501,6 +1601,8 @@ test_that("adaptive Ritz driver keeps strict rescue enabled by default", {
 })
 
 test_that("width-first rescue adaptive widths cover ndim and small-n caps", {
+  skip_runtime_rescue_policy_test()
+
   adaptive_widths <- function(ndim, n, count) {
     max_k <- flotsam:::ltsa_max_ritz_candidate_k(ndim, n)
     widths <- flotsam:::ltsa_initial_ritz_candidate_k(ndim, n)
@@ -1520,6 +1622,8 @@ test_that("width-first rescue adaptive widths cover ndim and small-n caps", {
 })
 
 test_that("width-first rescue accepts ordinary widening after a partial block", {
+  skip_runtime_rescue_policy_test()
+
   out <- NULL
   expect_warning(
     out <- run_width_rescue_case(
@@ -1545,6 +1649,8 @@ test_that("width-first rescue accepts ordinary widening after a partial block", 
 })
 
 test_that("width-first rescue invokes strict fallback after ordinary exhaustion", {
+  skip_runtime_rescue_policy_test()
+
   out <- NULL
   expect_warning(
     out <- run_width_rescue_case(
@@ -1579,6 +1685,8 @@ test_that("width-first rescue invokes strict fallback after ordinary exhaustion"
 })
 
 test_that("width-first staged strict fallback tries widest after previous remains partial", {
+  skip_runtime_rescue_policy_test()
+
   out <- NULL
   expect_warning(
     out <- run_width_rescue_case(
@@ -1611,6 +1719,8 @@ test_that("width-first staged strict fallback tries widest after previous remain
 })
 
 test_that("width-first rescue rejects energy-worse ordinary nonpartial candidates", {
+  skip_runtime_rescue_policy_test()
+
   out <- NULL
   expect_warning(
     out <- run_width_rescue_case(
@@ -1641,6 +1751,8 @@ test_that("width-first rescue rejects energy-worse ordinary nonpartial candidate
 })
 
 test_that("width-first rescue honors small-n cap without duplicate ordinary attempts", {
+  skip_runtime_rescue_policy_test()
+
   out <- NULL
   expect_warning(
     out <- run_width_rescue_case(
@@ -1666,6 +1778,8 @@ test_that("width-first rescue honors small-n cap without duplicate ordinary atte
 })
 
 test_that("width-first rescue returns warned partial incumbent after capped failures", {
+  skip_runtime_rescue_policy_test()
+
   out <- NULL
   expect_warning(
     expect_warning(
@@ -1692,6 +1806,8 @@ test_that("width-first rescue returns warned partial incumbent after capped fail
 })
 
 test_that("disabled strict rescue warns on returned partial near-zero blocks", {
+  skip_runtime_rescue_policy_test()
+
   # fmt: skip
   problem <- synthetic_ltsa_problem(c(
     0, 1e-7, 2e-7, 5e-5, 1e-4, 2e-4, 5e-4, 1e-3,
@@ -1737,6 +1853,8 @@ test_that("disabled strict rescue warns on returned partial near-zero blocks", {
 })
 
 test_that("partial near-zero warning preserves gap-ok return reason", {
+  skip_runtime_rescue_policy_test()
+
   # fmt: skip
   problem <- synthetic_ltsa_problem(c(
     0, 1e-7, 2e-7, 1, 2, 3, 4, 5, 6, 7, 8, 9
@@ -1773,6 +1891,8 @@ test_that("partial near-zero warning preserves gap-ok return reason", {
 })
 
 test_that("high-energy partial near-zero blocks do not trigger rescue", {
+  skip_runtime_rescue_policy_test()
+
   # fmt: skip
   problem <- synthetic_ltsa_problem(c(
     0, 1e-7, 2e-7, 1, 2, 3, 4, 5, 6, 7, 8, 9
@@ -1819,6 +1939,8 @@ test_that("high-energy partial near-zero blocks do not trigger rescue", {
 })
 
 test_that("extra near-zero nonconstant modes warn about spectral ambiguity", {
+  skip_runtime_rescue_policy_test()
+
   B <- synthetic_ltsa_matrix(c(0, 1e-9, 2e-9, 3e-9, 4e-9, 1))
   dense <- eigen(B, symmetric = TRUE)
   ord <- order(dense$values)
@@ -1854,6 +1976,8 @@ test_that("extra near-zero nonconstant modes warn about spectral ambiguity", {
 })
 
 test_that("adaptive weak-gap expansion keeps lower-energy candidates", {
+  skip_runtime_rescue_policy_test()
+
   # fmt: skip
   problem <- synthetic_ltsa_problem(c(
     0, 1e-7, 2e-7, 5e-5, 1e-4, 2e-4, 5e-4, 1e-3,
@@ -1919,6 +2043,8 @@ test_that("adaptive weak-gap expansion keeps lower-energy candidates", {
 })
 
 test_that("weak-gap-only wrapper default confirms once", {
+  skip_runtime_rescue_policy_test()
+
   # fmt: skip
   B <- synthetic_ltsa_matrix(c(
     0, 0.1, 0.2, 0.200001, 1, 2, 3, 5, 8, 13,
@@ -1967,6 +2093,8 @@ test_that("weak-gap-only wrapper default confirms once", {
 })
 
 test_that("explicit two-step weak-gap expansion stops before max_extra", {
+  skip_runtime_rescue_policy_test()
+
   # fmt: skip
   B <- synthetic_ltsa_matrix(c(
     0, 0.1, 0.2, 0.200001, 1, 2, 3, 5, 8, 13,
@@ -2019,6 +2147,8 @@ test_that("explicit two-step weak-gap expansion stops before max_extra", {
 })
 
 test_that("high selected Ritz residual keeps expanding to the hard cap", {
+  skip_runtime_rescue_policy_test()
+
   B <- synthetic_ltsa_matrix(c(0, 0.1, 0.2, 1, 3, 5, 8, 13, 21, 34, 55, 89))
 
   res <- NULL

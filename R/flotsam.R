@@ -16,7 +16,9 @@
 #' fragile. The iterative methods request `eig_k` candidate vectors, check
 #' post-null rank, compute scaled residuals against the solved operator, and
 #' inspect the boundary after the selected block. Diagnostics classify the
-#' result but do not trigger wider rescue solves.
+#' result but do not trigger wider rescue solves. These diagnostics are not
+#' completeness certificates; if they look suspicious, consider increasing
+#' `eig_k` or using stricter backend settings.
 #'
 #' The `"rspectra"` path first estimates the largest eigenvalue and solves a
 #' shifted largest-algebraic problem instead of using shift-invert near zero.
@@ -340,24 +342,10 @@ ltsa_split_public_eigen_args <- function(args) {
   gap_tol <- args$gap_tol %||% 1e-4
   resid_tol <- ltsa_check_positive_finite(resid_tol, "resid_tol")
   gap_tol <- ltsa_check_positive_finite(gap_tol, "gap_tol")
+  ltsa_reject_rescue_policy_args(args)
 
   fixed_names <- c("resid_tol", "gap_tol")
-  adaptive_names <- c(
-    "initial_extra",
-    "max_extra",
-    "gap_expansion_steps",
-    "strict_rescue",
-    "strict_rescue_tol",
-    "strict_rescue_maxitr",
-    "strict_rescue_maxit",
-    "strict_rescue_it",
-    "strict_rescue_extra",
-    "attempt_reference_vectors",
-    "retain_attempt_candidate_spaces",
-    "width_first_rescue",
-    "width_first_rescue_max_expansions"
-  )
-  provider_args <- args[!(arg_names %in% c(fixed_names, adaptive_names))]
+  provider_args <- args[!(arg_names %in% fixed_names)]
 
   list(
     provider_args = provider_args,

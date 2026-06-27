@@ -4,7 +4,10 @@
   `eig_k`, `output`, and `include_B` control candidate width and return shape.
   The default return remains the embedding matrix; `output = "B"` replaces the
   old matrix-return switch, and `output = "result"` returns compact
-  eigenanalysis and assembly diagnostics.
+  eigenanalysis and assembly diagnostics. Runtime eigenanalysis no longer
+  accepts adaptive rescue-policy controls; if diagnostics look suspicious, use
+  a larger `eig_k` or stricter backend settings. Diagnostics are not
+  completeness certificates.
 
 # flotsam 0.0.0.9001
 

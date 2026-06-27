@@ -128,7 +128,8 @@ for RSpectra), or equivalent controls for the selected solver.
 embedding block. Some `B` matrices have several directions with very similar
 low eigenvalues. Use `output = "result"` to inspect diagnostics, and rerun with
 a larger `eig_k` or stricter backend settings if the candidate block is too
-narrow.
+narrow. Diagnostics are not completeness certificates for the full low-energy
+eigenspace.
 * Shift-invert sparse factorizations can hang or skip vectors near zero. The
 default path avoids shift-invert and solves a shifted largest-algebraic problem
 instead.

@@ -552,66 +552,31 @@ ltsa_adaptive_ritz_eig <- function(
   )
 }
 
-# Public-facing iterative wrappers. Arguments in ... are split by R's argument
-# matching: LTSA controls such as initial_extra or gap_expansion_steps are
-# consumed here, while remaining backend controls are forwarded to the provider.
+# Public-facing iterative wrappers. These are retained as fixed-width shims for
+# internal callers; adaptive/rescue policy is no longer part of the runtime
+# surface.
 ltsa_rspectra_ritz_eig <- function(
   B,
   ndim,
   ...,
   nullvec = ltsa_default_null_vector(nrow(B)),
-  initial_extra = 4L,
-  max_extra = 40L,
+  eig_k = NULL,
   resid_tol = 1e-5,
   gap_tol = 1e-4,
-  gap_expansion_steps = 1L,
-  strict_rescue = TRUE,
-  strict_rescue_tol = 1e-10,
-  strict_rescue_maxitr = 5000L,
-  strict_rescue_extra = 5L,
-  attempt_reference_vectors = NULL,
-  retain_attempt_candidate_spaces = FALSE,
   verbose = FALSE
 ) {
-  strict_rescue_maxitr <- as.integer(strict_rescue_maxitr)
-  if (
-    length(strict_rescue_maxitr) != 1L ||
-      is.na(strict_rescue_maxitr) ||
-      strict_rescue_maxitr < 1L
-  ) {
-    stop("strict_rescue_maxitr must be a positive integer", call. = FALSE)
-  }
-  if (
-    length(strict_rescue_tol) != 1L ||
-      is.na(strict_rescue_tol) ||
-      !is.finite(strict_rescue_tol) ||
-      strict_rescue_tol <= 0
-  ) {
-    stop("strict_rescue_tol must be positive", call. = FALSE)
-  }
+  provider_args <- list(...)
+  ltsa_reject_rescue_policy_args(provider_args)
 
-  ltsa_adaptive_ritz_eig(
+  ltsa_fixed_ritz_eig(
     B = B,
     ndim = ndim,
     provider = ltsa_rspectra_candidate_provider,
-    provider_args = list(...),
+    provider_args = provider_args,
     nullvec = nullvec,
-    initial_extra = initial_extra,
-    max_extra = max_extra,
+    eig_k = eig_k,
     resid_tol = resid_tol,
     gap_tol = gap_tol,
-    gap_expansion_steps = gap_expansion_steps,
-    strict_rescue = strict_rescue,
-    strict_rescue_arg_mapper = ltsa_strict_rescue_args,
-    strict_rescue_controls = list(
-      strict_rescue_tol = strict_rescue_tol,
-      strict_rescue_maxitr = strict_rescue_maxitr
-    ),
-    strict_rescue_extra = strict_rescue_extra,
-    width_first_rescue = ltsa_null_vector_is_constant(nullvec, nrow(B)),
-    attempt_reference_vectors = attempt_reference_vectors,
-    retain_attempt_candidate_spaces = retain_attempt_candidate_spaces,
-    bank_backend = "rspectra_bank",
     verbose = verbose
   )
 }
@@ -621,57 +586,23 @@ ltsa_irlba_ritz_eig <- function(
   ndim,
   ...,
   nullvec = ltsa_default_null_vector(nrow(B)),
-  initial_extra = 4L,
-  max_extra = 40L,
+  eig_k = NULL,
   resid_tol = 1e-5,
   gap_tol = 1e-4,
-  gap_expansion_steps = 1L,
-  strict_rescue = TRUE,
-  strict_rescue_tol = 1e-10,
-  strict_rescue_maxit = 5000L,
-  strict_rescue_extra = 5L,
-  attempt_reference_vectors = NULL,
-  retain_attempt_candidate_spaces = FALSE,
   verbose = FALSE
 ) {
-  strict_rescue_maxit <- as.integer(strict_rescue_maxit)
-  if (
-    length(strict_rescue_maxit) != 1L ||
-      is.na(strict_rescue_maxit) ||
-      strict_rescue_maxit < 1L
-  ) {
-    stop("strict_rescue_maxit must be a positive integer", call. = FALSE)
-  }
-  if (
-    length(strict_rescue_tol) != 1L ||
-      is.na(strict_rescue_tol) ||
-      !is.finite(strict_rescue_tol) ||
-      strict_rescue_tol <= 0
-  ) {
-    stop("strict_rescue_tol must be positive", call. = FALSE)
-  }
+  provider_args <- list(...)
+  ltsa_reject_rescue_policy_args(provider_args)
 
-  ltsa_adaptive_ritz_eig(
+  ltsa_fixed_ritz_eig(
     B = B,
     ndim = ndim,
     provider = ltsa_irlba_candidate_provider,
-    provider_args = list(...),
+    provider_args = provider_args,
     nullvec = nullvec,
-    initial_extra = initial_extra,
-    max_extra = max_extra,
+    eig_k = eig_k,
     resid_tol = resid_tol,
     gap_tol = gap_tol,
-    gap_expansion_steps = gap_expansion_steps,
-    strict_rescue = strict_rescue,
-    strict_rescue_arg_mapper = ltsa_irlba_strict_rescue_args,
-    strict_rescue_controls = list(
-      strict_rescue_tol = strict_rescue_tol,
-      strict_rescue_maxit = strict_rescue_maxit
-    ),
-    strict_rescue_extra = strict_rescue_extra,
-    attempt_reference_vectors = attempt_reference_vectors,
-    retain_attempt_candidate_spaces = retain_attempt_candidate_spaces,
-    bank_backend = "irlba_bank",
     verbose = verbose
   )
 }
@@ -681,57 +612,23 @@ ltsa_svdr_ritz_eig <- function(
   ndim,
   ...,
   nullvec = ltsa_default_null_vector(nrow(B)),
-  initial_extra = 4L,
-  max_extra = 40L,
+  eig_k = NULL,
   resid_tol = 1e-5,
   gap_tol = 1e-4,
-  gap_expansion_steps = 1L,
-  strict_rescue = TRUE,
-  strict_rescue_tol = 1e-10,
-  strict_rescue_it = 5000L,
-  strict_rescue_extra = 5L,
-  attempt_reference_vectors = NULL,
-  retain_attempt_candidate_spaces = FALSE,
   verbose = FALSE
 ) {
-  strict_rescue_it <- as.integer(strict_rescue_it)
-  if (
-    length(strict_rescue_it) != 1L ||
-      is.na(strict_rescue_it) ||
-      strict_rescue_it < 1L
-  ) {
-    stop("strict_rescue_it must be a positive integer", call. = FALSE)
-  }
-  if (
-    length(strict_rescue_tol) != 1L ||
-      is.na(strict_rescue_tol) ||
-      !is.finite(strict_rescue_tol) ||
-      strict_rescue_tol <= 0
-  ) {
-    stop("strict_rescue_tol must be positive", call. = FALSE)
-  }
+  provider_args <- list(...)
+  ltsa_reject_rescue_policy_args(provider_args)
 
-  ltsa_adaptive_ritz_eig(
+  ltsa_fixed_ritz_eig(
     B = B,
     ndim = ndim,
     provider = ltsa_svdr_candidate_provider,
-    provider_args = list(...),
+    provider_args = provider_args,
     nullvec = nullvec,
-    initial_extra = initial_extra,
-    max_extra = max_extra,
+    eig_k = eig_k,
     resid_tol = resid_tol,
     gap_tol = gap_tol,
-    gap_expansion_steps = gap_expansion_steps,
-    strict_rescue = strict_rescue,
-    strict_rescue_arg_mapper = ltsa_svdr_strict_rescue_args,
-    strict_rescue_controls = list(
-      strict_rescue_tol = strict_rescue_tol,
-      strict_rescue_it = strict_rescue_it
-    ),
-    strict_rescue_extra = strict_rescue_extra,
-    attempt_reference_vectors = attempt_reference_vectors,
-    retain_attempt_candidate_spaces = retain_attempt_candidate_spaces,
-    bank_backend = "svdr_bank",
     verbose = verbose
   )
 }

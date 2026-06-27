@@ -207,6 +207,14 @@ ltsa_fixed_backend_failure_messages <- function(eig_res, eig_k) {
   character()
 }
 
+ltsa_fixed_diagnostic_guidance <- function() {
+  paste0(
+    "These diagnostics are not completeness certificates; consider ",
+    "increasing eig_k or using stricter backend settings if the result ",
+    "looks suspicious."
+  )
+}
+
 ltsa_fixed_ritz_diagnostics <- function(
   eig_res,
   rr,
@@ -325,6 +333,10 @@ ltsa_fixed_ritz_diagnostics <- function(
   } else {
     "ok"
   }
+  messages <- c(invalid_messages, warning_messages)
+  if (length(messages) > 0L) {
+    messages <- c(messages, ltsa_fixed_diagnostic_guidance())
+  }
 
   list(
     method = backend$name,
@@ -335,7 +347,7 @@ ltsa_fixed_ritz_diagnostics <- function(
     rank = rr$rank_after_null,
     lambda_max = lambda_max,
     status = status,
-    messages = c(invalid_messages, warning_messages),
+    messages = messages,
     backend = backend
   )
 }
@@ -1017,7 +1029,8 @@ ltsa_maybe_warn_partial_near_zero_block <- function(
       " for ndim = ",
       ndim,
       ". This pattern can indicate a missing near-zero LTSA coordinate; ",
-      "consider strict_rescue = TRUE or a larger candidate budget.",
+      "consider increasing eig_k or using stricter backend settings. ",
+      "Diagnostics are not completeness certificates.",
       call. = FALSE
     )
   }
@@ -1109,7 +1122,9 @@ ltsa_maybe_warn_spectral_ambiguity <- function(res, ndim) {
     paste(issues, collapse = "; "),
     ". This can happen when the neighborhood graph is disconnected or ",
     "weakly connected, n_neighbors is too small, or ndim cuts through a ",
-    "low-energy eigenspace.",
+    "low-energy eigenspace. Consider increasing eig_k or using stricter ",
+    "backend settings if the result looks suspicious. Diagnostics are not ",
+    "completeness certificates.",
     call. = FALSE
   )
   res$acceptance$spectral_ambiguity_warning <- TRUE
