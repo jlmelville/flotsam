@@ -44,10 +44,7 @@ swiss_roll <- data.frame(x, y, z)
 plot(swiss_roll$x, swiss_roll$y, col = phi)
 
 # unroll it
-swiss_unrolled <-
-  ltsa(swiss_roll,
-    verbose = TRUE,
-  )
+swiss_unrolled <- ltsa(swiss_roll, verbose = TRUE)
 plot(swiss_unrolled, col = phi)
 ```
 
@@ -125,12 +122,9 @@ The default `ltsa()` return is still the embedding matrix:
 embedding <- ltsa(swiss_roll)
 ```
 
-For the public iterative backends, `eig_k` is an explicit fixed-width candidate
-request. `flotsam` asks the selected backend for that candidate block, projects
-out the known constant null vector, performs Rayleigh-Ritz postprocessing on the
-operator being solved, and returns the first `ndim` nonconstant Ritz vectors. It
-does not adaptively widen the request, run strict rescue, or use a candidate
-bank to recover additional vectors.
+For the public iterative backends, `eig_k` controls the fixed-width candidate
+request used before selecting the final `ndim` embedding vectors. Larger values
+can help when diagnostics show weak residuals or a weak boundary gap.
 
 Use `output = "result"` to inspect compact diagnostics for the requested solve:
 
@@ -146,11 +140,10 @@ ltsa_result$eigen$messages
 ```
 
 The `eigen` component records the method, normalized flag, requested `eig_k`,
-selected values, available post-null Ritz values, scaled residuals, post-null
-rank, status, messages, and backend metadata. The `assembly` component records
-neighborhood and matrix assembly diagnostics. These diagnostics classify the
-requested fixed-width solve; they are not completeness certificates for the full
-low-energy eigenspace.
+selected values, residuals, rank, status, messages, and backend metadata. The
+`assembly` component records neighborhood and matrix assembly diagnostics.
+These diagnostics classify the requested fixed-width solve; they are not
+completeness certificates for the full low-energy eigenspace.
 
 Use `output = "B"` to return the assembled unnormalized LTSA matrix without
 final eigenanalysis:
@@ -159,7 +152,7 @@ final eigenanalysis:
 B <- ltsa(swiss_roll, output = "B")
 ```
 
-If diagnostics look suspicious, rerun with a wider fixed candidate request:
+If diagnostics look suspicious, rerun with a larger `eig_k`:
 
 ``` r
 ltsa_wider <- ltsa(
@@ -213,11 +206,9 @@ cases, `eig_method = "eig"` and `eig_method = "eigen"` are synonyms for base
 `eigen()`, and `eig_method = "fullsvd"` uses base `svd()`. Dense `eig` is the
 better diagnostic reference when algebraic eigenvalue ordering matters.
 
-`normalize = TRUE` selects a separate normalized LTSA formulation. It is not a
-rescue path for a difficult unnormalized solve, and it is not candidate
-enrichment for the unnormalized objective. The normalized operator uses the same
-fixed-width Rayleigh-Ritz workflow and then transforms the selected vectors back
-to output coordinates.
+`normalize = TRUE` selects a separate normalized LTSA formulation. The
+normalized operator uses the same fixed-width workflow and then transforms the
+selected vectors back to output coordinates.
 
 Set `include_B = TRUE` with `output = "result"` if the detailed result should
 also carry the assembled unnormalized matrix.
