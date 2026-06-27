@@ -72,7 +72,7 @@ Laplacian eigenmaps or diffusion maps.
 
 ## Current Status
 
-*June 22 2026*: Version 0.0.0.9002 uses C++ local-weight construction,
+*June 27 2026*: Version 0.0.0.9002 uses C++ local-weight construction,
 triangular sparse matrix assembly, and fixed-width Rayleigh-Ritz
 postprocessing for final eigenanalysis.
 
@@ -116,17 +116,23 @@ export MKL_NUM_THREADS=1
 
 ### LTSA eigenanalysis and diagnostics
 
-The default `ltsa()` return is still the embedding matrix:
+The default `ltsa()` return is the embedding matrix:
 
 ``` r
 embedding <- ltsa(swiss_roll)
 ```
 
-For the public iterative backends, `eig_k` controls the fixed-width candidate
-request used before selecting the final `ndim` embedding vectors. Larger values
-can help when diagnostics show weak residuals or a weak boundary gap.
+Compared to the Python implementation in scikit-learn (using
+[LocallyLinearEmbedding](https://scikit-learn.org/stable/modules/generated/sklearn.manifold.LocallyLinearEmbedding.htm))
+with `method="ltsa"`), `flotsam` will be faster on very large datasets because
+it can use approximate nearest neighbor neighbors and will usually converge
+on datasets where ARPACK (used by the scikit-learn implementation fails).
+However, for some datasets (usually only synthetic cases), the underlying
+RSpectra solver can converge in the case of near-null clustered eigenvectors,
+but not find all the eigenvectors. This is bad, because these are the
+eigenvectors you want and it's not easy to diagnose.
 
-Use `output = "result"` to inspect compact diagnostics for the requested solve:
+Use `output = "result"` to inspect diagnostics:
 
 ``` r
 ltsa_result <- ltsa(
@@ -139,31 +145,14 @@ ltsa_result$eigen[c("status", "eig_k", "rank")]
 ltsa_result$eigen$messages
 ```
 
-The `eigen` component records the method, normalized flag, requested `eig_k`,
-selected values, residuals, rank, status, messages, and backend metadata. The
-`assembly` component records neighborhood and matrix assembly diagnostics.
-These diagnostics classify the requested fixed-width solve; they are not
-completeness certificates for the full low-energy eigenspace.
+A large number of other values are returned, but they probably aren't that
+useful except for isolating bugs in particular code paths. If the
+`eigen$messages` complain about a weak Ritz boundary gap, then there is a risk
+of missing eigenvectors in my experience. Stricter convergence criteria can
+help here at the cost of longer computation.
 
-Use `output = "B"` to return the assembled unnormalized LTSA matrix without
-final eigenanalysis:
-
-``` r
-B <- ltsa(swiss_roll, output = "B")
-```
-
-If diagnostics look suspicious, rerun with a larger `eig_k`:
-
-``` r
-ltsa_wider <- ltsa(
-  swiss_roll,
-  eig_k = 32,
-  output = "result"
-)
-```
-
-Or rerun with stricter backend settings. For the default RSpectra backend, the
-main controls are `tol`, `maxitr`, and `ncv`:
+For the default RSpectra backend, the main convergence controls are `tol`,
+`maxitr` and `ncv`:
 
 ``` r
 ltsa_strict <- ltsa(
@@ -182,21 +171,27 @@ Backend-specific tuning is passed through `...`:
 * `eig_method = "irlba"`: `tol`, `maxit`, and `reorth`.
 * `eig_method = "svdr"`: `tol` and `it`.
 
-`resid_tol` and `gap_tol` control diagnostic classification thresholds for the
-requested solve. They do not trigger a wider solve.
+In the event of a convergence failure with stricter convergence, you
+may also need to increase `eig_k` (the number of eigenvectors returned before
+the Rayleigh-Ritz processing):
 
-Failure states are still possible:
+```r
+ltsa_wider <- ltsa(
+  swiss_roll,
+  eig_k = 32,
+  output = "result"
+)
+```
 
-* The solver doesn't converge. You'll see an `Eigenanalysis failed: ...` error
-that keeps the underlying solver message. This can be due to backend settings
-such as `tol`, iteration limits, or backend workspace controls.
-* The candidate subspace has weak residuals or a weak gap after the requested
-embedding block. Some `B` matrices have several directions with very similar
-low eigenvalues; increase `eig_k` or tighten backend settings if the result
-looks suspect.
-* Shift-invert sparse factorizations can hang or skip vectors near zero. The
-default path avoids shift-invert and solves a shifted largest-algebraic problem
-instead.
+However the default is already quite generous, so usually tighter convergence
+is the answer with default `eig_k`.
+
+Use `output = "B"` to return the assembled unnormalized LTSA matrix without
+final eigenanalysis:
+
+``` r
+B <- ltsa(swiss_roll, output = "B")
+```
 
 If you use `eig_method = "irlba"` or `eig_method = "svdr"` then different
 functions in irlba will be used instead of RSpectra. They do not expose the
@@ -206,9 +201,11 @@ cases, `eig_method = "eig"` and `eig_method = "eigen"` are synonyms for base
 `eigen()`, and `eig_method = "fullsvd"` uses base `svd()`. Dense `eig` is the
 better diagnostic reference when algebraic eigenvalue ordering matters.
 
-`normalize = TRUE` selects a separate normalized LTSA formulation. The
-normalized operator uses the same fixed-width workflow and then transforms the
-selected vectors back to output coordinates.
+There is also a `normalize = TRUE` option, which I included experimentally in
+analogy with normalized and un-normalized graph Laplacians. In cases where
+LTSA struggles to converge, setting `normalize = TRUE` can result in a much
+faster solution, *but* I have also noticed that it can result in a different
+geometry in those cases, so use it with extreme caution.
 
 Set `include_B = TRUE` with `output = "result"` if the detailed result should
 also carry the assembled unnormalized matrix.
