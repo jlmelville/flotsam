@@ -1,12 +1,19 @@
-lsym_norm <- function(M, D) {
-  M@x <- spm_times_scalar(M@p, M@x, D)
-  D * M
-}
+ltsa_normalize_sparse_operator <- function(L) {
+  diagonal <- diag(L)
+  if (any(!is.finite(diagonal) | diagonal <= 0)) {
+    stop(
+      "Cannot normalize the LTSA matrix because its diagonal contains ",
+      "non-positive or non-finite entries. Increase n_neighbors or set ",
+      "normalize = FALSE.",
+      call. = FALSE
+    )
+  }
 
-norm_lsym_L <- function(L) {
-  Dinvs <- sqrt(1 / diag(L))
+  Dinvs <- sqrt(1 / diagonal)
+  L_scaled <- L
+  L_scaled@x <- spm_times_scalar(L_scaled@p, L_scaled@x, Dinvs)
   list(
-    Lsym = lsym_norm(L, Dinvs),
+    Lsym = Dinvs * L_scaled,
     Dinvs = Dinvs,
     nullvec = 1 / Dinvs
   )

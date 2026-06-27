@@ -179,6 +179,21 @@ test_that("logical arguments must be scalar TRUE or FALSE", {
   )
 })
 
+test_that("normalized LTSA rejects matrices with non-positive diagonal", {
+  expect_error(
+    ltsa(
+      iris[1:4, ],
+      nn_method = "exact",
+      n_neighbors = 3L,
+      include_self = TRUE,
+      ndim = 2L,
+      normalize = TRUE,
+      eig_method = "eig"
+    ),
+    "Cannot normalize the LTSA matrix"
+  )
+})
+
 test_that("eigenanalysis errors include ltsa context and solver details", {
   expect_error(
     ltsa(

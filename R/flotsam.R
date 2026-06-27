@@ -327,7 +327,7 @@ ltsa <-
     nullvec <- ltsa_default_null_vector(nrow(B_operator))
     if (validated$normalize) {
       tsmessage("Forming normalized Lsym")
-      nres <- norm_lsym_L(B_operator)
+      nres <- ltsa_normalize_sparse_operator(B_operator)
       Dinvs <- nres$Dinvs
       nullvec <- nres$nullvec
       B_operator <- nres$Lsym
