@@ -334,6 +334,89 @@ ltsa_fixed_ritz_diagnostics <- function(
   )
 }
 
+ltsa_split_public_eigen_args <- function(args) {
+  if (is.null(args)) {
+    args <- list()
+  }
+  arg_names <- names(args)
+  if (is.null(arg_names)) {
+    arg_names <- rep.int("", length(args))
+  }
+
+  resid_tol <- args$resid_tol %||% 1e-5
+  gap_tol <- args$gap_tol %||% 1e-4
+  resid_tol <- ltsa_check_positive_finite(resid_tol, "resid_tol")
+  gap_tol <- ltsa_check_positive_finite(gap_tol, "gap_tol")
+
+  fixed_names <- c("resid_tol", "gap_tol")
+  provider_args <- args[!(arg_names %in% fixed_names)]
+
+  list(
+    provider_args = provider_args,
+    resid_tol = resid_tol,
+    gap_tol = gap_tol
+  )
+}
+
+ltsa_check_positive_finite <- function(x, name) {
+  if (
+    !is.numeric(x) ||
+      length(x) != 1L ||
+      is.na(x) ||
+      !is.finite(x) ||
+      x <= 0
+  ) {
+    stop(name, " must be a finite positive number", call. = FALSE)
+  }
+  as.numeric(x)
+}
+
+ltsa_run_fixed_eigenanalysis <- function(
+  B,
+  ndim,
+  eig_method,
+  eig_k,
+  eigen_args,
+  nullvec,
+  verbose
+) {
+  provider <- switch(
+    eig_method,
+    rspectra = {
+      tsmessage("Calling rspectra")
+      ltsa_rspectra_candidate_provider
+    },
+    irlba = {
+      tsmessage("Calling irlba")
+      ltsa_irlba_candidate_provider
+    },
+    svdr = {
+      tsmessage("Calling irlba svdr")
+      ltsa_svdr_candidate_provider
+    },
+    fullsvd = {
+      tsmessage("Using full SVD")
+      ltsa_fullsvd_candidate_provider
+    },
+    eig = {
+      tsmessage("Using full eigenvalue decomposition")
+      ltsa_eig_candidate_provider
+    }
+  )
+
+  ltsa_fixed_ritz_eig(
+    B = B,
+    ndim = ndim,
+    provider = provider,
+    provider_args = eigen_args$provider_args,
+    nullvec = nullvec,
+    eig_k = eig_k,
+    resid_tol = eigen_args$resid_tol,
+    gap_tol = eigen_args$gap_tol,
+    verbose = verbose
+  )
+}
+
 ltsa_fixed_ritz_eig <- function(
   B,
   ndim,
