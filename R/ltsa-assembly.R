@@ -19,7 +19,11 @@ assemble_ltsa_B <- function(
   row_major_copy_max_bytes <- copy_max_mib * 1024 * 1024
 
   n <- nrow(X)
-  weight_idx <- ltsa_weight_neighborhoods(nn_idx, include_self)
+  weight_idx <- if (include_self) {
+    nn_idx
+  } else {
+    nn_idx[, -1L, drop = FALSE]
+  }
   k <- ncol(weight_idx)
 
   if (verbose) {

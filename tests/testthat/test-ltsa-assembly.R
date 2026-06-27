@@ -107,7 +107,11 @@ ltsa_local_weights_r_reference <- function(X, nni, ndim) {
 
 assemble_ltsa_B_r_triplet_reference <- function(X, nn_idx, ndim, include_self) {
   n <- nrow(X)
-  weight_idx <- flotsam:::ltsa_weight_neighborhoods(nn_idx, include_self)
+  weight_idx <- if (include_self) {
+    nn_idx
+  } else {
+    nn_idx[, -1L, drop = FALSE]
+  }
   k <- ncol(weight_idx)
   n_triplets <- n * k * k
   rows <- integer(n_triplets)

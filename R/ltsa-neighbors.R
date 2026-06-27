@@ -66,11 +66,3 @@ prepare_ltsa_neighbors <- function(
     elapsed = elapsed
   )
 }
-
-ltsa_weight_neighborhoods <- function(nn_idx, include_self) {
-  if (include_self) {
-    nn_idx
-  } else {
-    nn_idx[, -1L, drop = FALSE]
-  }
-}
