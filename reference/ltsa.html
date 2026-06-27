@@ -9,7 +9,7 @@ for dimensionality reduction."></head><body>
 
     <a class="navbar-brand me-2" href="../index.html">flotsam</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">0.0.0.9001</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">0.0.0.9002</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -48,9 +48,11 @@ for dimensionality reduction.</p>
 <span>  ndim <span class="op">=</span> <span class="fl">2</span>,</span>
 <span>  nn_method <span class="op">=</span> <span class="st">"nnd"</span>,</span>
 <span>  eig_method <span class="op">=</span> <span class="st">"rspectra"</span>,</span>
+<span>  eig_k <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  output <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"embedding"</span>, <span class="st">"result"</span>, <span class="st">"B"</span><span class="op">)</span>,</span>
+<span>  include_B <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  include_self <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  normalize <span class="op">=</span> <span class="cn">FALSE</span>,</span>
-<span>  ret_B <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  n_threads <span class="op">=</span> <span class="fl">0</span>,</span>
 <span>  n_assembly_threads <span class="op">=</span> <span class="fl">1</span>,</span>
 <span>  copy_max_mib <span class="op">=</span> <span class="fl">256</span>,</span>
@@ -118,6 +120,29 @@ eigenvalue ordering matters.</p></li>
 </ul></dd>
 
 
+<dt id="arg-eig-k">eig_k<a class="anchor" aria-label="anchor" href="#arg-eig-k"></a></dt>
+<dd><p>Explicit fixed-width number of candidate vectors requested from
+the final eigensolver. If <code>NULL</code>, the default is
+<code>min(n - 1L, max(12L, ndim + 2L))</code>, where <code>n</code> is the number of
+observations. Must satisfy <code>ndim + 1 &lt;= eig_k &lt; n</code>. Larger values give
+the Rayleigh-Ritz postprocessing a wider candidate span.</p></dd>
+
+
+<dt id="arg-output">output<a class="anchor" aria-label="anchor" href="#arg-output"></a></dt>
+<dd><p>What to return:</p><ul><li><p><code>"embedding"</code> Return the embedding matrix. This is the default.</p></li>
+<li><p><code>"result"</code> Return a list containing the embedding, compact eigenanalysis
+diagnostics, assembly diagnostics, and optionally <code>B</code>.</p></li>
+<li><p><code>"B"</code> Return the assembled unnormalized LTSA matrix and skip final
+eigenanalysis.</p></li>
+</ul></dd>
+
+
+<dt id="arg-include-b">include_B<a class="anchor" aria-label="anchor" href="#arg-include-b"></a></dt>
+<dd><p>If <code>TRUE</code> and <code>output = "result"</code>, include the assembled
+unnormalized LTSA matrix <code>B</code> in the result object. Ignored for other output
+modes.</p></dd>
+
+
 <dt id="arg-include-self">include_self<a class="anchor" aria-label="anchor" href="#arg-include-self"></a></dt>
 <dd><p>Should an item be part of its own neighborhood? This has
 a minor effect on most results, but work by Zhang and co-workers (2017)
@@ -128,18 +153,13 @@ may allow emulating the HLLE method.</p></dd>
 
 <dt id="arg-normalize">normalize<a class="anchor" aria-label="anchor" href="#arg-normalize"></a></dt>
 <dd><p>If <code>TRUE</code>, calculate the final decomposition on a normalized
-version of the LTSA alignment matrix. For iterative methods (<code>"rspectra"</code>,
-<code>"irlba"</code>, and <code>"svdr"</code>), the normalized operator uses the same null-aware
-Rayleigh-Ritz selection as the unnormalized path, then transforms the
-selected vectors back to output coordinates. This may be slightly easier to
-converge while giving similar results to the unnormalized case. It may also
-have better properties if clustering is to be carried out on the
-eigenvectors.</p></dd>
-
-
-<dt id="arg-ret-b">ret_B<a class="anchor" aria-label="anchor" href="#arg-ret-b"></a></dt>
-<dd><p>If <code>TRUE</code>, return the matrix instead of the eigenvectors. This
-is mainly useful for diagnostic purposes if eigendecomposition is failing.</p></dd>
+LTSA formulation rather than the unnormalized alignment matrix. This is a
+separate spectral objective. For iterative methods (<code>"rspectra"</code>,
+<code>"irlba"</code>, and <code>"svdr"</code>), the normalized operator uses the same
+fixed-width null-aware Rayleigh-Ritz selection as the unnormalized path,
+then transforms the selected vectors back to output coordinates. The
+normalized formulation may have different downstream properties, for
+example when clustering on the eigenvectors.</p></dd>
 
 
 <dt id="arg-n-threads">n_threads<a class="anchor" aria-label="anchor" href="#arg-n-threads"></a></dt>
@@ -170,33 +190,25 @@ synthetic datasets, you are quite likely to hit this code path.</p></dd>
 
 <dt id="arg--">...<a class="anchor" aria-label="anchor" href="#arg--"></a></dt>
 <dd><p>Extra arguments to be passed to the eigendecomposition method
-specified by <code>eig_method</code>. For <code>"rspectra"</code>, arguments are passed to the
-<code>opts</code> list used by <code><a href="https://rdrr.io/pkg/RSpectra/man/eigs.html" class="external-link">RSpectra::eigs_sym()</a></code>. Suitable parameters include:</p><ul><li><p><code>ncv</code> Number of Lanczos vectors to use.</p></li>
-<li><p><code>tol</code> Tolerance.</p></li>
+specified by <code>eig_method</code>. These backend settings affect how the requested
+fixed-width candidate block is computed. For <code>"rspectra"</code>, arguments are
+passed to the <code>opts</code> list used by <code><a href="https://rdrr.io/pkg/RSpectra/man/eigs.html" class="external-link">RSpectra::eigs_sym()</a></code>. Common tuning
+parameters are:</p><ul><li><p><code>tol</code> Tolerance.</p></li>
 <li><p><code>maxitr</code> Maximum number of iterations.</p></li>
-</ul><p>For <code>"irlba"</code>, arguments are passed to <code><a href="https://rdrr.io/pkg/irlba/man/irlba.html" class="external-link">irlba::irlba()</a></code>. Suitable arguments
-include:</p><ul><li><p><code>work</code> Working subspace dimension size.</p></li>
-<li><p><code>tol</code> Tolerance.</p></li>
+<li><p><code>ncv</code> Number of Lanczos vectors to use.</p></li>
+</ul><p>For <code>"irlba"</code>, arguments are passed to <code><a href="https://rdrr.io/pkg/irlba/man/irlba.html" class="external-link">irlba::irlba()</a></code>. Common tuning
+parameters are:</p><ul><li><p><code>tol</code> Tolerance.</p></li>
 <li><p><code>maxit</code> Maximum number of iterations.</p></li>
 <li><p><code>reorth</code> Whether to use full reorthogonalization.</p></li>
-</ul><p>For <code>"svdr"</code>, arguments are passed to <code><a href="https://rdrr.io/pkg/irlba/man/svdr.html" class="external-link">irlba::svdr()</a></code>. Suitable arguments
-include:</p><ul><li><p><code>extra</code> Number of extra vectors to use.</p></li>
-<li><p><code>tol</code> Tolerance.</p></li>
+</ul><p>For <code>"svdr"</code>, arguments are passed to <code><a href="https://rdrr.io/pkg/irlba/man/svdr.html" class="external-link">irlba::svdr()</a></code>. Common tuning
+parameters are:</p><ul><li><p><code>tol</code> Tolerance.</p></li>
 <li><p><code>it</code>  Maximum number of iterations.</p></li>
-</ul><p>The iterative methods all use shared Rayleigh-Ritz postprocessing, residual
-diagnostics, and adaptive candidate expansion. However, only RSpectra reports
-explicit convergence counts; <code>"irlba"</code> and <code>"svdr"</code> rely on post-hoc residual
-diagnostics instead.</p>
-<p>Advanced LTSA eigenanalysis controls are also accepted here. <code>initial_extra</code>
-and <code>max_extra</code> control how many candidate vectors beyond the constant null
-vector, <code>ndim</code> embedding vectors, and one boundary-gap vector may be
-requested. <code>gap_expansion_steps</code> controls how many extra attempts are made
-when rank and residual diagnostics are good but the boundary gap is weak.
-<code>resid_tol</code> and <code>gap_tol</code> set the scaled residual and global boundary-gap
-diagnostic tolerances. <code>strict_rescue</code>, <code>strict_rescue_tol</code>,
-<code>strict_rescue_maxitr</code>, <code>strict_rescue_maxit</code>, <code>strict_rescue_it</code>, and
-<code>strict_rescue_extra</code> control the stricter rerun used when the selected
-block appears to contain only part of a near-zero nonconstant eigenspace.</p>
+</ul><p>The iterative methods all use shared fixed-width Rayleigh-Ritz
+postprocessing and residual diagnostics. Only RSpectra reports explicit
+convergence counts; <code>"irlba"</code> and <code>"svdr"</code> rely on post-hoc residual
+diagnostics instead. <code>resid_tol</code> and <code>gap_tol</code> set the scaled residual and
+global boundary-gap diagnostic tolerances used to classify the requested
+solve.</p>
 <p>For more details see the documentation for <code><a href="https://rdrr.io/pkg/RSpectra/man/eigs.html" class="external-link">RSpectra::eigs_sym()</a></code>,
 <code><a href="https://rdrr.io/pkg/irlba/man/irlba.html" class="external-link">irlba::irlba()</a></code> and <code><a href="https://rdrr.io/pkg/irlba/man/svdr.html" class="external-link">irlba::svdr()</a></code> functions, respectively. Don't pass
 other arguments unless you know what you are doing, as it may cause the
@@ -206,26 +218,36 @@ other arguments unless you know what you are doing, as it may cause the
     <div class="section level2">
     <h2 id="details">Details<a class="anchor" aria-label="anchor" href="#details"></a></h2>
     <p>LTSA forms a sparse alignment matrix <code>B</code> and then returns the low-energy
-nonconstant eigenvectors of that matrix. For iterative final eigenanalysis,
-<code>flotsam</code> does more than return the raw columns from the eigensolver. It
-asks the selected backend for a candidate block, projects out the known
-constant null vector, performs a small Rayleigh-Ritz extraction on the
-original LTSA matrix, sorts by the resulting Ritz values, and returns the
-first <code>ndim</code> nonconstant Ritz vectors.</p>
-<p>This postprocessing is intended to make clustered low-energy spectra less
-fragile. The iterative methods over-request candidate vectors by default,
-check post-null rank, compute scaled residuals against <code>B</code>, inspect the
-boundary gap after the selected block, and report near-zero nonconstant mode
-counts when <code>verbose = TRUE</code>. A weak boundary gap does not make the result
-fail, but it can trigger a small number of diagnostic expansion attempts and
-an ambiguity warning because the requested <code>ndim</code> may cut through a larger
-low-energy eigenspace.</p>
+nonconstant eigenvectors of that matrix. The public iterative final
+eigenanalysis path is a fixed-width solve: <code>eig_k</code> is the number of
+candidate vectors requested from the selected backend before Rayleigh-Ritz
+selection and diagnostic classification.</p>
+<p>After the backend returns its candidate block, <code>flotsam</code> projects out the
+known constant null vector, orthonormalizes the remaining candidate span,
+performs a small Rayleigh-Ritz extraction on the operator being solved,
+sorts by the resulting Ritz values, and returns the first <code>ndim</code>
+nonconstant Ritz vectors. This postprocessing is intended to make clustered
+low-energy spectra less fragile than returning the raw backend vectors.</p>
+<p>Use <code>output = "result"</code> to inspect compact diagnostics for the requested
+solve. The <code>eigen</code> component records the backend method, whether the
+normalized formulation was used, <code>eig_k</code>, selected values, all post-null
+Ritz values available inside the candidate span, scaled residuals, post-null
+rank, an estimated largest eigenvalue, solver-neutral status, messages, and
+backend metadata. The <code>assembly</code> component records nearest-neighbor source
+and timing alongside matrix assembly diagnostics. These diagnostics classify
+the requested fixed-width solve, but they are not completeness certificates
+for the full low-energy eigenspace. If diagnostics look suspicious, rerun
+with a larger <code>eig_k</code> or stricter backend settings.</p>
 <p>The <code>"rspectra"</code> path first estimates the largest eigenvalue and solves a
 shifted largest-algebraic problem instead of using shift-invert near zero.
 RSpectra's <code>nconv</code> metadata is treated as a hard backend convergence check.
 The <code>"irlba"</code> and <code>"svdr"</code> paths use the same Rayleigh-Ritz selection and
 diagnostics, but they rely on post-hoc residual checks because those
 backends do not expose RSpectra-style convergence counts.</p>
+<p><code>normalize = TRUE</code> selects a separate normalized LTSA formulation. For
+iterative methods, the normalized operator uses the same fixed-width,
+null-aware Rayleigh-Ritz workflow and then transforms the selected vectors
+back to output coordinates.</p>
     </div>
     <div class="section level2">
     <h2 id="references">References<a class="anchor" aria-label="anchor" href="#references"></a></h2>
@@ -252,7 +274,6 @@ On the Equivalence of HLLE and LTSA.
 <span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="co"># unroll it</span></span></span>
 <span class="r-in"><span><span class="va">swiss_ltsa</span> <span class="op">&lt;-</span> <span class="fu">ltsa</span><span class="op">(</span><span class="va">swiss_roll</span><span class="op">)</span></span></span>
-<span class="r-wrn co"><span class="r-pr">#&gt;</span> <span class="warning">Warning: </span>LTSA eigenanalysis found an ambiguous low-energy eigenspace; embedding may not be unique up to only rotation/sign. Diagnostics: the boundary gap after ndim is weak: global gap = 8.795e-06, local gap = 0.8579, tolerance = 1e-04. This can happen when the neighborhood graph is disconnected or weakly connected, n_neighbors is too small, or ndim cuts through a low-energy eigenspace.</span>
 <span class="r-in"><span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">swiss_ltsa</span>, col <span class="op">=</span> <span class="va">phi</span><span class="op">)</span></span></span>
 <span class="r-plt img"><img src="ltsa-1.png" alt="" width="700" height="433"></span>
 <span class="r-in"><span></span></span>
@@ -260,6 +281,59 @@ On the Equivalence of HLLE and LTSA.
 <span class="r-in"><span><span class="va">swiss_pca</span> <span class="op">&lt;-</span> <span class="fu">stats</span><span class="fu">::</span><span class="fu"><a href="https://rdrr.io/r/stats/prcomp.html" class="external-link">prcomp</a></span><span class="op">(</span><span class="va">swiss_roll</span>, rank. <span class="op">=</span> <span class="fl">2</span>, scale <span class="op">=</span> <span class="cn">FALSE</span>, retx <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span><span class="op">$</span><span class="va">x</span></span></span>
 <span class="r-in"><span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">swiss_pca</span>, col <span class="op">=</span> <span class="va">phi</span><span class="op">)</span></span></span>
 <span class="r-plt img"><img src="ltsa-2.png" alt="" width="700" height="433"></span>
+<span class="r-in"><span></span></span>
+<span class="r-in"><span><span class="co"># The default return is the embedding matrix.</span></span></span>
+<span class="r-in"><span><span class="va">small_iris</span> <span class="op">&lt;-</span> <span class="va">iris</span><span class="op">[</span><span class="fl">1</span><span class="op">:</span><span class="fl">75</span>, <span class="fl">1</span><span class="op">:</span><span class="fl">4</span><span class="op">]</span></span></span>
+<span class="r-in"><span><span class="va">iris_ltsa</span> <span class="op">&lt;-</span> <span class="fu">ltsa</span><span class="op">(</span></span></span>
+<span class="r-in"><span>  <span class="va">small_iris</span>,</span></span>
+<span class="r-in"><span>  n_neighbors <span class="op">=</span> <span class="fl">12</span>,</span></span>
+<span class="r-in"><span>  nn_method <span class="op">=</span> <span class="st">"exact"</span></span></span>
+<span class="r-in"><span><span class="op">)</span></span></span>
+<span class="r-in"><span></span></span>
+<span class="r-in"><span><span class="co"># Request compact eigenanalysis and assembly diagnostics.</span></span></span>
+<span class="r-in"><span><span class="va">iris_result</span> <span class="op">&lt;-</span> <span class="fu">ltsa</span><span class="op">(</span></span></span>
+<span class="r-in"><span>  <span class="va">small_iris</span>,</span></span>
+<span class="r-in"><span>  n_neighbors <span class="op">=</span> <span class="fl">12</span>,</span></span>
+<span class="r-in"><span>  nn_method <span class="op">=</span> <span class="st">"exact"</span>,</span></span>
+<span class="r-in"><span>  eig_k <span class="op">=</span> <span class="fl">8</span>,</span></span>
+<span class="r-in"><span>  output <span class="op">=</span> <span class="st">"result"</span></span></span>
+<span class="r-in"><span><span class="op">)</span></span></span>
+<span class="r-in"><span><span class="va">iris_result</span><span class="op">$</span><span class="va">eigen</span><span class="op">$</span><span class="va">status</span></span></span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] "warning"</span>
+<span class="r-in"><span><span class="va">iris_result</span><span class="op">$</span><span class="va">eigen</span><span class="op">$</span><span class="va">messages</span></span></span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] "Only part of a near-zero selected Ritz block is present."     </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [2] "Increasing eig_k or using stricter backend settings may help."</span>
+<span class="r-in"><span></span></span>
+<span class="r-in"><span><span class="co"># Return the assembled unnormalized LTSA matrix without final eigenanalysis.</span></span></span>
+<span class="r-in"><span><span class="va">iris_B</span> <span class="op">&lt;-</span> <span class="fu">ltsa</span><span class="op">(</span></span></span>
+<span class="r-in"><span>  <span class="va">small_iris</span>,</span></span>
+<span class="r-in"><span>  n_neighbors <span class="op">=</span> <span class="fl">12</span>,</span></span>
+<span class="r-in"><span>  nn_method <span class="op">=</span> <span class="st">"exact"</span>,</span></span>
+<span class="r-in"><span>  output <span class="op">=</span> <span class="st">"B"</span></span></span>
+<span class="r-in"><span><span class="op">)</span></span></span>
+<span class="r-in"><span><span class="fu"><a href="https://rdrr.io/r/base/dim.html" class="external-link">dim</a></span><span class="op">(</span><span class="va">iris_B</span><span class="op">)</span></span></span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] 75 75</span>
+<span class="r-in"><span></span></span>
+<span class="r-in"><span><span class="co"># If diagnostics are suspicious, rerun with a wider fixed candidate request.</span></span></span>
+<span class="r-in"><span><span class="va">iris_wider</span> <span class="op">&lt;-</span> <span class="fu">ltsa</span><span class="op">(</span></span></span>
+<span class="r-in"><span>  <span class="va">small_iris</span>,</span></span>
+<span class="r-in"><span>  n_neighbors <span class="op">=</span> <span class="fl">12</span>,</span></span>
+<span class="r-in"><span>  nn_method <span class="op">=</span> <span class="st">"exact"</span>,</span></span>
+<span class="r-in"><span>  eig_k <span class="op">=</span> <span class="fl">16</span>,</span></span>
+<span class="r-in"><span>  output <span class="op">=</span> <span class="st">"result"</span></span></span>
+<span class="r-in"><span><span class="op">)</span></span></span>
+<span class="r-in"><span></span></span>
+<span class="r-in"><span><span class="co"># Or rerun with stricter RSpectra backend settings.</span></span></span>
+<span class="r-in"><span><span class="va">iris_strict</span> <span class="op">&lt;-</span> <span class="fu">ltsa</span><span class="op">(</span></span></span>
+<span class="r-in"><span>  <span class="va">small_iris</span>,</span></span>
+<span class="r-in"><span>  n_neighbors <span class="op">=</span> <span class="fl">12</span>,</span></span>
+<span class="r-in"><span>  nn_method <span class="op">=</span> <span class="st">"exact"</span>,</span></span>
+<span class="r-in"><span>  eig_k <span class="op">=</span> <span class="fl">8</span>,</span></span>
+<span class="r-in"><span>  output <span class="op">=</span> <span class="st">"result"</span>,</span></span>
+<span class="r-in"><span>  tol <span class="op">=</span> <span class="fl">1e-8</span>,</span></span>
+<span class="r-in"><span>  maxitr <span class="op">=</span> <span class="fl">5000</span>,</span></span>
+<span class="r-in"><span>  ncv <span class="op">=</span> <span class="fl">30</span></span></span>
+<span class="r-in"><span><span class="op">)</span></span></span>
 </code></pre></div>
     </div>
   </main><aside class="col-md-3"><nav id="toc" aria-label="Table of contents"><h2>On this page</h2>

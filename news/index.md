@@ -1,5 +1,17 @@
 # Changelog
 
+## flotsam 0.0.0.9002
+
+- New argument: `eig_k`, controls the number of eigenvectors to return
+  before the Rayleigh-Ritz processing step and final `ndim` return.
+  Increasing the total number of eigenvectors to return seems to work
+  better than other parameters in cases where there are clusters of
+  eigenvalues: RSpectra may entirely miss one of these results even if
+  it reports full convergence.
+- New argument: `output`. `output = "result"` returns compact
+  eigenanalysis and assembly diagnostics. `output = "B"` replaces the
+  older `ret_B = TRUE` argument.
+
 ## flotsam 0.0.0.9001
 
 - New parameter: `n_assembly_threads` to control number of threads to

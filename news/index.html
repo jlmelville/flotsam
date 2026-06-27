@@ -7,7 +7,7 @@
 
     <a class="navbar-brand me-2" href="../index.html">flotsam</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">0.0.0.9001</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">0.0.0.9002</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -32,6 +32,11 @@
       <small>Source: <a href="https://github.com/jlmelville/flotsam/blob/main/NEWS.md" class="external-link"><code>NEWS.md</code></a></small>
     </div>
 
+    <div class="section level2">
+<h2 class="pkg-version" data-toc-text="0.0.0.9002" id="flotsam-0009002">flotsam 0.0.0.9002<a class="anchor" aria-label="anchor" href="#flotsam-0009002"></a></h2>
+<ul><li>New argument: <code>eig_k</code>, controls the number of eigenvectors to return before the Rayleigh-Ritz processing step and final <code>ndim</code> return. Increasing the total number of eigenvectors to return seems to work better than other parameters in cases where there are clusters of eigenvalues: RSpectra may entirely miss one of these results even if it reports full convergence.</li>
+<li>New argument: <code>output</code>. <code>output = "result"</code> returns compact eigenanalysis and assembly diagnostics. <code>output = "B"</code> replaces the older <code>ret_B = TRUE</code> argument.</li>
+</ul></div>
     <div class="section level2">
 <h2 class="pkg-version" data-toc-text="0.0.0.9001" id="flotsam-0009001">flotsam 0.0.0.9001<a class="anchor" aria-label="anchor" href="#flotsam-0009001"></a></h2>
 <ul><li>New parameter: <code>n_assembly_threads</code> to control number of threads to construct the <code>B</code> matrix.</li>
