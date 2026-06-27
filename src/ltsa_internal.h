@@ -72,8 +72,6 @@ int checked_lapack_dim(std::size_t value, const char* name);
 
 std::size_t checked_row_major_copy_max_bytes(double max_bytes);
 
-std::vector<int> checked_neighbors(const integers& nni, std::size_t n_obs);
-
 std::vector<int> flat_neighbors_zero_based(const integers& value_nnt,
                                            std::size_t offset,
                                            std::size_t n_nbrs);

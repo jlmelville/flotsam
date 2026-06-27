@@ -576,7 +576,7 @@ test_that("triangular builder expands symmetric local weights to full CSC", {
   expect_sparse_equivalent(candidate, reference, tolerance = 0)
 })
 
-test_that("append/finalize assembly matches R triplet reference", {
+test_that("serial assembly matches R triplet reference", {
   X <- as.matrix(iris[seq_len(20L), seq_len(4L)])
 
   for (include_self in c(TRUE, FALSE)) {
@@ -605,7 +605,7 @@ test_that("append/finalize assembly matches R triplet reference", {
   }
 })
 
-test_that("append/finalize assembly Gram path matches R triplet reference", {
+test_that("serial assembly Gram path matches R triplet reference", {
   set.seed(2)
   X <- matrix(rnorm(18L * 12L), nrow = 18L)
   nn_idx <- exact_nn_idx(X, n_neighbors = 5L, include_self = TRUE)
@@ -676,7 +676,7 @@ test_that("triangular production assembly matches R reference on shuffled neighb
   expect_identical(candidate$min_local_rank, reference$min_local_rank)
 })
 
-test_that("append/finalize assembly Gram path preserves rank deficiency", {
+test_that("serial assembly Gram path preserves rank deficiency", {
   X <- outer(seq_len(18L), seq_len(12L))
   nn_idx <- exact_nn_idx(X, n_neighbors = 5L, include_self = TRUE)
   expect_gt(ncol(X), ncol(nn_idx))
@@ -761,24 +761,7 @@ test_that("centered high-p Gram path is stable on hostile large-offset data", {
   expect_identical(candidate$min_local_rank, reference$min_local_rank)
 })
 
-test_that("C++ local weights match exact R SVD reference", {
-  set.seed(1)
-  low_p <- matrix(rnorm(10 * 3), nrow = 10)
-  low_nni <- c(1L, 3L, 4L, 6L, 8L, 10L)
-  low_reference <- ltsa_local_weights_r_reference(low_p, low_nni, ndim = 2L)
-  low_candidate <- flotsam:::ltsa_local_weights(low_p, low_nni, ndim = 2L)
-  expect_equal(low_candidate$Wi, low_reference$Wi, tolerance = 1e-12)
-  expect_identical(low_candidate$rank, low_reference$rank)
-
-  high_p <- matrix(rnorm(9 * 12), nrow = 9)
-  high_nni <- c(1L, 2L, 4L, 7L, 9L)
-  high_reference <- ltsa_local_weights_r_reference(high_p, high_nni, ndim = 2L)
-  high_candidate <- flotsam:::ltsa_local_weights(high_p, high_nni, ndim = 2L)
-  expect_equal(high_candidate$Wi, high_reference$Wi, tolerance = 1e-12)
-  expect_identical(high_candidate$rank, high_reference$rank)
-})
-
-test_that("Gram local weights document near-machine SVD-rank boundary", {
+test_that("Gram assembly handles near-machine SVD-rank boundary", {
   k <- 6L
   p <- 12L
   X <- matrix(0, nrow = k, ncol = p)
@@ -786,18 +769,30 @@ test_that("Gram local weights document near-machine SVD-rank boundary", {
   # The second singular direction is above the direct-SVD tolerance but below
   # the Gram eigenvalue tolerance used to avoid promoting Gram roundoff.
   X[, 2L] <- 1e-8 * c(0, 0, 1, -1, 0, 0) / sqrt(2)
-  nni <- seq_len(k)
+  nn_idx <- matrix(rep(seq_len(k), times = k), nrow = k, byrow = TRUE)
+  storage.mode(nn_idx) <- "integer"
 
-  reference <- ltsa_local_weights_r_reference(X, nni, ndim = 2L)
-  candidate <- flotsam:::ltsa_local_weights(X, nni, ndim = 2L)
+  reference <- assemble_ltsa_B_r_triplet_reference(
+    X,
+    nn_idx,
+    ndim = 2L,
+    include_self = TRUE
+  )
+  candidate <- flotsam:::assemble_ltsa_B(
+    X,
+    nn_idx,
+    ndim = 2L,
+    include_self = TRUE
+  )
 
-  expect_gt(ncol(X), length(nni))
-  expect_identical(reference$rank, 2L)
-  expect_identical(candidate$rank, 1L)
-  expect_gt(max(abs(candidate$Wi - reference$Wi)), 0.1)
+  expect_gt(ncol(X), ncol(nn_idx))
+  expect_identical(reference$rank_deficient_count, 0L)
+  expect_identical(candidate$rank_deficient_count, k)
+  expect_identical(candidate$min_local_rank, 1L)
+  expect_gt(max(abs(as.matrix(candidate$B - reference$B))), 0.1)
 })
 
-test_that("ltsa output B uses append/finalize assembly", {
+test_that("ltsa output B uses production assembly", {
   X <- as.matrix(iris[seq_len(15L), seq_len(4L)])
   nn_idx <- exact_nn_idx(X, n_neighbors = 5L, include_self = FALSE)
   reference <- assemble_ltsa_B_r_triplet_reference(

@@ -65,18 +65,6 @@ GramLocalWeightsWorkspace::GramLocalWeightsWorkspace(std::size_t n_nbrs,
   work.resize(query_dsyev_workspace(this->n_nbrs, gram, values));
 }
 
-std::vector<int> checked_neighbors(const integers& nni, std::size_t n_obs) {
-  if (nni.size() == 0) {
-    stop("Neighborhood must not be empty");
-  }
-
-  std::vector<int> out(nni.size());
-  for (R_xlen_t i = 0; i < nni.size(); i++) {
-    out[i] = checked_neighbor_index(nni[i], n_obs);
-  }
-  return out;
-}
-
 std::vector<int> flat_neighbors_zero_based(const integers& value_nnt,
                                            std::size_t offset,
                                            std::size_t n_nbrs) {
@@ -447,21 +435,4 @@ LocalWeights compute_local_weights_shape_routed(const doubles_matrix<>& x,
     return compute_local_weights_svd(x, nni, ndim);
   }
   return compute_local_weights_gram(x, nni, ndim);
-}
-
-[[cpp11::register]] list ltsa_local_weights_cpp(const doubles_matrix<>& x,
-                                                const integers& nni, int ndim) {
-  checked_ndim(ndim);
-  std::vector<int> checked_nni = checked_neighbors(nni, x.nrow());
-  LocalWeights local = compute_local_weights_shape_routed(x, checked_nni, ndim);
-
-  const std::size_t n_nbrs = checked_nni.size();
-  writable::doubles_matrix<> weights(n_nbrs, n_nbrs);
-  for (std::size_t col = 0; col < n_nbrs; col++) {
-    for (std::size_t row = 0; row < n_nbrs; row++) {
-      weights(row, col) = local.weights[col * n_nbrs + row];
-    }
-  }
-
-  return writable::list({"Wi"_nm = weights, "rank"_nm = local.rank});
 }

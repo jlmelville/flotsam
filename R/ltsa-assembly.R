@@ -232,7 +232,3 @@ ltsa_components_to_dgCMatrix <- function(components, n) {
     Dim = as.integer(c(n, n))
   )
 }
-
-ltsa_local_weights <- function(X, nni, ndim) {
-  ltsa_local_weights_cpp(X, nni, ndim)
-}
