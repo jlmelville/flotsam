@@ -179,6 +179,35 @@ test_that("logical arguments must be scalar TRUE or FALSE", {
   )
 })
 
+test_that("eigen diagnostic tolerances must be finite positive numbers", {
+  expect_error(
+    ltsa(iris[1:10, ], nn_method = "exact", n_neighbors = 8L, resid_tol = 0),
+    "resid_tol must be a finite positive number"
+  )
+  expect_error(
+    ltsa(
+      iris[1:10, ],
+      nn_method = "exact",
+      n_neighbors = 8L,
+      resid_tol = c(1e-5, 1e-4)
+    ),
+    "resid_tol must be a finite positive number"
+  )
+  expect_error(
+    ltsa(iris[1:10, ], nn_method = "exact", n_neighbors = 8L, gap_tol = Inf),
+    "gap_tol must be a finite positive number"
+  )
+  expect_error(
+    ltsa(
+      iris[1:10, ],
+      nn_method = "exact",
+      n_neighbors = 8L,
+      gap_tol = NA_real_
+    ),
+    "gap_tol must be a finite positive number"
+  )
+})
+
 test_that("normalized LTSA rejects matrices with non-positive diagonal", {
   expect_error(
     ltsa(
