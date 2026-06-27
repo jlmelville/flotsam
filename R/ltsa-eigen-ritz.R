@@ -121,25 +121,6 @@ ltsa_ritz_select <- function(
   )
 }
 
-select_ltsa_embedding_vectors <- function(
-  B,
-  vectors,
-  ndim,
-  nullvec = ltsa_default_null_vector(nrow(B)),
-  lambda_max = NULL,
-  ...
-) {
-  rr <- ltsa_ritz_select(
-    B = B,
-    vectors = vectors,
-    ndim = ndim,
-    nullvec = nullvec,
-    lambda_max = lambda_max,
-    ...
-  )
-  rr$vectors
-}
-
 ltsa_fixed_exact_dense_backend <- function(backend) {
   backend %in% c("dense_eigen", "eig", "eigen", "fullsvd", "dense_svd")
 }
@@ -404,86 +385,6 @@ ltsa_fixed_ritz_eig <- function(
     backend = eigen$backend,
     lambda_max = eigen$lambda_max,
     eig_k = eig_k
-  )
-}
-
-# Internal iterative wrappers retained as fixed-width shims. Adaptive widening
-# and rescue policy are rejected at the public argument boundary.
-ltsa_rspectra_ritz_eig <- function(
-  B,
-  ndim,
-  ...,
-  nullvec = ltsa_default_null_vector(nrow(B)),
-  eig_k = NULL,
-  resid_tol = 1e-5,
-  gap_tol = 1e-4,
-  verbose = FALSE
-) {
-  provider_args <- list(...)
-  ltsa_reject_rescue_policy_args(provider_args)
-
-  ltsa_fixed_ritz_eig(
-    B = B,
-    ndim = ndim,
-    provider = ltsa_rspectra_candidate_provider,
-    provider_args = provider_args,
-    nullvec = nullvec,
-    eig_k = eig_k,
-    resid_tol = resid_tol,
-    gap_tol = gap_tol,
-    verbose = verbose
-  )
-}
-
-ltsa_irlba_ritz_eig <- function(
-  B,
-  ndim,
-  ...,
-  nullvec = ltsa_default_null_vector(nrow(B)),
-  eig_k = NULL,
-  resid_tol = 1e-5,
-  gap_tol = 1e-4,
-  verbose = FALSE
-) {
-  provider_args <- list(...)
-  ltsa_reject_rescue_policy_args(provider_args)
-
-  ltsa_fixed_ritz_eig(
-    B = B,
-    ndim = ndim,
-    provider = ltsa_irlba_candidate_provider,
-    provider_args = provider_args,
-    nullvec = nullvec,
-    eig_k = eig_k,
-    resid_tol = resid_tol,
-    gap_tol = gap_tol,
-    verbose = verbose
-  )
-}
-
-ltsa_svdr_ritz_eig <- function(
-  B,
-  ndim,
-  ...,
-  nullvec = ltsa_default_null_vector(nrow(B)),
-  eig_k = NULL,
-  resid_tol = 1e-5,
-  gap_tol = 1e-4,
-  verbose = FALSE
-) {
-  provider_args <- list(...)
-  ltsa_reject_rescue_policy_args(provider_args)
-
-  ltsa_fixed_ritz_eig(
-    B = B,
-    ndim = ndim,
-    provider = ltsa_svdr_candidate_provider,
-    provider_args = provider_args,
-    nullvec = nullvec,
-    eig_k = eig_k,
-    resid_tol = resid_tol,
-    gap_tol = gap_tol,
-    verbose = verbose
   )
 }
 

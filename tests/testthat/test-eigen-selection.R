@@ -121,12 +121,12 @@ test_that("embedding vector selection drops a returned trivial vector", {
   B <- selection_test_matrix(basis)
   candidates <- cbind(basis$v2, basis$u, basis$v3, basis$v1)
 
-  selected <- flotsam:::select_ltsa_embedding_vectors(
+  selected <- flotsam:::ltsa_ritz_select(
     B,
     candidates,
     ndim = 2L,
     lambda_max = 3
-  )
+  )$vectors
 
   expect_selected_basis(selected, cbind(basis$v1, basis$v2))
 })
@@ -136,12 +136,12 @@ test_that("embedding vector selection keeps smallest vectors when trivial vector
   B <- selection_test_matrix(basis)
   candidates <- cbind(basis$v2, basis$v3, basis$v1)
 
-  selected <- flotsam:::select_ltsa_embedding_vectors(
+  selected <- flotsam:::ltsa_ritz_select(
     B,
     candidates,
     ndim = 2L,
     lambda_max = 3
-  )
+  )$vectors
 
   expect_selected_basis(selected, cbind(basis$v1, basis$v2))
 })
@@ -533,17 +533,7 @@ test_that("fixed-width diagnostics give eig_k and backend-setting guidance", {
   )))
 })
 
-test_that("runtime eigensolver surfaces reject rescue-policy arguments", {
-  B <- synthetic_ltsa_matrix(c(0, 0.1, 0.2, 1, 2, 3))
-
-  expect_error(
-    flotsam:::ltsa_rspectra_ritz_eig(
-      Matrix::Matrix(B, sparse = TRUE),
-      ndim = 2L,
-      strict_rescue = FALSE
-    ),
-    "no longer supports rescue-policy"
-  )
+test_that("public LTSA rejects rescue-policy arguments", {
   expect_error(
     ltsa(
       iris[1:10, ],
@@ -696,7 +686,7 @@ test_that("RSpectra candidate provider returns backend-neutral fields", {
   expect_s4_class(res$matrix, "dgCMatrix")
 })
 
-test_that("RSpectra Ritz wrapper returns fixed-width diagnostics", {
+test_that("fixed-width RSpectra driver returns diagnostics", {
   B <- synthetic_ltsa_matrix(c(
     0, 0.1, 0.2, 1, 3, 5, 8, 13, 21, 34,
     55, 89, 144, 233, 377, 610, 987, 1597, 2584, 4181
@@ -705,14 +695,17 @@ test_that("RSpectra Ritz wrapper returns fixed-width diagnostics", {
   ord <- order(dense$values)
   reference <- dense$vectors[, ord[2:3], drop = FALSE]
 
-  res <- flotsam:::ltsa_rspectra_ritz_eig(
+  res <- flotsam:::ltsa_fixed_ritz_eig(
     Matrix::Matrix(B, sparse = TRUE),
     ndim = 2L,
-    eig_k = 6L,
-    dense_n = 0L,
-    tol = 1e-8,
-    ncv = 18L,
-    maxitr = 5000L
+    provider = flotsam:::ltsa_rspectra_candidate_provider,
+    provider_args = list(
+      dense_n = 0L,
+      tol = 1e-8,
+      ncv = 18L,
+      maxitr = 5000L
+    ),
+    eig_k = 6L
   )
 
   expect_identical(res$eigen$method, "rspectra")
@@ -757,7 +750,7 @@ test_that("irlba and svdr candidate providers return backend-neutral fields", {
   }
 })
 
-test_that("fixed-width irlba and svdr wrappers agree with dense reference subspaces", {
+test_that("fixed-width irlba and svdr drivers agree with dense reference subspaces", {
   # fmt: skip
   B <- synthetic_ltsa_matrix(c(
     0, 0.1, 0.2, 1, 3, 5, 8, 13, 21, 34,
@@ -768,27 +761,23 @@ test_that("fixed-width irlba and svdr wrappers agree with dense reference subspa
   reference <- dense$vectors[, ord[2:3], drop = FALSE]
   backends <- list(
     irlba = list(
-      eig = flotsam:::ltsa_irlba_ritz_eig,
+      provider = flotsam:::ltsa_irlba_candidate_provider,
       args = list(dense_n = 0L, tol = 1e-10, maxit = 5000L)
     ),
     svdr = list(
-      eig = flotsam:::ltsa_svdr_ritz_eig,
+      provider = flotsam:::ltsa_svdr_candidate_provider,
       args = list(dense_n = 0L, tol = 1e-10, it = 5000L, extra = 12L)
     )
   )
 
   for (backend in names(backends)) {
     set.seed(42)
-    res <- do.call(
-      backends[[backend]]$eig,
-      c(
-        list(
-          B = Matrix::Matrix(B, sparse = TRUE),
-          ndim = 2L,
-          eig_k = 8L
-        ),
-        backends[[backend]]$args
-      )
+    res <- flotsam:::ltsa_fixed_ritz_eig(
+      B = Matrix::Matrix(B, sparse = TRUE),
+      ndim = 2L,
+      provider = backends[[backend]]$provider,
+      provider_args = backends[[backend]]$args,
+      eig_k = 8L
     )
 
     expect_identical(res$eigen$backend$name, backend)
