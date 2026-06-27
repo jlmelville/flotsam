@@ -314,9 +314,7 @@ ltsa_fixed_ritz_diagnostics <- function(
     messages <- c(
       messages,
       paste0(
-        "These diagnostics are not completeness certificates; consider ",
-        "increasing eig_k or using stricter backend settings if the result ",
-        "looks suspicious."
+        "Increasing eig_k or using stricter backend settings may help."
       )
     )
   }
@@ -473,7 +471,7 @@ ltsa_fixed_ritz_eig <- function(
   )
 }
 
-# Fixed-width diagnostics still flag the specific case where the selected block
+# Fixed-width diagnostics flag the specific case where the selected block
 # appears to cut through a near-zero nonconstant cluster.
 ltsa_partial_near_zero_block <- function(res, ndim) {
   if (

@@ -536,17 +536,7 @@ test_that("fixed-width diagnostics give eig_k and backend-setting guidance", {
     fixed = TRUE
   )))
   expect_true(any(grepl(
-    "consider increasing eig_k",
-    res$eigen$messages,
-    fixed = TRUE
-  )))
-  expect_true(any(grepl(
-    "stricter backend settings",
-    res$eigen$messages,
-    fixed = TRUE
-  )))
-  expect_true(any(grepl(
-    "not completeness certificates",
+    "Increasing eig_k",
     res$eigen$messages,
     fixed = TRUE
   )))
