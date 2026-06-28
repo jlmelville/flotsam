@@ -1,3 +1,8 @@
 url: https://jlmelville.github.io/flotsam/
 template:
   bootstrap: 5
+
+articles:
+- title: Notes
+  contents:
+  - articles/numerical-diagnostics

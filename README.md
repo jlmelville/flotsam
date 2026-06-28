@@ -15,8 +15,7 @@ Alignment](https://doi.org/10.1137/S1064827502419154) method (Zhang & Zha,
 methods that can unroll the "swiss roll" data set and its variants without
 major distortion.
 
-The F is for 'Finicky' (see 'Current Status'), but one day I would like it to
-be Fast.
+The F is still for "Finicky", although the current implementation is a lot
 
 ## Installation
 
