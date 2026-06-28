@@ -35,6 +35,7 @@ ltsa_ritz_select <- function(
     stop("Can't find enough LTSA candidate vectors", call. = FALSE)
   }
 
+  # Remove the known null direction and rank-check the remaining span.
   nullvec <- ltsa_normalize_null_vector(nullvec, n)
   projected <- vectors - nullvec %*% crossprod(nullvec, vectors)
   original_norms <- sqrt(colSums(vectors * vectors))
@@ -59,6 +60,7 @@ ltsa_ritz_select <- function(
     )
   }
 
+  # Rayleigh-Ritz extraction inside the projected candidate span.
   Q <- qr.Q(qrp)[, seq_len(rank_after_null), drop = FALSE]
   BQ <- as.matrix(B %*% Q)
   H <- as.matrix(crossprod(Q, BQ))
@@ -69,6 +71,8 @@ ltsa_ritz_select <- function(
   values_all <- eig$values[ord]
   coef_all <- eig$vectors[, ord, drop = FALSE]
   vectors_all <- Q %*% coef_all
+
+  # Residual, gap, and near-zero diagnostics
   residuals_all <- ltsa_ritz_residuals(B, vectors_all, values_all, lambda_max)
 
   if (length(values_all) > ndim) {
@@ -286,14 +290,10 @@ ltsa_fixed_ritz_diagnostics <- function(
   resid_ok <- is.finite(max_residual) && max_residual <= resid_tol
   if (
     ltsa_partial_near_zero_block(
-      list(
-        near_zero_nonconstant_count = rr$near_zero_nonconstant_count,
-        acceptance = list(
-          rank_ok = rr$rank_after_null >= ndim,
-          resid_ok = resid_ok
-        )
-      ),
-      ndim = ndim
+      near_zero_count = rr$near_zero_nonconstant_count,
+      ndim = ndim,
+      rank_ok = rr$rank_after_null >= ndim,
+      resid_ok = resid_ok
     )
   ) {
     warning_messages <- c(
@@ -473,15 +473,16 @@ ltsa_fixed_ritz_eig <- function(
 
 # Fixed-width diagnostics flag the specific case where the selected block
 # appears to cut through a near-zero nonconstant cluster.
-ltsa_partial_near_zero_block <- function(res, ndim) {
-  if (
-    is.null(res) ||
-      !isTRUE(res$acceptance$rank_ok) ||
-      !isTRUE(res$acceptance$resid_ok)
-  ) {
+ltsa_partial_near_zero_block <- function(
+  near_zero_count,
+  ndim,
+  rank_ok,
+  resid_ok
+) {
+  if (!isTRUE(rank_ok) || !isTRUE(resid_ok)) {
     return(FALSE)
   }
 
-  near_zero_count <- res$near_zero_nonconstant_count %||% 0L
+  near_zero_count <- near_zero_count %||% 0L
   near_zero_count > 0L && near_zero_count < ndim
 }
