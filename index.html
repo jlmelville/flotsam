@@ -32,6 +32,7 @@
     <div id="navbar" class="collapse navbar-collapse ms-3">
       <ul class="navbar-nav me-auto">
 <li class="nav-item"><a class="nav-link" href="reference/index.html">Reference</a></li>
+<li class="nav-item"><a class="nav-link" href="articles/index.html">Articles</a></li>
 <li class="nav-item"><a class="nav-link" href="news/index.html">Changelog</a></li>
       </ul>
 <ul class="navbar-nav">
@@ -53,7 +54,7 @@
 <!-- badges: start -->
 
 <p>An implementation of the <a href="https://doi.org/10.1137/S1064827502419154" class="external-link">Local Tangent Space Alignment</a> method (Zhang &amp; Zha, 2004), a spectral method for dimensionality reduction. It is one of the few methods that can unroll the “swiss roll” data set and its variants without major distortion.</p>
-<p>The F is for ‘Finicky’ (see ‘Current Status’), but one day I would like it to be Fast.</p>
+<p>The F is still for “Finicky”, although the current implementation is a lot</p>
 <div class="section level2">
 <h2 id="installation">Installation<a class="anchor" aria-label="anchor" href="#installation"></a>
 </h2>
@@ -165,7 +166,7 @@
 <p>Use <code>output = "B"</code> to return the assembled unnormalized LTSA matrix without final eigenanalysis:</p>
 <div class="sourceCode" id="cb8"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">B</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/ltsa.html">ltsa</a></span><span class="op">(</span><span class="va">swiss_roll</span>, output <span class="op">=</span> <span class="st">"B"</span><span class="op">)</span></span></code></pre></div>
-<p>If you use <code>eig_method = "irlba"</code> or <code>eig_method = "svdr"</code> then different functions in irlba will be used instead of RSpectra. They do not expose the same convergence metadata as RSpectra, so they rely on post-hoc residual diagnostics rather than hard backend convergence counts. For small diagnostic cases, <code>eig_method = "eig"</code> and <code>eig_method = "eigen"</code> are synonyms for base <code><a href="https://rdrr.io/r/base/eigen.html" class="external-link">eigen()</a></code>, and <code>eig_method = "fullsvd"</code> uses base <code><a href="https://rdrr.io/r/base/svd.html" class="external-link">svd()</a></code>. Dense <code>eig</code> is the better diagnostic reference when algebraic eigenvalue ordering matters.</p>
+<p>If you use <code>eig_method = "irlba"</code> or <code>eig_method = "svdr"</code> then different functions in irlba will be used instead of RSpectra. They do not expose the same convergence metadata as RSpectra, so they rely on post-hoc residual diagnostics rather than hard backend convergence counts. For small diagnostic cases, <code>eig_method = "eig"</code> and <code>eig_method = "eigen"</code> are synonyms for base <code><a href="https://rdrr.io/r/base/eigen.html" class="external-link">eigen()</a></code>. Dense <code>eig</code> is the diagnostic reference when algebraic eigenvalue ordering matters.</p>
 <p>There is also a <code>normalize = TRUE</code> option, which I included experimentally in analogy with normalized and un-normalized graph Laplacians. In cases where LTSA struggles to converge, setting <code>normalize = TRUE</code> can result in a much faster solution, <em>but</em> I have also noticed that it can result in a different geometry in those cases, so use it with extreme caution.</p>
 <p>Set <code>include_B = TRUE</code> with <code>output = "result"</code> if the detailed result should also carry the assembled unnormalized matrix.</p>
 </div>

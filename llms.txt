@@ -8,8 +8,8 @@ Zha, 2004), a spectral method for dimensionality reduction. It is one of
 the few methods that can unroll the “swiss roll” data set and its
 variants without major distortion.
 
-The F is for ‘Finicky’ (see ‘Current Status’), but one day I would like
-it to be Fast.
+The F is still for “Finicky”, although the current implementation is a
+lot
 
 ## Installation
 
@@ -205,9 +205,7 @@ not expose the same convergence metadata as RSpectra, so they rely on
 post-hoc residual diagnostics rather than hard backend convergence
 counts. For small diagnostic cases, `eig_method = "eig"` and
 `eig_method = "eigen"` are synonyms for base
-[`eigen()`](https://rdrr.io/r/base/eigen.html), and
-`eig_method = "fullsvd"` uses base
-[`svd()`](https://rdrr.io/r/base/svd.html). Dense `eig` is the better
+[`eigen()`](https://rdrr.io/r/base/eigen.html). Dense `eig` is the
 diagnostic reference when algebraic eigenvalue ordering matters.
 
 There is also a `normalize = TRUE` option, which I included
@@ -297,3 +295,9 @@ issue](https://github.com/yixuan/spectra/issues/126).
 - [`ltsa()`](https://jlmelville.github.io/flotsam/reference/ltsa.md) :
   Local Tangent Space Alignment
 
+# Articles
+
+### Notes
+
+- [Numerical diagnostics and solver
+  notes](https://jlmelville.github.io/flotsam/articles/numerical-diagnostics.md):
