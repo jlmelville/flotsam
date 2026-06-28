@@ -58,8 +58,8 @@ only. Dense \code{"eig"} is the better diagnostic reference when algebraic
 eigenvalue ordering matters.
 }}
 
-\item{eig_k}{Explicit fixed-width number of candidate vectors requested from
-the final eigensolver. If \code{NULL}, the default is
+\item{eig_k}{Number of candidate vectors requested from the final
+eigensolver. If \code{NULL}, the default is
 \code{min(n - 1L, max(12L, ndim + 2L))}, where \code{n} is the number of
 observations. Must satisfy \verb{ndim + 1 <= eig_k < n}. Larger values give
 the Rayleigh-Ritz postprocessing a wider candidate span.}

@@ -18,7 +18,7 @@ neighborhood graph is disconnected, weakly connected, or has a low-energy
 cluster that cuts across the requested `ndim`, the final eigenspace may be
 ambiguous.
 
-## Fixed-width eigenanalysis
+## Candidate-subspace eigenanalysis
 
 The iterative backends do not ask directly for only `ndim` output vectors.
 They request a wider candidate block controlled by `eig_k`, remove the known

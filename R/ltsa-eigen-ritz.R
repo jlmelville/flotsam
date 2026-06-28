@@ -1,5 +1,4 @@
-# Null-aware Rayleigh-Ritz selection and fixed-width diagnostics for LTSA
-# eigenanalysis.
+# Null-aware Rayleigh-Ritz selection and diagnostics for LTSA eigenanalysis.
 
 # Wrapper-level Rayleigh-Ritz extraction. Iterative solvers commonly do their
 # own Ritz extraction internally, but this step answers the LTSA-specific
@@ -115,7 +114,7 @@ ltsa_ritz_select <- function(
   )
 }
 
-ltsa_fixed_backend_metadata <- function(eig_res) {
+ltsa_backend_metadata <- function(eig_res) {
   backend <- eig_res$backend %||% "unknown"
   backend <- as.character(backend[[1L]])
   exact_dense <- backend %in%
@@ -150,7 +149,7 @@ ltsa_fixed_backend_metadata <- function(eig_res) {
   out
 }
 
-ltsa_fixed_backend_failure_messages <- function(eig_res, eig_k) {
+ltsa_backend_failure_messages <- function(eig_res, eig_k) {
   backend <- eig_res$backend %||% "unknown"
   backend <- as.character(backend[[1L]])
   nconv <- as.integer(eig_res$nconv %||% NA_integer_)
@@ -183,7 +182,7 @@ ltsa_fixed_backend_failure_messages <- function(eig_res, eig_k) {
   character()
 }
 
-ltsa_fixed_ritz_diagnostics <- function(
+ltsa_diagnose_ritz <- function(
   eig_res,
   rr,
   eig_k,
@@ -191,7 +190,7 @@ ltsa_fixed_ritz_diagnostics <- function(
   resid_tol,
   gap_tol
 ) {
-  backend <- ltsa_fixed_backend_metadata(eig_res)
+  backend <- ltsa_backend_metadata(eig_res)
   lambda_max <- eig_res$lambda_max %||% NA_real_
   values <- as.numeric(rr$values)
   residuals <- as.numeric(rr$residuals)
@@ -240,7 +239,7 @@ ltsa_fixed_ritz_diagnostics <- function(
   }
   invalid_messages <- c(
     invalid_messages,
-    ltsa_fixed_backend_failure_messages(eig_res, eig_k)
+    ltsa_backend_failure_messages(eig_res, eig_k)
   )
 
   warning_messages <- character()
@@ -329,8 +328,8 @@ ltsa_split_public_eigen_args <- function(args) {
   resid_tol <- ltsa_check_positive_finite(resid_tol, "resid_tol")
   gap_tol <- ltsa_check_positive_finite(gap_tol, "gap_tol")
 
-  fixed_names <- c("resid_tol", "gap_tol")
-  provider_args <- args[!(arg_names %in% fixed_names)]
+  diagnostic_arg_names <- c("resid_tol", "gap_tol")
+  provider_args <- args[!(arg_names %in% diagnostic_arg_names)]
 
   list(
     provider_args = provider_args,
@@ -352,7 +351,7 @@ ltsa_check_positive_finite <- function(x, name) {
   as.numeric(x)
 }
 
-ltsa_run_fixed_eigenanalysis <- function(
+ltsa_run_eigenanalysis <- function(
   B,
   ndim,
   eig_method,
@@ -381,7 +380,7 @@ ltsa_run_fixed_eigenanalysis <- function(
     }
   )
 
-  ltsa_fixed_ritz_eig(
+  ltsa_ritz_eig(
     B = B,
     ndim = ndim,
     provider = provider,
@@ -394,7 +393,7 @@ ltsa_run_fixed_eigenanalysis <- function(
   )
 }
 
-ltsa_fixed_ritz_eig <- function(
+ltsa_ritz_eig <- function(
   B,
   ndim,
   provider,
@@ -406,7 +405,6 @@ ltsa_fixed_ritz_eig <- function(
   verbose = FALSE
 ) {
   eig_k <- ltsa_validate_eig_k(eig_k = eig_k, ndim = ndim, n = nrow(B))
-  # Operator preparation belongs to the fixed driver; providers only solve.
   B <- symmetrize_ltsa_matrix(B)
   provider_args <- provider_args %||% list()
   eig_res <- do.call(
@@ -429,7 +427,7 @@ ltsa_fixed_ritz_eig <- function(
     nullvec = nullvec,
     lambda_max = lambda_max
   )
-  eigen <- ltsa_fixed_ritz_diagnostics(
+  eigen <- ltsa_diagnose_ritz(
     eig_res = eig_res,
     rr = rr,
     eig_k = eig_k,
@@ -448,8 +446,8 @@ ltsa_fixed_ritz_eig <- function(
   )
 }
 
-# Fixed-width diagnostics flag the specific case where the selected block
-# appears to cut through a near-zero nonconstant cluster.
+# Flag the case where the selected block appears to cut through a near-zero
+# nonconstant cluster.
 ltsa_partial_near_zero_block <- function(
   near_zero_count,
   ndim,

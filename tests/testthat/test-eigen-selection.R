@@ -61,7 +61,7 @@ synthetic_ltsa_matrix <- function(values) {
   synthetic_ltsa_problem(values)$matrix
 }
 
-fixed_width_provider_factory <- function(
+synthetic_candidate_provider_factory <- function(
   problem,
   backend = "synthetic",
   lambda_max = NULL,
@@ -96,7 +96,7 @@ fixed_width_provider_factory <- function(
       converged_columns
     }
 
-    flotsam:::ltsa_candidate_result(
+    flotsam:::new_ltsa_candidates(
       vectors = problem$basis[, cols_i, drop = FALSE],
       backend = backend,
       eig_k = eig_k,
@@ -317,18 +317,18 @@ test_that("small Ritz-selected cases agree with dense eigen reference subspaces"
   expect_gt(rr$global_gap, 0)
 })
 
-test_that("fixed-width default eig_k follows the public rule", {
+test_that("default eig_k follows the public rule", {
   expect_identical(flotsam:::ltsa_default_eig_k(ndim = 2L, n = 50L), 12L)
   expect_identical(flotsam:::ltsa_default_eig_k(ndim = 15L, n = 50L), 17L)
   expect_identical(flotsam:::ltsa_default_eig_k(ndim = 2L, n = 8L), 7L)
   expect_identical(flotsam:::ltsa_validate_eig_k(NULL, ndim = 2L, n = 50L), 12L)
 })
 
-test_that("fixed-width driver accepts minimum eig_k equal to ndim plus one", {
+test_that("Ritz driver accepts minimum eig_k equal to ndim plus one", {
   problem <- synthetic_ltsa_problem(c(0, 0.1, 0.2, 1, 2, 3))
-  fixture <- fixed_width_provider_factory(problem)
+  fixture <- synthetic_candidate_provider_factory(problem)
 
-  res <- flotsam:::ltsa_fixed_ritz_eig(
+  res <- flotsam:::ltsa_ritz_eig(
     problem$matrix,
     ndim = 2L,
     provider = fixture$provider,
@@ -344,21 +344,21 @@ test_that("fixed-width driver accepts minimum eig_k equal to ndim plus one", {
   expect_true(any(grepl("no spare boundary", res$eigen$messages)))
 })
 
-test_that("fixed-width eig_k validation rejects values below ndim plus one", {
+test_that("eig_k validation rejects values below ndim plus one", {
   expect_error(
     flotsam:::ltsa_validate_eig_k(2L, ndim = 2L, n = 6L),
     "ndim \\+ 1 <= eig_k < n"
   )
 })
 
-test_that("fixed-width eig_k validation rejects values at least n", {
+test_that("eig_k validation rejects values at least n", {
   expect_error(
     flotsam:::ltsa_validate_eig_k(6L, ndim = 2L, n = 6L),
     "ndim \\+ 1 <= eig_k < n"
   )
 })
 
-test_that("fixed-width driver calls the provider exactly once", {
+test_that("Ritz driver calls the provider exactly once", {
   problem <- synthetic_ltsa_problem(c(
     0,
     0.1,
@@ -377,9 +377,9 @@ test_that("fixed-width driver calls the provider exactly once", {
     233,
     377
   ))
-  fixture <- fixed_width_provider_factory(problem)
+  fixture <- synthetic_candidate_provider_factory(problem)
 
-  res <- flotsam:::ltsa_fixed_ritz_eig(
+  res <- flotsam:::ltsa_ritz_eig(
     problem$matrix,
     ndim = 2L,
     provider = fixture$provider
@@ -391,7 +391,7 @@ test_that("fixed-width driver calls the provider exactly once", {
   expect_identical(res$eigen$status, "ok")
 })
 
-test_that("public iterative LTSA honors explicit fixed eig_k", {
+test_that("public iterative LTSA honors explicit eig_k", {
   methods <- c("rspectra", "irlba", "svdr")
 
   for (method in methods) {
@@ -415,11 +415,11 @@ test_that("public iterative LTSA honors explicit fixed eig_k", {
   }
 })
 
-test_that("fixed-width diagnostics use compact solver-neutral shape", {
+test_that("Ritz diagnostics use compact solver-neutral shape", {
   problem <- synthetic_ltsa_problem(c(0, 0.1, 0.2, 1, 2, 3))
-  fixture <- fixed_width_provider_factory(problem)
+  fixture <- synthetic_candidate_provider_factory(problem)
 
-  res <- flotsam:::ltsa_fixed_ritz_eig(
+  res <- flotsam:::ltsa_ritz_eig(
     problem$matrix,
     ndim = 2L,
     provider = fixture$provider,
@@ -460,9 +460,9 @@ test_that("fixed-width diagnostics use compact solver-neutral shape", {
   expect_false(any(c("attempts", "acceptance", "ritz") %in% names(res)))
 })
 
-test_that("fixed-width diagnostics mark RSpectra nconv shortfall invalid", {
+test_that("Ritz diagnostics mark RSpectra nconv shortfall invalid", {
   problem <- synthetic_ltsa_problem(c(0, 0.1, 0.2, 1, 2, 3))
-  fixture <- fixed_width_provider_factory(
+  fixture <- synthetic_candidate_provider_factory(
     problem,
     backend = "rspectra",
     convergence_known = TRUE,
@@ -472,7 +472,7 @@ test_that("fixed-width diagnostics mark RSpectra nconv shortfall invalid", {
     nops = 101L
   )
 
-  res <- flotsam:::ltsa_fixed_ritz_eig(
+  res <- flotsam:::ltsa_ritz_eig(
     problem$matrix,
     ndim = 2L,
     provider = fixture$provider,
@@ -486,9 +486,9 @@ test_that("fixed-width diagnostics mark RSpectra nconv shortfall invalid", {
   expect_true(any(grepl("3 / 4", res$eigen$messages, fixed = TRUE)))
 })
 
-test_that("fixed-width diagnostics do not invent non-RSpectra convergence", {
+test_that("Ritz diagnostics do not invent non-RSpectra convergence", {
   problem <- synthetic_ltsa_problem(c(0, 0.1, 0.2, 1, 2, 3))
-  fixture <- fixed_width_provider_factory(
+  fixture <- synthetic_candidate_provider_factory(
     problem,
     backend = "irlba",
     convergence_known = FALSE,
@@ -497,7 +497,7 @@ test_that("fixed-width diagnostics do not invent non-RSpectra convergence", {
     mprod = 31L
   )
 
-  res <- flotsam:::ltsa_fixed_ritz_eig(
+  res <- flotsam:::ltsa_ritz_eig(
     problem$matrix,
     ndim = 2L,
     provider = fixture$provider,
@@ -513,11 +513,11 @@ test_that("fixed-width diagnostics do not invent non-RSpectra convergence", {
   expect_length(res$eigen$messages, 0L)
 })
 
-test_that("fixed-width diagnostics give eig_k and backend-setting guidance", {
+test_that("Ritz diagnostics give eig_k and backend-setting guidance", {
   problem <- synthetic_ltsa_problem(c(0, 1e-10, 1e-3, 2e-3, 1))
-  fixture <- fixed_width_provider_factory(problem)
+  fixture <- synthetic_candidate_provider_factory(problem)
 
-  res <- flotsam:::ltsa_fixed_ritz_eig(
+  res <- flotsam:::ltsa_ritz_eig(
     problem$matrix,
     ndim = 2L,
     provider = fixture$provider,
@@ -538,7 +538,7 @@ test_that("fixed-width diagnostics give eig_k and backend-setting guidance", {
   )))
 })
 
-test_that("fixed-width driver handles arbitrary normalized-style null vectors", {
+test_that("Ritz driver handles arbitrary normalized-style null vectors", {
   nullvec <- c(1, 2, 3, 2, 1, 4)
   nullvec <- nullvec / sqrt(sum(nullvec * nullvec))
   Z <- cbind(
@@ -562,7 +562,7 @@ test_that("fixed-width driver handles arbitrary normalized-style null vectors", 
     0, 2, 0, 1, -1
   ), nrow = 5L)))
   provider <- function(B, eig_k, lambda_max = NULL, verbose = FALSE) {
-    flotsam:::ltsa_candidate_result(
+    flotsam:::new_ltsa_candidates(
       vectors = candidates[, seq_len(eig_k), drop = FALSE],
       backend = "synthetic",
       eig_k = eig_k,
@@ -574,7 +574,7 @@ test_that("fixed-width driver handles arbitrary normalized-style null vectors", 
     )
   }
 
-  res <- flotsam:::ltsa_fixed_ritz_eig(
+  res <- flotsam:::ltsa_ritz_eig(
     B,
     ndim = 2L,
     provider = provider,
@@ -636,7 +636,7 @@ test_that("RSpectra path uses shifted largest-algebraic solve with residual meta
   expect_s4_class(res$matrix, "dgCMatrix")
 })
 
-test_that("RSpectra candidate provider returns fixed-width driver inputs", {
+test_that("RSpectra candidate provider returns candidate bundle", {
   B <- flotsam:::symmetrize_ltsa_matrix(Matrix::Diagonal(x = seq(0, 29)))
 
   res <- flotsam:::ltsa_rspectra_candidate_provider(
@@ -657,7 +657,7 @@ test_that("RSpectra candidate provider returns fixed-width driver inputs", {
   expect_s4_class(res$matrix, "dgCMatrix")
 })
 
-test_that("fixed-width RSpectra driver returns diagnostics", {
+test_that("RSpectra Ritz driver returns diagnostics", {
   B <- synthetic_ltsa_matrix(c(
     0,
     0.1,
@@ -684,7 +684,7 @@ test_that("fixed-width RSpectra driver returns diagnostics", {
   ord <- order(dense$values)
   reference <- dense$vectors[, ord[2:3], drop = FALSE]
 
-  res <- flotsam:::ltsa_fixed_ritz_eig(
+  res <- flotsam:::ltsa_ritz_eig(
     Matrix::Matrix(B, sparse = TRUE),
     ndim = 2L,
     provider = flotsam:::ltsa_rspectra_candidate_provider,
@@ -707,7 +707,7 @@ test_that("fixed-width RSpectra driver returns diagnostics", {
   expect_lt(max(res$eigen$residuals), 1e-8)
 })
 
-test_that("irlba and svdr candidate providers return fixed-width driver inputs", {
+test_that("irlba and svdr candidate providers return candidate bundles", {
   B <- flotsam:::symmetrize_ltsa_matrix(Matrix::Diagonal(x = seq(0, 29)))
   providers <- list(
     irlba = list(
@@ -739,7 +739,7 @@ test_that("irlba and svdr candidate providers return fixed-width driver inputs",
   }
 })
 
-test_that("fixed-width irlba and svdr drivers agree with dense reference subspaces", {
+test_that("irlba and svdr Ritz drivers agree with dense reference subspaces", {
   # fmt: skip
   B <- synthetic_ltsa_matrix(c(
     0, 0.1, 0.2, 1, 3, 5, 8, 13, 21, 34,
@@ -761,7 +761,7 @@ test_that("fixed-width irlba and svdr drivers agree with dense reference subspac
 
   for (backend in names(backends)) {
     set.seed(42)
-    res <- flotsam:::ltsa_fixed_ritz_eig(
+    res <- flotsam:::ltsa_ritz_eig(
       B = Matrix::Matrix(B, sparse = TRUE),
       ndim = 2L,
       provider = backends[[backend]]$provider,

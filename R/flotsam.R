@@ -59,8 +59,8 @@
 #'      feasible for small datasets and should be used for diagnostic purposes
 #'      only. Dense `"eig"` is the better diagnostic reference when algebraic
 #'      eigenvalue ordering matters.
-#' @param eig_k Explicit fixed-width number of candidate vectors requested from
-#'   the final eigensolver. If `NULL`, the default is
+#' @param eig_k Number of candidate vectors requested from the final
+#'   eigensolver. If `NULL`, the default is
 #'   `min(n - 1L, max(12L, ndim + 2L))`, where `n` is the number of
 #'   observations. Must satisfy `ndim + 1 <= eig_k < n`. Larger values give
 #'   the Rayleigh-Ritz postprocessing a wider candidate span.
@@ -235,7 +235,7 @@ ltsa <-
 
     eig_res <- tryCatch(
       {
-        ltsa_run_fixed_eigenanalysis(
+        ltsa_run_eigenanalysis(
           B = B_operator,
           ndim = validated$ndim,
           eig_method = validated$eig_method,

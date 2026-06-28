@@ -1,14 +1,6 @@
-# Backend-neutral candidate result objects and candidate providers for
-# RSpectra, irlba, svdr, and dense LTSA diagnostic solves.
-#
-# Providers assume the fixed-width driver has already prepared a symmetric
-# solver matrix and validated the requested candidate width.
-
-# Backend-neutral candidate result contract. Providers may use different
-# eigensolver APIs, but the fixed-width LTSA path only needs candidate vectors,
-# Rayleigh values against the matrix of interest, convergence metadata when
-# available, and residual diagnostics.
-ltsa_candidate_result <- function(
+# Eigensolver backends return candidate vectors for the final Rayleigh-Ritz
+# selection step, plus compact backend metadata for diagnostics.
+new_ltsa_candidates <- function(
   vectors,
   values = NULL,
   shifted_values = NULL,
@@ -114,7 +106,7 @@ ltsa_rspectra_candidate_provider <- function(
       call. = FALSE
     )
   }
-  finished <- ltsa_finish_shifted_candidates(
+  finished <- ltsa_sort_and_score_candidates(
     B = B,
     vectors = res$vectors,
     eig_k = eig_k,
@@ -131,7 +123,7 @@ ltsa_rspectra_candidate_provider <- function(
     signif(max(finished$residuals$scaled_residuals), 4)
   )
 
-  candidate <- ltsa_candidate_result(
+  candidate <- new_ltsa_candidates(
     vectors = finished$vectors,
     values = finished$values,
     shifted_values = finished$shifted_values,
@@ -194,7 +186,7 @@ ltsa_svdr_lambda_max_probe <- function(B) {
   )
 }
 
-ltsa_finish_shifted_candidates <- function(
+ltsa_sort_and_score_candidates <- function(
   B,
   vectors,
   eig_k,
@@ -228,10 +220,9 @@ ltsa_finish_shifted_candidates <- function(
   )
 }
 
-# Candidate results for shifted solves are always re-valued against the
-# original LTSA matrix. The shifted backend values are retained only as backend
-# metadata; final selection uses Rayleigh values of B.
-ltsa_shifted_candidate_result <- function(
+# Shifted solves are re-valued against the original LTSA matrix. The shifted
+# backend values are retained only as metadata; final selection uses B.
+new_ltsa_shifted_candidates <- function(
   B,
   vectors,
   eig_k,
@@ -247,7 +238,7 @@ ltsa_shifted_candidate_result <- function(
   opts = NULL,
   returned_columns = ncol(as.matrix(vectors))
 ) {
-  finished <- ltsa_finish_shifted_candidates(
+  finished <- ltsa_sort_and_score_candidates(
     B = B,
     vectors = vectors,
     eig_k = eig_k,
@@ -263,7 +254,7 @@ ltsa_shifted_candidate_result <- function(
     signif(max(finished$residuals$scaled_residuals), 4)
   )
 
-  candidate <- ltsa_candidate_result(
+  candidate <- new_ltsa_candidates(
     vectors = finished$vectors,
     values = finished$values,
     shifted_values = finished$shifted_values,
@@ -346,7 +337,7 @@ ltsa_irlba_candidate_provider <- function(
   )
   res <- do.call(irlba::irlba, args)
 
-  ltsa_shifted_candidate_result(
+  new_ltsa_shifted_candidates(
     B = B,
     vectors = res$v,
     eig_k = eig_k,
@@ -417,7 +408,7 @@ ltsa_svdr_candidate_provider <- function(
   )
   res <- do.call(irlba::svdr, args)
 
-  ltsa_shifted_candidate_result(
+  new_ltsa_shifted_candidates(
     B = B,
     vectors = res$v,
     eig_k = eig_k,
@@ -448,7 +439,7 @@ dense_ltsa_eig <- function(B, eig_k, backend = "dense_eigen") {
   vectors <- vectors_all[, take, drop = FALSE]
   residuals <- ltsa_ritz_residuals(B, vectors, values, lambda_max)
 
-  candidate <- ltsa_candidate_result(
+  candidate <- new_ltsa_candidates(
     vectors = vectors,
     values = values,
     backend = backend,
