@@ -436,14 +436,6 @@ ltsa_fixed_ritz_eig <- function(
     lambda_max = NULL,
     verbose = verbose
   )
-  eig_res <- ltsa_as_candidate_result(
-    eig_res,
-    B = B,
-    eig_k = eig_k,
-    backend = eig_res$backend %||% "unknown",
-    lambda_max = eig_res$lambda_max %||% NULL,
-    convergence_known = eig_res$convergence_known %||% FALSE
-  )
   lambda_max <- eig_res$lambda_max %||% NA_real_
   rr <- ltsa_ritz_select(
     B = eig_res$matrix,

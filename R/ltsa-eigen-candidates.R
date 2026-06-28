@@ -48,59 +48,6 @@ ltsa_candidate_result <- function(
   )
 }
 
-ltsa_as_candidate_result <- function(
-  res,
-  B,
-  eig_k,
-  backend = res$backend %||% "unknown",
-  lambda_max = NULL,
-  convergence_known = FALSE
-) {
-  if (is.null(res$vectors)) {
-    stop(
-      "LTSA candidate provider did not return candidate vectors",
-      call. = FALSE
-    )
-  }
-
-  matrix <- res$matrix %||% B
-  values <- res$values
-  if (is.null(values)) {
-    values <- ltsa_rayleigh_values(matrix, res$vectors)
-  }
-
-  candidate <- ltsa_candidate_result(
-    vectors = res$vectors,
-    values = values,
-    shifted_values = if ("shifted_values" %in% names(res)) {
-      res$shifted_values
-    } else {
-      NULL
-    },
-    backend = res$backend %||% backend,
-    eig_k = res$eig_k %||% eig_k,
-    matrix = matrix,
-    lambda_max = res$lambda_max %||% lambda_max,
-    lambda_probe = if ("lambda_probe" %in% names(res)) {
-      res$lambda_probe
-    } else {
-      NULL
-    },
-    nconv = res$nconv %||% NA_integer_,
-    niter = res$niter %||% NA_integer_,
-    nops = res$nops %||% NA_integer_,
-    mprod = res$mprod %||% NA_integer_,
-    opts = res$opts %||% NULL,
-    convergence_known = res$convergence_known %||% convergence_known,
-    returned_columns = res$returned_columns %||% ncol(as.matrix(res$vectors)),
-    converged_columns = res$converged_columns %||%
-      (res$nconv %||% NA_integer_)
-  )
-  extra_names <- setdiff(names(res), names(candidate))
-  candidate[extra_names] <- res[extra_names]
-  candidate
-}
-
 ltsa_call_candidate_provider <- function(
   provider,
   B,
