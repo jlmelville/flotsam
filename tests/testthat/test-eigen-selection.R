@@ -640,7 +640,7 @@ test_that("RSpectra path uses shifted largest-algebraic solve with residual meta
   expect_s4_class(res$matrix, "dgCMatrix")
 })
 
-test_that("RSpectra candidate provider returns backend-neutral fields", {
+test_that("RSpectra candidate provider returns fixed-width driver inputs", {
   B <- Matrix::Diagonal(x = seq(0, 29))
 
   res <- flotsam:::ltsa_rspectra_candidate_provider(
@@ -651,31 +651,11 @@ test_that("RSpectra candidate provider returns backend-neutral fields", {
     maxitr = 5000L
   )
 
-  expect_true(all(
-    c(
-      "vectors",
-      "values",
-      "shifted_values",
-      "backend",
-      "eig_k",
-      "matrix",
-      "lambda_max",
-      "lambda_probe",
-      "nconv",
-      "niter",
-      "nops",
-      "mprod",
-      "opts",
-      "convergence_known",
-      "returned_columns",
-      "converged_columns"
-    ) %in%
-      names(res)
-  ))
   expect_identical(res$backend, "rspectra")
   expect_identical(res$eig_k, 6L)
   expect_true(res$convergence_known)
   expect_gte(res$nconv, 6L)
+  expect_true(is.finite(res$lambda_max))
   expect_equal(res$values, seq(0, 5), tolerance = 1e-8)
   expect_equal(ncol(res$vectors), 6L)
   expect_s4_class(res$matrix, "dgCMatrix")
@@ -731,7 +711,7 @@ test_that("fixed-width RSpectra driver returns diagnostics", {
   expect_lt(max(res$eigen$residuals), 1e-8)
 })
 
-test_that("irlba and svdr candidate providers return backend-neutral fields", {
+test_that("irlba and svdr candidate providers return fixed-width driver inputs", {
   B <- Matrix::Diagonal(x = seq(0, 29))
   providers <- list(
     irlba = list(
@@ -755,8 +735,8 @@ test_that("irlba and svdr candidate providers return backend-neutral fields", {
     expect_identical(res$eig_k, 6L)
     expect_false(res$convergence_known)
     expect_true(is.na(res$nconv))
-    expect_true(is.na(res$converged_columns))
     expect_true(is.finite(res$mprod))
+    expect_true(is.finite(res$lambda_max))
     expect_equal(res$values, seq(0, 5), tolerance = 1e-8)
     expect_equal(ncol(res$vectors), 6L)
     expect_s4_class(res$matrix, "dgCMatrix")
