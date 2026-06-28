@@ -198,8 +198,8 @@ functions in irlba will be used instead of RSpectra. They do not expose the
 same convergence metadata as RSpectra, so they rely on post-hoc residual
 diagnostics rather than hard backend convergence counts. For small diagnostic
 cases, `eig_method = "eig"` and `eig_method = "eigen"` are synonyms for base
-`eigen()`, and `eig_method = "fullsvd"` uses base `svd()`. Dense `eig` is the
-better diagnostic reference when algebraic eigenvalue ordering matters.
+`eigen()`. Dense `eig` is the diagnostic reference when algebraic eigenvalue
+ordering matters.
 
 There is also a `normalize = TRUE` option, which I included experimentally in
 analogy with normalized and un-normalized graph Laplacians. In cases where

@@ -61,15 +61,6 @@ test_that("iris10", {
     eig_method = "eig"
   )
   expect_equal(abs(iris10_ltsa), abs(iris10_ltsa_expected), tolerance = 1e-2)
-
-  iris10_ltsa <- ltsa(
-    iris[1:10, ],
-    nn_method = "exact",
-    n_neighbors = 8,
-    include_self = FALSE,
-    eig_method = "fullsvd"
-  )
-  expect_equal(abs(iris10_ltsa), abs(iris10_ltsa_expected), tolerance = 1e-2)
 })
 
 test_that("normalized", {
@@ -142,17 +133,6 @@ test_that("normalized", {
       eig_method = "eig"
     )
   expect_equal(abs(iris10_ltsa), abs(iris10_ltsa_expected), tolerance = 1e-2)
-
-  iris10_ltsa <-
-    ltsa(
-      iris[1:10, ],
-      nn_method = "exact",
-      n_neighbors = 8,
-      include_self = TRUE,
-      normalize = TRUE,
-      eig_method = "fullsvd"
-    )
-  expect_equal(abs(iris10_ltsa), abs(iris10_ltsa_expected), tolerance = 1e-2)
 })
 
 expect_ltsa_public_result <- function(
@@ -163,7 +143,7 @@ expect_ltsa_public_result <- function(
   ndim = 2L,
   eig_k = 4L
 ) {
-  expect_named(result, c("embedding", "eigen", "assembly", "B"))
+  expect_named(result, c("embedding", "eigen", "assembly"))
   expect_true(is.matrix(result$embedding))
   expect_equal(dim(result$embedding), c(n, ndim))
   expect_named(
@@ -191,7 +171,7 @@ expect_ltsa_public_result <- function(
   expect_gte(result$eigen$rank, ndim)
   expect_true(result$eigen$status %in% c("ok", "warning", "invalid"))
   expect_true(is.list(result$eigen$backend))
-  expect_null(result$B)
+  expect_false("B" %in% names(result))
   expect_identical(result$assembly$n_neighbors, 8L)
   expect_identical(result$assembly$neighbor_source, "exact")
   expect_type(result$assembly$neighbor_elapsed, "double")
@@ -214,7 +194,7 @@ test_that("default public return remains an embedding matrix", {
 })
 
 test_that("all solver methods support detailed public results", {
-  methods <- c("rspectra", "irlba", "svdr", "eig", "eigen", "fullsvd")
+  methods <- c("rspectra", "irlba", "svdr", "eig", "eigen")
 
   for (method in methods) {
     set.seed(7)

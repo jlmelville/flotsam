@@ -266,7 +266,7 @@ test_that("public output modes control B and detailed result contents", {
     output = "result"
   )
   expect_true(is.list(result_without_B))
-  expect_null(result_without_B$B)
+  expect_false("B" %in% names(result_without_B))
 
   result_with_B <- ltsa(
     X,

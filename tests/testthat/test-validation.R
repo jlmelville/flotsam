@@ -16,6 +16,10 @@ test_that("invalid methods are rejected early", {
     "eig_method"
   )
   expect_error(
+    ltsa(iris[1:10, ], eig_method = "fullsvd"),
+    "eig_method"
+  )
+  expect_error(
     ltsa(iris[1:10, ], eig_method = c("eig", "eigen")),
     "eig_method"
   )

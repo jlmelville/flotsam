@@ -42,32 +42,16 @@ nearest-neighbor graph. Can be one of:
 Slow for large datasets.
 \item A precomputed nearest-neighbor index matrix.
 \item A nearest-neighbor result object with an \code{idx} matrix.
-}
-
-Precomputed index matrices should match the raw neighbor-search output used
-by \code{rnndescent}: one row per observation and 1-based indices into \code{X}. When
-\code{include_self = TRUE}, \code{ncol(nn_method)} must equal \code{n_neighbors} and each
-row must contain its own row index. When \code{include_self = FALSE},
-\code{ncol(nn_method)} must equal \code{n_neighbors + 1} and the first column must
-contain the row index, because that column is dropped before LTSA assembly.}
+}}
 
 \item{eig_method}{How to carry out the final eigendecomposition. Possible
 values are:
 \itemize{
-\item \code{"rspectra"} Use \code{\link[RSpectra:eigs_sym]{RSpectra::eigs_sym()}} to generate candidate vectors,
-then apply null-aware Rayleigh-Ritz postprocessing. This is the default
-and can report hard backend convergence failures through RSpectra's
-\code{nconv} metadata.
-\item \code{"irlba"} Use \code{\link[irlba:irlba]{irlba::irlba()}} to generate candidate vectors, then apply
-the same null-aware Rayleigh-Ritz postprocessing. This backend does not
-report RSpectra-style convergence counts, so convergence issues are
-detected with post-hoc residual diagnostics.
-\item \code{"svdr"} Use \code{\link[irlba:svdr]{irlba::svdr()}} to generate candidate vectors, then apply
-the same null-aware Rayleigh-Ritz postprocessing. This backend does not
-report RSpectra-style convergence counts, so convergence issues are
-detected with post-hoc residual diagnostics.
-\item \code{"fullsvd"} Use the \code{\link[base:svd]{base::svd()}} function. This is only feasible for
-small datasets and should be used for diagnostic purposes only.
+\item \code{"rspectra"} Use \code{\link[RSpectra:eigs_sym]{RSpectra::eigs_sym()}}. This is the default and can
+report hard backend convergence failures through RSpectra's \code{nconv}
+metadata.
+\item \code{"irlba"} Use \code{\link[irlba:irlba]{irlba::irlba()}} and post-hoc residual diagnostics.
+\item \code{"svdr"} Use \code{\link[irlba:svdr]{irlba::svdr()}} and post-hoc residual diagnostics.
 \item \code{"eig"} or \code{"eigen"} Use the \code{\link[base:eigen]{base::eigen()}} function. This is only
 feasible for small datasets and should be used for diagnostic purposes
 only. Dense \code{"eig"} is the better diagnostic reference when algebraic
@@ -101,12 +85,7 @@ may allow emulating the HLLE method.}
 
 \item{normalize}{If \code{TRUE}, calculate the final decomposition on a normalized
 LTSA formulation rather than the unnormalized alignment matrix. This is a
-separate spectral objective. For iterative methods (\code{"rspectra"},
-\code{"irlba"}, and \code{"svdr"}), the normalized operator uses the same
-fixed-width null-aware Rayleigh-Ritz selection as the unnormalized path,
-then transforms the selected vectors back to output coordinates. The
-normalized formulation may have different downstream properties, for
-example when clustering on the eigenvectors.}
+separate spectral objective and may have different downstream properties.}
 
 \item{n_threads}{Number of threads to use. Applies only to the nearest
 neighbor calculation.}
@@ -118,111 +97,56 @@ parallel construction of \code{B}, which can be faster but may increase peak
 memory use.}
 
 \item{copy_max_mib}{Maximum size, in MiB, of the optional row-major dense
-copy of \code{X} used to speed up high-dimensional local Gram assembly. If this
-cap is exceeded, no row-major copy is made. The default is 256 MiB. Set to
-\code{0} to disable this copy. This code path is only used when the number of
-numeric columns in \code{X} is greater than the number of neighbors. Outside of
-synthetic datasets, you are quite likely to hit this code path.}
+copy of \code{X} used during high-dimensional local Gram assembly. Set to \code{0}
+to disable this copy.}
 
 \item{verbose}{If \code{TRUE} log information about progress to the console.}
 
-\item{...}{Extra arguments to be passed to the eigendecomposition method
-specified by \code{eig_method}. These backend settings affect how the requested
-fixed-width candidate block is computed. For \code{"rspectra"}, arguments are
-passed to the \code{opts} list used by \code{\link[RSpectra:eigs_sym]{RSpectra::eigs_sym()}}. Common tuning
-parameters are:
-\itemize{
-\item \code{tol} Tolerance.
-\item \code{maxitr} Maximum number of iterations.
-\item \code{ncv} Number of Lanczos vectors to use.
-}
-
-For \code{"irlba"}, arguments are passed to \code{\link[irlba:irlba]{irlba::irlba()}}. Common tuning
-parameters are:
-\itemize{
-\item \code{tol} Tolerance.
-\item \code{maxit} Maximum number of iterations.
-\item \code{reorth} Whether to use full reorthogonalization.
-}
-
-For \code{"svdr"}, arguments are passed to \code{\link[irlba:svdr]{irlba::svdr()}}. Common tuning
-parameters are:
-\itemize{
-\item \code{tol} Tolerance.
-\item \code{it}  Maximum number of iterations.
-}
-
-The iterative methods all use shared fixed-width Rayleigh-Ritz
-postprocessing and residual diagnostics. Only RSpectra reports explicit
-convergence counts; \code{"irlba"} and \code{"svdr"} rely on post-hoc residual
-diagnostics instead. \code{resid_tol} and \code{gap_tol} set the scaled residual and
-global boundary-gap diagnostic tolerances used to classify the requested
-solve.
-
-For more details see the documentation for \code{\link[RSpectra:eigs_sym]{RSpectra::eigs_sym()}},
-\code{\link[irlba:irlba]{irlba::irlba()}} and \code{\link[irlba:svdr]{irlba::svdr()}} functions, respectively. Don't pass
-other arguments unless you know what you are doing, as it may cause the
-\code{ltsa} to fail.}
+\item{...}{Extra eigensolver controls. For \code{"rspectra"}, common controls are
+\code{tol}, \code{maxitr}, and \code{ncv}. For \code{"irlba"}, common controls are \code{tol},
+\code{maxit}, and \code{reorth}. For \code{"svdr"}, common controls are \code{tol} and \code{it}.
+\code{resid_tol} and \code{gap_tol} tune the diagnostic thresholds used to classify
+the requested solve. Other backend arguments may cause the solve to fail.}
 }
 \description{
 Apply the Local Tangent Space Alignment (LTSA) method (Zhang and Zha, 2004)
 for dimensionality reduction.
 }
 \details{
-LTSA forms a sparse alignment matrix \code{B} and then returns the low-energy
-nonconstant eigenvectors of that matrix. The public iterative final
-eigenanalysis path is a fixed-width solve: \code{eig_k} is the number of
-candidate vectors requested from the selected backend before Rayleigh-Ritz
-selection and diagnostic classification.
+\code{ltsa()} builds an LTSA alignment matrix from local neighborhoods and
+returns the lowest nonconstant embedding vectors. The default
+\code{output = "embedding"} returns only the embedding matrix.
 
-After the backend returns its candidate block, \code{flotsam} projects out the
-known constant null vector, orthonormalizes the remaining candidate span,
-performs a small Rayleigh-Ritz extraction on the operator being solved,
-sorts by the resulting Ritz values, and returns the first \code{ndim}
-nonconstant Ritz vectors. This postprocessing is intended to make clustered
-low-energy spectra less fragile than returning the raw backend vectors.
+Use \code{output = "result"} to inspect compact diagnostics when convergence or
+eigenspace ambiguity matters. The result contains the embedding,
+eigenanalysis diagnostics, assembly diagnostics, and, when
+\code{include_B = TRUE}, the assembled unnormalized matrix \code{B}. The diagnostic
+\code{status} and \code{messages} fields summarize the requested solve; if they look
+suspicious, rerun with a larger \code{eig_k} or stricter backend settings.
 
-Use \code{output = "result"} to inspect compact diagnostics for the requested
-solve. The \code{eigen} component records the backend method, whether the
-normalized formulation was used, \code{eig_k}, selected values, all post-null
-Ritz values available inside the candidate span, scaled residuals, post-null
-rank, an estimated largest eigenvalue, solver-neutral status, messages, and
-backend metadata. The \code{assembly} component records nearest-neighbor source
-and timing alongside matrix assembly diagnostics. These diagnostics classify
-the requested fixed-width solve, but they are not completeness certificates
-for the full low-energy eigenspace. If diagnostics look suspicious, rerun
-with a larger \code{eig_k} or stricter backend settings.
+Use \code{output = "B"} to return the assembled unnormalized LTSA matrix and skip
+final eigenanalysis.
 
-The \code{"rspectra"} path first estimates the largest eigenvalue and solves a
-shifted largest-algebraic problem instead of using shift-invert near zero.
-RSpectra's \code{nconv} metadata is treated as a hard backend convergence check.
-The \code{"irlba"} and \code{"svdr"} paths use the same Rayleigh-Ritz selection and
-diagnostics, but they rely on post-hoc residual checks because those
-backends do not expose RSpectra-style convergence counts.
-
-\code{normalize = TRUE} selects a separate normalized LTSA formulation. For
-iterative methods, the normalized operator uses the same fixed-width,
-null-aware Rayleigh-Ritz workflow and then transforms the selected vectors
-back to output coordinates.
+\code{normalize = TRUE} selects a separate normalized LTSA formulation. It may
+have different downstream behavior from the default unnormalized objective.
 }
+\section{Precomputed neighbor input}{
+
+\code{nn_method} may be a precomputed 1-based neighbor index matrix or an object
+with an \code{idx} matrix. With \code{include_self = TRUE}, each row must include its
+own row index and have \code{n_neighbors} columns. With \code{include_self = FALSE},
+the first column must contain the row index and is dropped before LTSA
+assembly, so the matrix must have \code{n_neighbors + 1} columns.
+}
+
+\section{Performance and memory controls}{
+
+\code{copy_max_mib} limits an optional row-major dense copy of \code{X} used during
+high-dimensional local Gram assembly. Increase it only when that copy is
+useful and enough memory is available; set it to \code{0} to disable the copy.
+}
+
 \examples{
-n <- 1000
-max_z <- 10
-
-phi <- stats::runif(n, min = 1.5 * pi, max = 4.5 * pi)
-x <- phi * cos(phi)
-y <- phi * sin(phi)
-z <- stats::runif(n, max = max_z)
-swiss_roll <- data.frame(x, y, z)
-
-# unroll it
-swiss_ltsa <- ltsa(swiss_roll)
-plot(swiss_ltsa, col = phi)
-
-# compare with PCA
-swiss_pca <- stats::prcomp(swiss_roll, rank. = 2, scale = FALSE, retx = TRUE)$x
-plot(swiss_pca, col = phi)
-
 # The default return is the embedding matrix.
 small_iris <- iris[1:75, 1:4]
 iris_ltsa <- ltsa(
@@ -242,7 +166,7 @@ iris_result <- ltsa(
 iris_result$eigen$status
 iris_result$eigen$messages
 
-# Return the assembled unnormalized LTSA matrix without final eigenanalysis.
+# Return the assembled unnormalized LTSA matrix.
 iris_B <- ltsa(
   small_iris,
   n_neighbors = 12,
@@ -250,27 +174,6 @@ iris_B <- ltsa(
   output = "B"
 )
 dim(iris_B)
-
-# If diagnostics are suspicious, rerun with a wider fixed candidate request.
-iris_wider <- ltsa(
-  small_iris,
-  n_neighbors = 12,
-  nn_method = "exact",
-  eig_k = 16,
-  output = "result"
-)
-
-# Or rerun with stricter RSpectra backend settings.
-iris_strict <- ltsa(
-  small_iris,
-  n_neighbors = 12,
-  nn_method = "exact",
-  eig_k = 8,
-  output = "result",
-  tol = 1e-8,
-  maxitr = 5000,
-  ncv = 30
-)
 }
 \references{
 Zhang, Z., & Zha, H. (2004).
