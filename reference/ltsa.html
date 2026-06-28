@@ -108,8 +108,8 @@ eigenvalue ordering matters.</p></li>
 
 
 <dt id="arg-eig-k">eig_k<a class="anchor" aria-label="anchor" href="#arg-eig-k"></a></dt>
-<dd><p>Explicit fixed-width number of candidate vectors requested from
-the final eigensolver. If <code>NULL</code>, the default is
+<dd><p>Number of candidate vectors requested from the final
+eigensolver. If <code>NULL</code>, the default is
 <code>min(n - 1L, max(12L, ndim + 2L))</code>, where <code>n</code> is the number of
 observations. Must satisfy <code>ndim + 1 &lt;= eig_k &lt; n</code>. Larger values give
 the Rayleigh-Ritz postprocessing a wider candidate span.</p></dd>

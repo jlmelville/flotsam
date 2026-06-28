@@ -104,14 +104,14 @@
 <div class="section level2">
 <h2 id="current-status">Current Status<a class="anchor" aria-label="anchor" href="#current-status"></a>
 </h2>
-<p><em>June 27 2026</em>: Version 0.0.0.9002 uses C++ local-weight construction, triangular sparse matrix assembly, and fixed-width Rayleigh-Ritz postprocessing for final eigenanalysis.</p>
+<p><em>June 27 2026</em>: Version 0.0.0.9002 uses C++ local-weight construction, triangular sparse matrix assembly, and Rayleigh-Ritz postprocessing for final eigenanalysis.</p>
 <p>Still experimental, but now less accurately described as only “Finicky”. Its speed relies on the interaction of:</p>
 <ul>
 <li>Using approximate nearest neighbors to define the local neighborhoods.</li>
 <li>Using a <a href="https://cran.r-project.org/package=Matrix" class="external-link">sparse matrix</a> representation of <code>B</code>.</li>
 <li>Computing local neighborhood weights in C++ with LAPACK. High-dimensional neighborhoods use an exact centered Gram route; lower-dimensional neighborhoods use direct SVD.</li>
 <li>Using triangular sparse assembly in C++, with optional parallel construction controlled by <code>n_assembly_threads</code>.</li>
-<li>Using <a href="https://cran.r-project.org/package=RSpectra" class="external-link">RSpectra</a> by default to recover the small-eigenvalue directions of <code>B</code>. The iterative backends (<code>"rspectra"</code>, <code>"irlba"</code>, and <code>"svdr"</code>) request a fixed-width candidate block controlled by <code>eig_k</code>, then use null-vector projection, Rayleigh-Ritz postprocessing, and residual diagnostics before returning embedding vectors.</li>
+<li>Using <a href="https://cran.r-project.org/package=RSpectra" class="external-link">RSpectra</a> by default to recover the small-eigenvalue directions of <code>B</code>. The iterative backends (<code>"rspectra"</code>, <code>"irlba"</code>, and <code>"svdr"</code>) request a candidate block controlled by <code>eig_k</code>, then use null-vector projection, Rayleigh-Ritz postprocessing, and residual diagnostics before returning embedding vectors.</li>
 </ul>
 <p>It’s not a great idea to use large values of <code>k</code> to define the neighborhoods: you will get something that approaches a “global” SVD/PCA at much greater effort. If you insist on doing this (e.g. set <code>n_neighbors = 1000</code>), the local weight calculation and sparse matrix assembly both scale with the number of neighborhood entries, roughly <code>N * k * k</code>.</p>
 <p>The approximate nearest neighbor search (which can be exact if you want) is controlled by <code>n_threads</code>. Construction of the LTSA alignment matrix <code>B</code> is controlled separately by <code>n_assembly_threads</code>.</p>

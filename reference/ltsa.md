@@ -83,11 +83,11 @@ ltsa(
 
 - eig_k:
 
-  Explicit fixed-width number of candidate vectors requested from the
-  final eigensolver. If `NULL`, the default is
-  `min(n - 1L, max(12L, ndim + 2L))`, where `n` is the number of
-  observations. Must satisfy `ndim + 1 <= eig_k < n`. Larger values give
-  the Rayleigh-Ritz postprocessing a wider candidate span.
+  Number of candidate vectors requested from the final eigensolver. If
+  `NULL`, the default is `min(n - 1L, max(12L, ndim + 2L))`, where `n`
+  is the number of observations. Must satisfy `ndim + 1 <= eig_k < n`.
+  Larger values give the Rayleigh-Ritz postprocessing a wider candidate
+  span.
 
 - output:
 

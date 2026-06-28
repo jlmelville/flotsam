@@ -69,8 +69,8 @@ clear, but this is what happens:
 ## Current Status
 
 *June 27 2026*: Version 0.0.0.9002 uses C++ local-weight construction,
-triangular sparse matrix assembly, and fixed-width Rayleigh-Ritz
-postprocessing for final eigenanalysis.
+triangular sparse matrix assembly, and Rayleigh-Ritz postprocessing for
+final eigenanalysis.
 
 Still experimental, but now less accurately described as only “Finicky”.
 Its speed relies on the interaction of:
@@ -86,9 +86,9 @@ Its speed relies on the interaction of:
 - Using [RSpectra](https://cran.r-project.org/package=RSpectra) by
   default to recover the small-eigenvalue directions of `B`. The
   iterative backends (`"rspectra"`, `"irlba"`, and `"svdr"`) request a
-  fixed-width candidate block controlled by `eig_k`, then use
-  null-vector projection, Rayleigh-Ritz postprocessing, and residual
-  diagnostics before returning embedding vectors.
+  candidate block controlled by `eig_k`, then use null-vector
+  projection, Rayleigh-Ritz postprocessing, and residual diagnostics
+  before returning embedding vectors.
 
 It’s not a great idea to use large values of `k` to define the
 neighborhoods: you will get something that approaches a “global” SVD/PCA
