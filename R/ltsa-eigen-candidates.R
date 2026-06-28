@@ -160,13 +160,7 @@ ltsa_rspectra_candidate_provider <- function(
       )
   ) {
     tsmessage("Using dense eigenvalue decomposition")
-    return(ltsa_as_candidate_result(
-      dense_ltsa_eig(B, eig_k),
-      B = B,
-      eig_k = eig_k,
-      backend = "dense_eigen",
-      convergence_known = TRUE
-    ))
+    return(dense_ltsa_eig(B, eig_k))
   }
 
   lambda_probe <- NULL
@@ -396,13 +390,7 @@ ltsa_irlba_candidate_provider <- function(
       )
   ) {
     tsmessage("Using dense eigenvalue decomposition")
-    return(ltsa_as_candidate_result(
-      dense_ltsa_eig(B, eig_k),
-      B = B,
-      eig_k = eig_k,
-      backend = "dense_eigen",
-      convergence_known = TRUE
-    ))
+    return(dense_ltsa_eig(B, eig_k))
   }
 
   lambda_probe <- NULL
@@ -476,13 +464,7 @@ ltsa_svdr_candidate_provider <- function(
       )
   ) {
     tsmessage("Using dense eigenvalue decomposition")
-    return(ltsa_as_candidate_result(
-      dense_ltsa_eig(B, eig_k),
-      B = B,
-      eig_k = eig_k,
-      backend = "dense_eigen",
-      convergence_known = TRUE
-    ))
+    return(dense_ltsa_eig(B, eig_k))
   }
 
   lambda_probe <- NULL
@@ -541,26 +523,29 @@ dense_ltsa_eig <- function(B, eig_k, backend = "dense_eigen") {
   vectors <- vectors_all[, take, drop = FALSE]
   residuals <- ltsa_ritz_residuals(B, vectors, values, lambda_max)
 
-  list(
+  candidate <- ltsa_candidate_result(
     vectors = vectors,
     values = values,
-    nconv = eig_k,
-    niter = NA_integer_,
-    nops = NA_integer_,
-    returned_columns = ncol(vectors),
-    converged_columns = eig_k,
-    absolute_residuals = residuals$absolute_residuals,
-    scaled_residuals = residuals$scaled_residuals,
-    residual_scale = residuals$residual_scale,
     backend = backend,
-    lambda_max = lambda_max,
-    lambda_probe = NULL,
-    shift = NA_real_,
-    shift_eps = NA_real_,
-    shift_policy = "dense",
-    solve_which = NA_character_,
     eig_k = eig_k,
-    matrix = B
+    matrix = B,
+    lambda_max = lambda_max,
+    nconv = eig_k,
+    convergence_known = TRUE,
+    returned_columns = ncol(vectors),
+    converged_columns = eig_k
+  )
+  lmerge(
+    candidate,
+    list(
+      absolute_residuals = residuals$absolute_residuals,
+      scaled_residuals = residuals$scaled_residuals,
+      residual_scale = residuals$residual_scale,
+      shift = NA_real_,
+      shift_eps = NA_real_,
+      shift_policy = "dense",
+      solve_which = NA_character_
+    )
   )
 }
 
