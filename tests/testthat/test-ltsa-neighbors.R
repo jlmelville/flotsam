@@ -309,8 +309,18 @@ test_that("verbose output describes computed and precomputed neighbor handling",
     fixed = TRUE
   )))
   expect_true(any(grepl(
-    "raw staging memory estimate: [0-9,.]+ [KMGT]?i?B",
-    precomputed_messages
+    "Assembling LTSA matrix",
+    precomputed_messages,
+    fixed = TRUE
   )))
-  expect_match(flotsam:::format_ltsa_count(2790000), "2[^0-9]790[^0-9]000")
+  expect_false(any(grepl(
+    "Getting neighborhoods",
+    precomputed_messages,
+    fixed = TRUE
+  )))
+  expect_false(any(grepl(
+    "raw staging memory estimate",
+    precomputed_messages,
+    fixed = TRUE
+  )))
 })

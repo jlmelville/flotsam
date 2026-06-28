@@ -192,7 +192,7 @@ ltsa <-
       verbose = validated$verbose
     )
 
-    tsmessage("Getting neighborhoods")
+    tsmessage("Assembling LTSA matrix")
     assembly <- assemble_ltsa_B(
       X = X,
       nn_idx = neighbors$nn_idx,

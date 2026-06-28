@@ -83,12 +83,6 @@ log_ltsa_assembly_diagnostics <- function(components, verbose) {
     diagnostics$effective_assembly_threads
   )
   tsmessage(
-    "LTSA raw staged entries estimate: ",
-    format_ltsa_count(diagnostics$raw_entries_estimate),
-    "; raw staging memory estimate: ",
-    format_ltsa_bytes(diagnostics$raw_bytes_estimate)
-  )
-  tsmessage(
     "LTSA duplicate-neighborhood fallback count: ",
     diagnostics$duplicate_fallback_count,
     "; row-major Gram used: ",
@@ -114,79 +108,6 @@ ltsa_log_fallback_reason <- function(reason) {
     return(FALSE)
   }
   nzchar(reason) && !reason %in% c("not_requested", "not_applicable_svd_route")
-}
-
-format_ltsa_count <- function(x) {
-  if (!is.numeric(x) || length(x) != 1L || is.na(x) || !is.finite(x)) {
-    return(as.character(x))
-  }
-  format(
-    round(x),
-    scientific = FALSE,
-    big.mark = ltsa_thousands_sep(),
-    decimal.mark = ltsa_decimal_mark(),
-    trim = TRUE
-  )
-}
-
-format_ltsa_bytes <- function(bytes) {
-  if (!is.numeric(bytes) || length(bytes) != 1L || is.na(bytes)) {
-    return(as.character(bytes))
-  }
-  if (!is.finite(bytes) || bytes < 0) {
-    return(as.character(bytes))
-  }
-
-  units <- c("bytes", "KiB", "MiB", "GiB", "TiB")
-  unit <- 1L
-  value <- bytes
-  while (value >= 1024 && unit < length(units)) {
-    value <- value / 1024
-    unit <- unit + 1L
-  }
-
-  if (unit == 1L) {
-    paste0(format_ltsa_count(value), " ", units[[unit]])
-  } else {
-    paste0(
-      format(
-        round(value, 1L),
-        nsmall = 1L,
-        scientific = FALSE,
-        big.mark = ltsa_thousands_sep(),
-        decimal.mark = ltsa_decimal_mark(),
-        trim = TRUE
-      ),
-      " ",
-      units[[unit]]
-    )
-  }
-}
-
-ltsa_thousands_sep <- function() {
-  sep <- Sys.localeconv()[["thousands_sep"]]
-  if (!is.character(sep) || length(sep) != 1L || is.na(sep) || !nzchar(sep)) {
-    sep <- if (identical(ltsa_decimal_mark(), ",")) "." else ","
-  }
-  if (identical(sep, ltsa_decimal_mark())) {
-    sep <- if (identical(sep, ",")) "." else ","
-  }
-  sep
-}
-
-ltsa_decimal_mark <- function() {
-  mark <- getOption("OutDec", ".")
-  if (
-    !is.character(mark) || length(mark) != 1L || is.na(mark) || !nzchar(mark)
-  ) {
-    mark <- Sys.localeconv()[["decimal_point"]]
-  }
-  if (
-    !is.character(mark) || length(mark) != 1L || is.na(mark) || !nzchar(mark)
-  ) {
-    mark <- "."
-  }
-  mark
 }
 
 ltsa_components_to_dgCMatrix <- function(components, n) {
