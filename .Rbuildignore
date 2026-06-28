@@ -10,6 +10,7 @@
 ^\.lintr$
 ^air\.toml$
 ^_pkgdown\.yml$
+^vignettes/articles$
 ^bench$
 ^docs$
 ^pkgdown$
