@@ -18,8 +18,14 @@ ltsa_ritz_select <- function(
 ) {
   vectors <- as.matrix(vectors)
   n <- nrow(B)
-  ndim <- as.integer(ndim)
-  if (length(ndim) != 1L || is.na(ndim) || ndim < 1L) {
+  if (
+    !is.numeric(ndim) ||
+      length(ndim) != 1L ||
+      is.na(ndim) ||
+      !is.finite(ndim) ||
+      ndim < 1L ||
+      ndim != floor(ndim)
+  ) {
     stop("ndim must be a positive integer", call. = FALSE)
   }
   if (nrow(B) != ncol(B)) {
@@ -43,7 +49,6 @@ ltsa_ritz_select <- function(
   keep <- projected_norms > drop_tol * pmax(1, original_norms)
   projected <- projected[, keep, drop = FALSE]
 
-  dropped_null_columns <- sum(!keep)
   if (ncol(projected) == 0L) {
     rank_after_null <- 0L
   } else {
@@ -85,7 +90,6 @@ ltsa_ritz_select <- function(
         zero_tol
       )
   } else {
-    boundary_gap <- NA_real_
     global_gap <- NA_real_
     local_gap <- NA_real_
   }
@@ -97,31 +101,17 @@ ltsa_ritz_select <- function(
     values_all,
     near_zero_thresholds
   )
-  reported_ritz_values <- values_all[seq_len(min(20L, length(values_all)))]
 
   list(
     vectors = vectors_all[, take, drop = FALSE],
     values = values_all[take],
-    all_vectors = vectors_all,
-    all_values = values_all,
-    absolute_residuals = residuals_all$absolute_residuals[take],
-    scaled_residuals = residuals_all$scaled_residuals[take],
-    all_absolute_residuals = residuals_all$absolute_residuals,
-    all_scaled_residuals = residuals_all$scaled_residuals,
-    residual_scale = residuals_all$residual_scale,
+    ritz_values = values_all,
+    residuals = residuals_all$scaled_residuals[take],
     rank_after_null = rank_after_null,
-    dropped_null_columns = dropped_null_columns,
-    boundary_gap = boundary_gap,
     global_gap = global_gap,
     local_gap = local_gap,
-    zero_tol = zero_tol,
-    boundary_gap_relative = global_gap,
     near_zero_nonconstant_count = near_zero_nonconstant_count,
-    near_zero_tol = near_zero_tol,
-    near_zero_thresholds = near_zero_thresholds,
-    near_zero_nonconstant_counts = near_zero_nonconstant_counts,
-    reported_ritz_values = reported_ritz_values,
-    kept_candidate_columns = sum(keep)
+    near_zero_nonconstant_counts = near_zero_nonconstant_counts
   )
 }
 
@@ -132,9 +122,7 @@ ltsa_fixed_backend_metadata <- function(eig_res) {
     c(
       "dense_eigen",
       "eig",
-      "eigen",
-      "fullsvd",
-      "dense_svd"
+      "eigen"
     )
   out <- list(
     name = backend,
@@ -206,7 +194,7 @@ ltsa_fixed_ritz_diagnostics <- function(
   backend <- ltsa_fixed_backend_metadata(eig_res)
   lambda_max <- eig_res$lambda_max %||% NA_real_
   values <- as.numeric(rr$values)
-  residuals <- as.numeric(rr$scaled_residuals)
+  residuals <- as.numeric(rr$residuals)
   max_residual <- if (length(residuals) == 0L) {
     Inf
   } else {
@@ -256,7 +244,7 @@ ltsa_fixed_ritz_diagnostics <- function(
   )
 
   warning_messages <- character()
-  if (length(rr$all_values) < ndim + 1L) {
+  if (length(rr$ritz_values) < ndim + 1L) {
     warning_messages <- c(
       warning_messages,
       paste0(
@@ -279,12 +267,6 @@ ltsa_fixed_ritz_diagnostics <- function(
         signif(gap_tol, 4),
         "."
       )
-    )
-  }
-  if (!isTRUE(backend$convergence_known)) {
-    warning_messages <- c(
-      warning_messages,
-      "Backend does not provide a native convergence certificate."
     )
   }
   resid_ok <- is.finite(max_residual) && max_residual <= resid_tol
@@ -323,7 +305,7 @@ ltsa_fixed_ritz_diagnostics <- function(
     method = backend$name,
     eig_k = eig_k,
     values = values,
-    ritz_values = as.numeric(rr$all_values),
+    ritz_values = as.numeric(rr$ritz_values),
     residuals = residuals,
     rank = rr$rank_after_null,
     lambda_max = lambda_max,
@@ -393,10 +375,6 @@ ltsa_run_fixed_eigenanalysis <- function(
       tsmessage("Calling irlba svdr")
       ltsa_svdr_candidate_provider
     },
-    fullsvd = {
-      tsmessage("Using full SVD")
-      ltsa_fullsvd_candidate_provider
-    },
     eig = {
       tsmessage("Using full eigenvalue decomposition")
       ltsa_eig_candidate_provider
@@ -428,13 +406,20 @@ ltsa_fixed_ritz_eig <- function(
   verbose = FALSE
 ) {
   eig_k <- ltsa_validate_eig_k(eig_k = eig_k, ndim = ndim, n = nrow(B))
-  eig_res <- ltsa_call_candidate_provider(
-    provider = provider,
-    B = B,
-    eig_k = eig_k,
-    provider_args = provider_args,
-    lambda_max = NULL,
-    verbose = verbose
+  # Operator preparation belongs to the fixed driver; providers only solve.
+  B <- symmetrize_ltsa_matrix(B)
+  provider_args <- provider_args %||% list()
+  eig_res <- do.call(
+    provider,
+    c(
+      list(
+        B = B,
+        eig_k = eig_k,
+        lambda_max = NULL,
+        verbose = verbose
+      ),
+      provider_args
+    )
   )
   lambda_max <- eig_res$lambda_max %||% NA_real_
   rr <- ltsa_ritz_select(

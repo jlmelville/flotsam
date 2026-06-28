@@ -105,6 +105,12 @@ ltsa_rayleigh_values <- function(B, vectors) {
 
 ltsa_ritz_residuals <- function(B, vectors, values, lambda_max) {
   vectors <- ltsa_normalize_columns(vectors)
+  if (length(values) != ncol(vectors)) {
+    stop(
+      "internal error: residual value/vector length mismatch",
+      call. = FALSE
+    )
+  }
   BV <- as.matrix(B %*% vectors)
   residual <- BV - sweep(vectors, 2L, values, "*")
   absolute_residual <- sqrt(colSums(residual * residual))

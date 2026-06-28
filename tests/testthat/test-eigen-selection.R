@@ -171,9 +171,13 @@ test_that("Ritz selection is invariant to rotations in the candidate subspace", 
 
   expect_same_subspace(rr$vectors, target)
   expect_equal(rr$values, c(1, 2), tolerance = 1e-12)
-  expect_lt(max(rr$scaled_residuals), 1e-12)
+  expect_lt(max(rr$residuals), 1e-12)
   expect_identical(rr$rank_after_null, 3L)
-  expect_equal(rr$boundary_gap, 1, tolerance = 1e-12)
+  expect_equal(
+    rr$ritz_values[[3L]] - rr$ritz_values[[2L]],
+    1,
+    tolerance = 1e-12
+  )
 })
 
 test_that("clustered low-eigenvalue subspaces are compared by projector", {
@@ -197,8 +201,12 @@ test_that("clustered low-eigenvalue subspaces are compared by projector", {
 
   expect_same_subspace(rr$vectors, target)
   expect_equal(rr$values, c(1, 1), tolerance = 1e-12)
-  expect_lt(max(rr$scaled_residuals), 1e-12)
-  expect_equal(rr$boundary_gap, 3, tolerance = 1e-12)
+  expect_lt(max(rr$residuals), 1e-12)
+  expect_equal(
+    rr$ritz_values[[3L]] - rr$ritz_values[[2L]],
+    3,
+    tolerance = 1e-12
+  )
 })
 
 test_that("rank loss after null projection fails clearly", {
@@ -231,10 +239,11 @@ test_that("Ritz residual diagnostics use the scaled residual convention", {
   )
 
   expect_equal(rr$values, c(0.25, 0.5), tolerance = 1e-12)
-  expect_lt(max(rr$absolute_residuals), 1e-12)
+  residuals <- flotsam:::ltsa_ritz_residuals(B, rr$vectors, rr$values, 8)
+  expect_lt(max(residuals$absolute_residuals), 1e-12)
   expect_equal(
-    rr$scaled_residuals,
-    rr$absolute_residuals / 8,
+    rr$residuals,
+    residuals$absolute_residuals / 8,
     tolerance = 1e-15
   )
 })
@@ -249,20 +258,11 @@ test_that("Ritz gap diagnostics report global and local scales", {
     lambda_max = 1
   )
 
-  expect_equal(unname(rr$boundary_gap), 4.5e-7, tolerance = 1e-8)
+  expected_gap <- rr$ritz_values[[3L]] - rr$ritz_values[[2L]]
+  expect_equal(unname(expected_gap), 4.5e-7, tolerance = 1e-8)
   expect_equal(
     unname(rr$global_gap),
-    unname(rr$boundary_gap),
-    tolerance = 1e-12
-  )
-  expect_equal(
-    unname(rr$boundary_gap_relative),
-    unname(rr$global_gap),
-    tolerance = 1e-12
-  )
-  expect_equal(
-    unname(rr$zero_tol),
-    sqrt(.Machine$double.eps),
+    unname(expected_gap),
     tolerance = 1e-15
   )
   expect_equal(unname(rr$local_gap), 0.9, tolerance = 1e-8)
@@ -284,8 +284,8 @@ test_that("near-zero Ritz counts are reported at multiple thresholds", {
     c("1e-08" = 1L, "1e-07" = 2L, "1e-06" = 3L, "1e-05" = 4L)
   )
   expected_ritz_values <- c(5e-9, 5e-8, 5e-7, 5e-6, 1)
-  expect_length(rr$reported_ritz_values, length(expected_ritz_values))
-  expect_lt(max(abs(rr$reported_ritz_values - expected_ritz_values)), 1e-14)
+  expect_length(rr$ritz_values, length(expected_ritz_values))
+  expect_lt(max(abs(rr$ritz_values - expected_ritz_values)), 1e-14)
 })
 
 test_that("small Ritz-selected cases agree with dense eigen reference subspaces", {
@@ -313,8 +313,8 @@ test_that("small Ritz-selected cases agree with dense eigen reference subspaces"
 
   expect_equal(rr$values, dense$values[ord[2:3]], tolerance = 1e-12)
   expect_same_subspace(rr$vectors, reference, tolerance = 1e-7)
-  expect_lt(max(rr$scaled_residuals), 1e-12)
-  expect_gt(rr$boundary_gap_relative, 0)
+  expect_lt(max(rr$residuals), 1e-12)
+  expect_gt(rr$global_gap, 0)
 })
 
 test_that("fixed-width default eig_k follows the public rule", {
@@ -504,17 +504,13 @@ test_that("fixed-width diagnostics do not invent non-RSpectra convergence", {
     eig_k = 4L
   )
 
-  expect_identical(res$eigen$status, "warning")
+  expect_identical(res$eigen$status, "ok")
   expect_identical(res$eigen$backend$name, "irlba")
   expect_false(res$eigen$backend$convergence_known)
   expect_identical(res$eigen$backend$iter, 7L)
   expect_identical(res$eigen$backend$mprod, 31L)
   expect_false("nconv" %in% names(res$eigen$backend))
-  expect_true(any(grepl(
-    "native convergence certificate",
-    res$eigen$messages,
-    fixed = TRUE
-  )))
+  expect_length(res$eigen$messages, 0L)
 })
 
 test_that("fixed-width diagnostics give eig_k and backend-setting guidance", {
@@ -609,7 +605,7 @@ test_that("LTSA symmetrization returns a general sparse solver matrix", {
 })
 
 test_that("dense LTSA eigensolver fallback reports small residuals", {
-  B <- Matrix::Diagonal(x = seq(0, 11))
+  B <- flotsam:::symmetrize_ltsa_matrix(Matrix::Diagonal(x = seq(0, 11)))
 
   res <- flotsam:::ltsa_rspectra_candidate_provider(B, eig_k = 6L)
 
@@ -621,7 +617,7 @@ test_that("dense LTSA eigensolver fallback reports small residuals", {
 })
 
 test_that("RSpectra path uses shifted largest-algebraic solve with residual metadata", {
-  B <- Matrix::Diagonal(x = seq(0, 29))
+  B <- flotsam:::symmetrize_ltsa_matrix(Matrix::Diagonal(x = seq(0, 29)))
 
   res <- flotsam:::ltsa_rspectra_candidate_provider(
     B,
@@ -641,7 +637,7 @@ test_that("RSpectra path uses shifted largest-algebraic solve with residual meta
 })
 
 test_that("RSpectra candidate provider returns fixed-width driver inputs", {
-  B <- Matrix::Diagonal(x = seq(0, 29))
+  B <- flotsam:::symmetrize_ltsa_matrix(Matrix::Diagonal(x = seq(0, 29)))
 
   res <- flotsam:::ltsa_rspectra_candidate_provider(
     B,
@@ -712,7 +708,7 @@ test_that("fixed-width RSpectra driver returns diagnostics", {
 })
 
 test_that("irlba and svdr candidate providers return fixed-width driver inputs", {
-  B <- Matrix::Diagonal(x = seq(0, 29))
+  B <- flotsam:::symmetrize_ltsa_matrix(Matrix::Diagonal(x = seq(0, 29)))
   providers <- list(
     irlba = list(
       provider = flotsam:::ltsa_irlba_candidate_provider,
@@ -785,7 +781,7 @@ test_that("fixed-width irlba and svdr drivers agree with dense reference subspac
 test_that("RSpectra partial convergence is a hard LTSA error", {
   set.seed(1)
   A <- crossprod(matrix(stats::rnorm(80L * 80L), nrow = 80L))
-  B <- Matrix::Matrix(A, sparse = TRUE)
+  B <- flotsam:::symmetrize_ltsa_matrix(Matrix::Matrix(A, sparse = TRUE))
   lambda_max <- max(eigen(A, symmetric = TRUE, only.values = TRUE)$values)
 
   expect_error(
