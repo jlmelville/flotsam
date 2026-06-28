@@ -116,7 +116,11 @@ ltsa_rspectra_candidate_provider <- function(
     lambda_probe <- ltsa_lambda_max_probe(B, varargs)
     lambda_max <- lambda_probe$value
   } else {
-    lambda_max <- ltsa_validate_lambda_max(lambda_max, B)
+    lambda_max <- ltsa_validate_backend_lambda_max(
+      lambda_max,
+      B,
+      backend = "RSpectra"
+    )
   }
   shift <- lambda_max + ltsa_shift_margin(lambda_max, shift_eps)
   X_shift <- ltsa_shift_for_smallest(B, shift)

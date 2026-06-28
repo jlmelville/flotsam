@@ -185,10 +185,6 @@ ltsa_near_zero_counts <- function(values, thresholds) {
   )
 }
 
-ltsa_validate_lambda_max <- function(lambda_max, B) {
-  ltsa_validate_backend_lambda_max(lambda_max, B, backend = "RSpectra")
-}
-
 ltsa_validate_backend_lambda_max <- function(lambda_max, B, backend) {
   if (length(lambda_max) < 1L || !is.finite(lambda_max[[1L]])) {
     stop(
@@ -216,7 +212,7 @@ ltsa_validate_lambda_probe <- function(probe, B) {
     stop("RSpectra largest-eigenvalue probe did not converge", call. = FALSE)
   }
 
-  ltsa_validate_lambda_max(probe$values, B)
+  ltsa_validate_backend_lambda_max(probe$values, B, backend = "RSpectra")
 }
 
 ltsa_lambda_max_probe <- function(B, varargs) {
