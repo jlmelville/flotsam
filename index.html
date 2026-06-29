@@ -50,16 +50,16 @@
   <main id="main" class="col-md-9"><div class="section level1">
 <div class="page-header"><h1 id="flotsam">flotsam<a class="anchor" aria-label="anchor" href="#flotsam"></a>
 </h1></div>
-<p>Finicky LOcal Tangent Space Alignment Method</p>
+<p>Fast LOcal Tangent Space Alignment Method</p>
 <!-- badges: start -->
 
-<p>An implementation of the <a href="https://doi.org/10.1137/S1064827502419154" class="external-link">Local Tangent Space Alignment</a> method (Zhang &amp; Zha, 2004), a spectral method for dimensionality reduction. It is one of the few methods that can unroll the “swiss roll” data set and its variants without major distortion.</p>
-<p>The F is still for “Finicky”, although the current implementation is a lot</p>
+<p>An implementation of the <a href="https://doi.org/10.1137/S1064827502419154" class="external-link">Local Tangent Space Alignment</a> method (Zhang &amp; Zha, 2004), a spectral method for dimensionality reduction. It is one of the few methods that can unroll the “swiss roll” data set and its variants without major distortion. I consider this implementation “Fast” because of its use of approximate nearest neighbors. Internally it works with sparse matrices and does not require calculating all eigenvectors, so can scale to large datasets.</p>
 <div class="section level2">
 <h2 id="installation">Installation<a class="anchor" aria-label="anchor" href="#installation"></a>
 </h2>
 <div class="sourceCode" id="cb1"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="fu">devtools</span><span class="fu">::</span><span class="fu">install_github</span><span class="op">(</span><span class="st">"jlmelville/flotsam"</span><span class="op">)</span></span></code></pre></div>
+<code class="sourceCode R"><span><span class="co"># install.packages("pak")</span></span>
+<span><span class="fu">pak</span><span class="fu">::</span><span class="fu"><a href="https://pak.r-lib.org/reference/pak.html" class="external-link">pak</a></span><span class="op">(</span><span class="st">"jlmelville/flotsam"</span><span class="op">)</span></span></code></pre></div>
 </div>
 <div class="section level2">
 <h2 id="example">Example<a class="anchor" aria-label="anchor" href="#example"></a>
@@ -84,97 +84,23 @@
 <span><span class="co"># unroll it</span></span>
 <span><span class="va">swiss_unrolled</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/ltsa.html">ltsa</a></span><span class="op">(</span><span class="va">swiss_roll</span>, verbose <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">swiss_unrolled</span>, col <span class="op">=</span> <span class="va">phi</span><span class="op">)</span></span></code></pre></div>
-</div>
-<div class="section level2">
-<h2 id="a-not-very-brief-description-of-ltsa">A Not-Very Brief Description of LTSA<a class="anchor" aria-label="anchor" href="#a-not-very-brief-description-of-ltsa"></a>
-</h2>
-<p>The mathematics and some of the descriptions of LTSA are not always very clear, but this is what happens:</p>
-<ol style="list-style-type: decimal">
-<li>You have a dataset <code>X</code> with <code>N</code> items that you would like to reduce to <code>d</code> dimensions.</li>
-<li>Create an empty <code>N</code> x <code>N</code> matrix B (filled with zeros).</li>
-<li>For each item in the dataset, define a neighborhood, i.e. the <code>k</code>-nearest neighbors.</li>
-<li>Calculate the SVD for just that neighborhood.</li>
-<li>Create the <code>k</code> x <code>k</code> matrix <code>W = I - V.V'</code> where <code>V</code> is the right singular vectors of the SVD (with some centering).</li>
-<li>Update the elements of the <code>N</code> x <code>N</code> matrix <code>B</code> with the values of <code>W</code> by adding the elements of <code>W</code> to the entries in <code>B</code> that correspond to the items in the neighborhood.</li>
-<li>Repeat for all items in the dataset.</li>
-<li>
-<code>B</code> is now an un-normalized graph Laplacian matrix. Discard the smallest eigenvector, and the next <code>d</code> eigenvectors are the coordinates of the reduced dimension. This step is carried out like any other related spectral method, like Laplacian eigenmaps or diffusion maps.</li>
-</ol>
+<p align="center">
+<img src="reference/figures/swiss-roll-before.png" alt="Swiss roll before LTSA" width="45%"><img src="reference/figures/swiss-roll-after-ltsa.png" alt="Swiss roll after LTSA" width="45%"></p>
 </div>
 <div class="section level2">
 <h2 id="current-status">Current Status<a class="anchor" aria-label="anchor" href="#current-status"></a>
 </h2>
-<p><em>June 27 2026</em>: Version 0.0.0.9002 uses C++ local-weight construction, triangular sparse matrix assembly, and Rayleigh-Ritz postprocessing for final eigenanalysis.</p>
-<p>Still experimental, but now less accurately described as only “Finicky”. Its speed relies on the interaction of:</p>
-<ul>
-<li>Using approximate nearest neighbors to define the local neighborhoods.</li>
-<li>Using a <a href="https://cran.r-project.org/package=Matrix" class="external-link">sparse matrix</a> representation of <code>B</code>.</li>
-<li>Computing local neighborhood weights in C++ with LAPACK. High-dimensional neighborhoods use an exact centered Gram route; lower-dimensional neighborhoods use direct SVD.</li>
-<li>Using triangular sparse assembly in C++, with optional parallel construction controlled by <code>n_assembly_threads</code>.</li>
-<li>Using <a href="https://cran.r-project.org/package=RSpectra" class="external-link">RSpectra</a> by default to recover the small-eigenvalue directions of <code>B</code>. The iterative backends (<code>"rspectra"</code>, <code>"irlba"</code>, and <code>"svdr"</code>) request a candidate block controlled by <code>eig_k</code>, then use null-vector projection, Rayleigh-Ritz postprocessing, and residual diagnostics before returning embedding vectors.</li>
-</ul>
-<p>It’s not a great idea to use large values of <code>k</code> to define the neighborhoods: you will get something that approaches a “global” SVD/PCA at much greater effort. If you insist on doing this (e.g. set <code>n_neighbors = 1000</code>), the local weight calculation and sparse matrix assembly both scale with the number of neighborhood entries, roughly <code>N * k * k</code>.</p>
-<p>The approximate nearest neighbor search (which can be exact if you want) is controlled by <code>n_threads</code>. Construction of the LTSA alignment matrix <code>B</code> is controlled separately by <code>n_assembly_threads</code>.</p>
-<p>If you use multiple assembly threads with a multithreaded <a href="https://csantill.github.io/RPerformanceWBLAS/" class="external-link">underlying linear algebra library</a>, avoid oversubscribing your machine: outer LTSA assembly threads and inner BLAS threads can otherwise compete with each other. I use MKL but need to set the following in my ~/.bashrc:</p>
-<div class="sourceCode" id="cb3"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb3-1"><a href="#cb3-1" tabindex="-1"></a><span class="bu">export</span> <span class="va">MKL_THREADING_LAYER</span><span class="op">=</span>GNU</span>
-<span id="cb3-2"><a href="#cb3-2" tabindex="-1"></a><span class="bu">export</span> <span class="va">MKL_NUM_THREADS</span><span class="op">=</span>1</span></code></pre></div>
-<div class="section level3">
-<h3 id="ltsa-eigenanalysis-and-diagnostics">LTSA eigenanalysis and diagnostics<a class="anchor" aria-label="anchor" href="#ltsa-eigenanalysis-and-diagnostics"></a>
-</h3>
-<p>The default <code><a href="reference/ltsa.html">ltsa()</a></code> return is the embedding matrix:</p>
-<div class="sourceCode" id="cb4"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">embedding</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/ltsa.html">ltsa</a></span><span class="op">(</span><span class="va">swiss_roll</span><span class="op">)</span></span></code></pre></div>
-<p>Compared to the Python implementation in scikit-learn (using <a href="https://scikit-learn.org/stable/modules/generated/sklearn.manifold.LocallyLinearEmbedding.htm" class="external-link">LocallyLinearEmbedding</a>) with <code>method="ltsa"</code>), <code>flotsam</code> will be faster on very large datasets because it can use approximate nearest neighbor neighbors and will usually converge on datasets where ARPACK (used by the scikit-learn implementation fails). However, for some datasets (usually only synthetic cases), the underlying RSpectra solver can converge in the case of near-null clustered eigenvectors, but not find all the eigenvectors. This is bad, because these are the eigenvectors you want and it’s not easy to diagnose.</p>
-<p>Use <code>output = "result"</code> to inspect diagnostics:</p>
-<div class="sourceCode" id="cb5"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">ltsa_result</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/ltsa.html">ltsa</a></span><span class="op">(</span></span>
-<span>  <span class="va">swiss_roll</span>,</span>
-<span>  eig_k <span class="op">=</span> <span class="fl">16</span>,</span>
-<span>  output <span class="op">=</span> <span class="st">"result"</span></span>
-<span><span class="op">)</span></span>
-<span></span>
-<span><span class="va">ltsa_result</span><span class="op">$</span><span class="va">eigen</span><span class="op">[</span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"status"</span>, <span class="st">"eig_k"</span>, <span class="st">"rank"</span><span class="op">)</span><span class="op">]</span></span>
-<span><span class="va">ltsa_result</span><span class="op">$</span><span class="va">eigen</span><span class="op">$</span><span class="va">messages</span></span></code></pre></div>
-<p>A large number of other values are returned, but they probably aren’t that useful except for isolating bugs in particular code paths. If the <code>eigen$messages</code> complain about a weak Ritz boundary gap, then there is a risk of missing eigenvectors in my experience. Stricter convergence criteria can help here at the cost of longer computation.</p>
-<p>For the default RSpectra backend, the main convergence controls are <code>tol</code>, <code>maxitr</code> and <code>ncv</code>:</p>
-<div class="sourceCode" id="cb6"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">ltsa_strict</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/ltsa.html">ltsa</a></span><span class="op">(</span></span>
-<span>  <span class="va">swiss_roll</span>,</span>
-<span>  eig_k <span class="op">=</span> <span class="fl">16</span>,</span>
-<span>  output <span class="op">=</span> <span class="st">"result"</span>,</span>
-<span>  tol <span class="op">=</span> <span class="fl">1e-8</span>,</span>
-<span>  maxitr <span class="op">=</span> <span class="fl">5000</span>,</span>
-<span>  ncv <span class="op">=</span> <span class="fl">40</span></span>
-<span><span class="op">)</span></span></code></pre></div>
-<p>Backend-specific tuning is passed through <code>...</code>:</p>
-<ul>
-<li>
-<code>eig_method = "rspectra"</code>: <code>tol</code>, <code>maxitr</code>, and <code>ncv</code>.</li>
-<li>
-<code>eig_method = "irlba"</code>: <code>tol</code>, <code>maxit</code>, and <code>reorth</code>.</li>
-<li>
-<code>eig_method = "svdr"</code>: <code>tol</code> and <code>it</code>.</li>
-</ul>
-<p>In the event of a convergence failure with stricter convergence, you may also need to increase <code>eig_k</code> (the number of eigenvectors returned before the Rayleigh-Ritz processing):</p>
-<div class="sourceCode" id="cb7"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">ltsa_wider</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/ltsa.html">ltsa</a></span><span class="op">(</span></span>
-<span>  <span class="va">swiss_roll</span>,</span>
-<span>  eig_k <span class="op">=</span> <span class="fl">32</span>,</span>
-<span>  output <span class="op">=</span> <span class="st">"result"</span></span>
-<span><span class="op">)</span></span></code></pre></div>
-<p>However the default is already quite generous, so usually tighter convergence is the answer with default <code>eig_k</code>.</p>
-<p>Use <code>output = "B"</code> to return the assembled unnormalized LTSA matrix without final eigenanalysis:</p>
-<div class="sourceCode" id="cb8"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">B</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/ltsa.html">ltsa</a></span><span class="op">(</span><span class="va">swiss_roll</span>, output <span class="op">=</span> <span class="st">"B"</span><span class="op">)</span></span></code></pre></div>
-<p>If you use <code>eig_method = "irlba"</code> or <code>eig_method = "svdr"</code> then different functions in irlba will be used instead of RSpectra. They do not expose the same convergence metadata as RSpectra, so they rely on post-hoc residual diagnostics rather than hard backend convergence counts. For small diagnostic cases, <code>eig_method = "eig"</code> and <code>eig_method = "eigen"</code> are synonyms for base <code><a href="https://rdrr.io/r/base/eigen.html" class="external-link">eigen()</a></code>. Dense <code>eig</code> is the diagnostic reference when algebraic eigenvalue ordering matters.</p>
-<p>There is also a <code>normalize = TRUE</code> option, which I included experimentally in analogy with normalized and un-normalized graph Laplacians. In cases where LTSA struggles to converge, setting <code>normalize = TRUE</code> can result in a much faster solution, <em>but</em> I have also noticed that it can result in a different geometry in those cases, so use it with extreme caution.</p>
-<p>Set <code>include_B = TRUE</code> with <code>output = "result"</code> if the detailed result should also carry the assembled unnormalized matrix.</p>
-</div>
+<p><em>June 27 2026</em>: Version 0.0.0.9002 is a big re-write compared to the initial release, adding multi-threaded C++ local-weight construction, triangular sparse matrix assembly, and Rayleigh-Ritz postprocessing for more reliable final eigenanalysis.</p>
 </div>
 <div class="section level2">
 <h2 id="see-also">See Also<a class="anchor" aria-label="anchor" href="#see-also"></a>
 </h2>
-<p><a href="https://github.com/kisungyou/Rdimtools" class="external-link">Rdimtools</a> also contains an R implementation of LTSA.</p>
+<ul>
+<li>
+<a href="https://github.com/kisungyou/Rdimtools" class="external-link">Rdimtools</a> also contains an R implementation of LTSA.</li>
+<li>Eigenanalysis is carried out with either <a href="https://cran.r-project.org/package=RSpectra" class="external-link">RSpectra</a> or <a href="https://cran.r-project.org/package=irlba" class="external-link">irlba</a>.</li>
+<li>Approximate nearest neighbor analysis via <a href="https://cran.r-project.org/package=rnndescent" class="external-link">rnndescent</a>.</li>
+</ul>
 </div>
 <div class="section level2">
 <h2 id="further-reading">Further Reading<a class="anchor" aria-label="anchor" href="#further-reading"></a>
@@ -185,13 +111,6 @@
 <p>Sun, W., Halevy, A., Benedetto, J. J., Czaja, W., Li, W., Liu, C., … &amp; Wang, R. (2013). Nonlinear dimensionality reduction via the ENH-LTSA method for hyperspectral image classification. <em>IEEE Journal of Selected Topics in Applied Earth Observations and Remote Sensing</em>, <em>7</em>(2), 375-388. <a href="https://doi.org/10.1109/JSTARS.2013.2238890" class="external-link uri">https://doi.org/10.1109/JSTARS.2013.2238890</a></p>
 <p>Hong, D., Yokoya, N., &amp; Zhu, X. X. (2017). Learning a robust local manifold representation for hyperspectral dimensionality reduction. <em>IEEE Journal of Selected Topics in Applied Earth Observations and Remote Sensing</em>, <em>10</em>(6), 2960-2975. <a href="https://doi.org/10.1109/JSTARS.2017.2682189" class="external-link uri">https://doi.org/10.1109/JSTARS.2017.2682189</a></p>
 <p>Zhang, S., Ma, Z., &amp; Tan, H. (2017). On the Equivalence of HLLE and LTSA. <em>IEEE transactions on cybernetics</em>, <em>48</em>(2), 742-753. <a href="https://doi.org/10.1109/TCYB.2017.2655338" class="external-link uri">https://doi.org/10.1109/TCYB.2017.2655338</a></p>
-<p>Ting, D., &amp; Jordan, M. I. (2018). On Nonlinear Dimensionality Reduction, Linear Smoothing and Autoencoding <em>arXiv preprint</em> <em>arXiv</em>:1803.02432. <a href="https://arxiv.org/abs/1803.02432" class="external-link uri">https://arxiv.org/abs/1803.02432</a></p>
-<p>For some (perhaps under-appreciated) theoretical issues around spectral methods for manifold learning, see:</p>
-<p>Gerber, S., Tasdizen, T., &amp; Whitaker, R. (2007, June). Robust non-linear dimensionality reduction using successive 1-dimensional Laplacian eigenmaps. In <em>Proceedings of the 24th international conference on Machine learning</em> (pp. 281-288). <a href="https://doi.org/10.1145/1273496.1273532" class="external-link uri">https://doi.org/10.1145/1273496.1273532</a></p>
-<p>Goldberg, Y., Zakai, A., Kushnir, D., &amp; Ritov, Y. A. (2008). Manifold learning: The price of normalization. <em>Journal of Machine Learning Research</em>, <em>9</em>(8). <a href="https://www.jmlr.org/papers/v9/goldberg08a.html" class="external-link uri">https://www.jmlr.org/papers/v9/goldberg08a.html</a></p>
-<p>Ting, D., &amp; Jordan, M. I. (2020). Manifold Learning via Manifold Deflation. <em>arXiv preprint</em> <em>arXiv</em>:2007.03315. <a href="https://arxiv.org/abs/2007.03315" class="external-link uri">https://arxiv.org/abs/2007.03315</a></p>
-<p>The key paper remains the one by Goldberg and co-workers: if the “aspect ratio” of the manifold has a variance that is very high in one axis over another (e.g. a very long and thin manifold) then the normalization constraint inherent to spectral methods like LTSA will fail to reproduce the manifold.</p>
-<p><code>flotsam</code> goes to various efforts to shift matrices to find <em>largest</em> eigenvalues inspired by discussion between <a href="https://github.com/LTLA" class="external-link">Aaron Lun</a>, <a href="https://github.com/keevindoherty" class="external-link">Kevin Doherty</a> and <a href="https://github.com/yixuan" class="external-link">Yixuan Qiu</a> at <a href="https://github.com/yixuan/spectra/issues/126" class="external-link">this RSpectra issue</a>.</p>
 </div>
 </div>
   </main><aside class="col-md-3"><div class="links">
