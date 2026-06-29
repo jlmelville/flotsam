@@ -71,4 +71,3 @@ roughly descending order of importance:
    MiB than this value, the copy is disabled. The default is 256 MiB. If you have the memory to
    spare this will make the `B` matrix assembly stage faster, but this is rarely the speed 
    bottleneck.
-   
