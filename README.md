@@ -1,6 +1,6 @@
 # flotsam
 
-Finicky LOcal Tangent Space Alignment Method
+Fast LOcal Tangent Space Alignment Method
 
 <!-- badges: start -->
 [![R-CMD-check](https://github.com/jlmelville/flotsam/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/jlmelville/flotsam/actions/workflows/R-CMD-check.yaml)
@@ -9,18 +9,18 @@ Finicky LOcal Tangent Space Alignment Method
 [![Codecov test coverage](https://codecov.io/gh/jlmelville/flotsam/branch/main/graph/badge.svg)](https://app.codecov.io/gh/jlmelville/flotsam?branch=main)
 <!-- badges: end -->
 
-An implementation of the [Local Tangent Space
-Alignment](https://doi.org/10.1137/S1064827502419154) method (Zhang & Zha,
-2004), a spectral method for dimensionality reduction. It is one of the few
-methods that can unroll the "swiss roll" data set and its variants without
-major distortion.
-
-The F is still for "Finicky", although the current implementation is a lot
+An implementation of the [Local Tangent Space Alignment](https://doi.org/10.1137/S1064827502419154)
+method (Zhang & Zha, 2004), a spectral method for dimensionality reduction. It is one of the few
+methods that can unroll the "swiss roll" data set and its variants without major distortion. I
+consider this implementation "Fast" because of its use of approximate nearest neighbors. Internally
+it works with sparse matrices and does not require calculating all eigenvectors, so can scale to
+large datasets.
 
 ## Installation
 
 ``` r
-devtools::install_github("jlmelville/flotsam")
+# install.packages("pak")
+pak::pak("jlmelville/flotsam")
 ```
 
 ## Example
@@ -47,195 +47,46 @@ swiss_unrolled <- ltsa(swiss_roll, verbose = TRUE)
 plot(swiss_unrolled, col = phi)
 ```
 
-## A Not-Very Brief Description of LTSA
-
-The mathematics and some of the descriptions of LTSA are not always very clear,
-but this is what happens:
-
-1. You have a dataset `X` with `N` items that you would like to reduce to `d`
-dimensions.
-1. Create an empty `N` x `N` matrix B (filled with zeros).
-1. For each item in the dataset, define a neighborhood, i.e. the `k`-nearest
-neighbors.
-1. Calculate the SVD for just that neighborhood.
-1. Create the `k` x `k` matrix `W = I - V.V'` where `V` is the right singular
-vectors of the SVD (with some centering).
-1. Update the elements of the `N` x `N` matrix `B` with the values of `W` by
-adding the elements of `W` to the entries in `B` that correspond to the items in
-the neighborhood.
-1. Repeat for all items in the dataset.
-1. `B` is now an un-normalized graph Laplacian matrix. Discard the smallest
-eigenvector, and the next `d` eigenvectors are the coordinates of the reduced
-dimension. This step is carried out like any other related spectral method, like
-Laplacian eigenmaps or diffusion maps.
+<p align="center">
+  <img src="man/figures/swiss-roll-before.png" alt="Swiss roll before LTSA" width="45%">
+  <img src="man/figures/swiss-roll-after-ltsa.png" alt="Swiss roll after LTSA" width="45%">
+</p>
 
 ## Current Status
 
-*June 27 2026*: Version 0.0.0.9002 uses C++ local-weight construction,
-triangular sparse matrix assembly, and Rayleigh-Ritz postprocessing for final
-eigenanalysis.
-
-Still experimental, but now less accurately described as only "Finicky". Its
-speed relies on the interaction of:
-
-* Using approximate nearest neighbors to define the local neighborhoods.
-* Using a [sparse matrix](https://cran.r-project.org/package=Matrix)
-representation of `B`.
-* Computing local neighborhood weights in C++ with LAPACK. High-dimensional
-neighborhoods use an exact centered Gram route; lower-dimensional neighborhoods
-use direct SVD.
-* Using triangular sparse assembly in C++, with optional parallel construction
-controlled by `n_assembly_threads`.
-* Using [RSpectra](https://cran.r-project.org/package=RSpectra) by default to
-recover the small-eigenvalue directions of `B`. The iterative backends
-(`"rspectra"`, `"irlba"`, and `"svdr"`) request a candidate block controlled by
-`eig_k`, then use null-vector projection, Rayleigh-Ritz postprocessing, and
-residual diagnostics before returning embedding vectors.
-
-It's not a great idea to use large values of `k` to define the neighborhoods:
-you will get something that approaches a "global" SVD/PCA at much greater
-effort. If you insist on doing this (e.g. set `n_neighbors = 1000`), the local
-weight calculation and sparse matrix assembly both scale with the number of
-neighborhood entries, roughly `N * k * k`.
-
-The approximate nearest neighbor search (which can be exact if you want) is
-controlled by `n_threads`. Construction of the LTSA alignment matrix `B` is
-controlled separately by `n_assembly_threads`.
-
-If you use multiple assembly threads with a multithreaded
-[underlying linear algebra library](https://csantill.github.io/RPerformanceWBLAS/),
-avoid oversubscribing your machine: outer LTSA assembly threads and inner BLAS
-threads can otherwise compete with each other. I use MKL but need to set the
-following in my ~/.bashrc:
-
-```bash
-export MKL_THREADING_LAYER=GNU
-export MKL_NUM_THREADS=1
-```
-
-### LTSA eigenanalysis and diagnostics
-
-The default `ltsa()` return is the embedding matrix:
-
-``` r
-embedding <- ltsa(swiss_roll)
-```
-
-Compared to the Python implementation in scikit-learn (using
-[LocallyLinearEmbedding](https://scikit-learn.org/stable/modules/generated/sklearn.manifold.LocallyLinearEmbedding.htm))
-with `method="ltsa"`), `flotsam` will be faster on very large datasets because
-it can use approximate nearest neighbor neighbors and will usually converge
-on datasets where ARPACK (used by the scikit-learn implementation fails).
-However, for some datasets (usually only synthetic cases), the underlying
-RSpectra solver can converge in the case of near-null clustered eigenvectors,
-but not find all the eigenvectors. This is bad, because these are the
-eigenvectors you want and it's not easy to diagnose.
-
-Use `output = "result"` to inspect diagnostics:
-
-``` r
-ltsa_result <- ltsa(
-  swiss_roll,
-  eig_k = 16,
-  output = "result"
-)
-
-ltsa_result$eigen[c("status", "eig_k", "rank")]
-ltsa_result$eigen$messages
-```
-
-A large number of other values are returned, but they probably aren't that
-useful except for isolating bugs in particular code paths. If the
-`eigen$messages` complain about a weak Ritz boundary gap, then there is a risk
-of missing eigenvectors in my experience. Stricter convergence criteria can
-help here at the cost of longer computation.
-
-For the default RSpectra backend, the main convergence controls are `tol`,
-`maxitr` and `ncv`:
-
-``` r
-ltsa_strict <- ltsa(
-  swiss_roll,
-  eig_k = 16,
-  output = "result",
-  tol = 1e-8,
-  maxitr = 5000,
-  ncv = 40
-)
-```
-
-Backend-specific tuning is passed through `...`:
-
-* `eig_method = "rspectra"`: `tol`, `maxitr`, and `ncv`.
-* `eig_method = "irlba"`: `tol`, `maxit`, and `reorth`.
-* `eig_method = "svdr"`: `tol` and `it`.
-
-In the event of a convergence failure with stricter convergence, you
-may also need to increase `eig_k` (the number of eigenvectors returned before
-the Rayleigh-Ritz processing):
-
-```r
-ltsa_wider <- ltsa(
-  swiss_roll,
-  eig_k = 32,
-  output = "result"
-)
-```
-
-However the default is already quite generous, so usually tighter convergence
-is the answer with default `eig_k`.
-
-Use `output = "B"` to return the assembled unnormalized LTSA matrix without
-final eigenanalysis:
-
-``` r
-B <- ltsa(swiss_roll, output = "B")
-```
-
-If you use `eig_method = "irlba"` or `eig_method = "svdr"` then different
-functions in irlba will be used instead of RSpectra. They do not expose the
-same convergence metadata as RSpectra, so they rely on post-hoc residual
-diagnostics rather than hard backend convergence counts. For small diagnostic
-cases, `eig_method = "eig"` and `eig_method = "eigen"` are synonyms for base
-`eigen()`. Dense `eig` is the diagnostic reference when algebraic eigenvalue
-ordering matters.
-
-There is also a `normalize = TRUE` option, which I included experimentally in
-analogy with normalized and un-normalized graph Laplacians. In cases where
-LTSA struggles to converge, setting `normalize = TRUE` can result in a much
-faster solution, *but* I have also noticed that it can result in a different
-geometry in those cases, so use it with extreme caution.
-
-Set `include_B = TRUE` with `output = "result"` if the detailed result should
-also carry the assembled unnormalized matrix.
+*June 27 2026*: Version 0.0.0.9002 is a big re-write compared to the initial release, adding
+multi-threaded C++ local-weight construction, triangular sparse matrix assembly, and Rayleigh-Ritz
+postprocessing for more reliable final eigenanalysis.
 
 ## See Also
 
-[Rdimtools](https://github.com/kisungyou/Rdimtools) also contains an R
-implementation of LTSA.
+- [Rdimtools](https://github.com/kisungyou/Rdimtools) also contains an R implementation of LTSA.
+- Eigenanalysis is carried out with either [RSpectra](https://cran.r-project.org/package=RSpectra)
+or [irlba](https://cran.r-project.org/package=irlba).
+- Approximate nearest neighbor analysis via [rnndescent](https://cran.r-project.org/package=rnndescent).
 
 ## Further Reading
 
-A fairly arbitrary selection of papers that contained at least one thing I found
-interesting while writing this package.
+A fairly arbitrary selection of papers that contained at least one thing I found interesting while
+writing this package.
 
 Zhang, Z., & Zha, H. (2004). 
-Principal manifolds and nonlinear dimensionality reduction via tangent space alignment. 
+Principal manifolds and nonlinear dimensionality reduction via tangent space alignment.
 *SIAM journal on scientific computing*, *26*(1), 313-338.
 <https://doi.org/10.1137/S1064827502419154>
 
-Xiang, S., Nie, F., Pan, C., & Zhang, C. (2011). 
+Xiang, S., Nie, F., Pan, C., & Zhang, C. (2011).
 Regression reformulations of LLE and LTSA with locally linear transformation. 
 *IEEE Transactions on Systems, Man, and Cybernetics, Part B (Cybernetics)*, *41*(5), 1250-1262.
 <https://doi.org/10.1109/TSMCB.2011.2123886>
 
-Sun, W., Halevy, A., Benedetto, J. J., Czaja, W., Li, W., Liu, C., ... & Wang, R. (2013). 
+Sun, W., Halevy, A., Benedetto, J. J., Czaja, W., Li, W., Liu, C., ... & Wang, R. (2013).
 Nonlinear dimensionality reduction via the ENH-LTSA method for hyperspectral image classification.
 *IEEE Journal of Selected Topics in Applied Earth Observations and Remote Sensing*, *7*(2), 375-388.
 <https://doi.org/10.1109/JSTARS.2013.2238890>
 
 Hong, D., Yokoya, N., & Zhu, X. X. (2017). 
-Learning a robust local manifold representation for hyperspectral dimensionality reduction. 
+Learning a robust local manifold representation for hyperspectral dimensionality reduction.
 *IEEE Journal of Selected Topics in Applied Earth Observations and Remote Sensing*, *10*(6), 2960-2975.
 <https://doi.org/10.1109/JSTARS.2017.2682189>
 
@@ -243,36 +94,3 @@ Zhang, S., Ma, Z., & Tan, H. (2017).
 On the Equivalence of HLLE and LTSA.
 *IEEE transactions on cybernetics*, *48*(2), 742-753.
 <https://doi.org/10.1109/TCYB.2017.2655338>
-
-Ting, D., & Jordan, M. I. (2018).
-On Nonlinear Dimensionality Reduction, Linear Smoothing and Autoencoding
-*arXiv preprint* *arXiv*:1803.02432.
-<https://arxiv.org/abs/1803.02432>
-
-For some (perhaps under-appreciated) theoretical issues around spectral methods
-for manifold learning, see:
-
-Gerber, S., Tasdizen, T., & Whitaker, R. (2007, June). 
-Robust non-linear dimensionality reduction using successive 1-dimensional Laplacian eigenmaps. 
-In *Proceedings of the 24th international conference on Machine learning* (pp. 281-288).
-<https://doi.org/10.1145/1273496.1273532>
-
-Goldberg, Y., Zakai, A., Kushnir, D., & Ritov, Y. A. (2008). 
-Manifold learning: The price of normalization.
-*Journal of Machine Learning Research*, *9*(8).
-<https://www.jmlr.org/papers/v9/goldberg08a.html>
-
-Ting, D., & Jordan, M. I. (2020).
-Manifold Learning via Manifold Deflation.
-*arXiv preprint* *arXiv*:2007.03315.
-<https://arxiv.org/abs/2007.03315>
-
-The key paper remains the one by Goldberg and co-workers: if the "aspect ratio"
-of the manifold has a variance that is very high in one axis over another (e.g.
-a very long and thin manifold) then the normalization constraint inherent to
-spectral methods like LTSA will fail to reproduce the manifold.
-
-`flotsam` goes to various efforts to shift matrices to find *largest* eigenvalues
-inspired by discussion between [Aaron Lun](https://github.com/LTLA), 
-[Kevin Doherty](https://github.com/keevindoherty) and 
-[Yixuan Qiu](https://github.com/yixuan) at [this RSpectra issue](https://github.com/yixuan/spectra/issues/126).
