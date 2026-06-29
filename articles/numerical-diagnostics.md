@@ -4,111 +4,239 @@ This note collects the LTSA implementation details that are useful when
 a result looks numerically suspicious, but too long for the README or
 [`?ltsa`](https://jlmelville.github.io/flotsam/reference/ltsa.md).
 
-## What `ltsa()` is solving
+## Threading
 
-LTSA builds a sparse alignment matrix `B` from local neighborhoods. For
-each observation, the package finds a neighborhood, computes a local
-tangent-space basis, forms a small local weight matrix, and scatters
-those weights into the global sparse matrix. The embedding comes from
-the lowest nonconstant eigenvectors of that matrix.
+If you use multiple assembly threads with a multithreaded [underlying
+linear algebra library](https://csantill.github.io/RPerformanceWBLAS/),
+avoid oversubscribing your machine: outer LTSA assembly threads and
+inner BLAS threads can otherwise compete with each other. I use MKL but
+need to set the following in my `~/.bashrc`:
 
-This is deliberately close to other spectral manifold methods: if the
-neighborhood graph is disconnected, weakly connected, or has a
-low-energy cluster that cuts across the requested `ndim`, the final
-eigenspace may be ambiguous.
+``` bash
+export MKL_THREADING_LAYER=GNU
+export MKL_NUM_THREADS=1
+```
 
-## Candidate-subspace eigenanalysis
+## Eigenanalysis Steps
 
-The iterative backends do not ask directly for only `ndim` output
-vectors. They request a wider candidate block controlled by `eig_k`,
-remove the known constant null direction, and run a small Rayleigh-Ritz
-extraction inside that candidate span. The final embedding uses the
-first `ndim` nonconstant vectors from that projected solve.
+The `ndim` eigenvectors you want are the lowest nonconstant eigenvectors
+of the LTSA matrix `B`, i.e. not the eigenvector associated with the
+smallest eigenvalue, which is always constant. In this respect, LTSA is
+similar to Laplacian eigenmaps or diffusion maps.
 
-The default `eig_k` is intentionally wider than `ndim + 1`. Increasing
-`eig_k` can help when diagnostics suggest that the candidate span did
-not cover enough of a clustered low-energy eigenspace, but it also costs
-more work.
+However, finding the lowest nonconstant eigenvectors for a large sparse
+matrix can be tricky. It’s easy to get into a scenario where convergence
+fails, takes an excessive time, or worse hangs forever. To ameliorate
+this, the `flotsam` implementation tries the following steps:
 
-## Reading result diagnostics
+### Shifted largest-algebraic solves
 
-Use `output = "result"` when you need to inspect a solve:
+The eigenvectors of a shifted matrix ($`B + \mu I`$) are the same as the
+eigenvectors of the original matrix, but the corresponding eigenvalues
+are shifted by $`\mu`$. Finding the largest eigenvalues of a matrix
+tends to be easier than finding the smallest eigenvalues, so this can
+make the eigensolver converge faster. Many methods offer a
+“shift-invert” option to do this, which will also spread out the
+eigenvalues if they are clustered close to each other. Unfortunately,
+I’ve *never* had good luck with the shift-invert approach when it comes
+to large sparse matrices, so instead `flotsam` does a manual shift by
+doing a quick calculation to find the largest eigenvalue (this doesn’t
+need to be exact, just a rough estimate) and then shifting the matrix by
+that amount. This doesn’t fix the clustered eigenvalue problem, but it
+does seem to help with convergence in general.
+
+This approach was motivated by practical issues around small clustered
+eigenvalues and by discussion between Aaron Lun, Kevin Doherty, and
+Yixuan Qiu in at <https://github.com/yixuan/spectra/issues/126>.
+
+### Over-requested eigenvectors
+
+Instead of only requesting `ndim` output vectors, the iterative methods
+(those provided by `RSpectra` and `irlba`) request a wider candidate
+block controlled by `eig_k`. This tends to help with successful
+convergence and also helps with clustered eigenvalue problems, where an
+entire eigenvector can be missed. I have seen this help in cases where
+convergence failed, and simply increasing `tol` or `ncv` and `maxitr`
+alone didn’t help: it seems like increasing `eig_k` provided a larger
+space for the eigenanalysis to work in.
+
+The default `eig_k` is already quite generous for all the datasets I
+have tried it with. In most cases, you could get away with using a
+smaller value for `eig_k` and you would get the same solution faster.
+Unfortunately, there is no way to know in the case of clustered
+eigenvalues if you are actually getting all the eigenvectors back and
+increasing `eig_k` was the only thing that I have seen that worked. In
+practice, I have only seen this happen with synthetic datasets.
+
+### Rayleigh-Ritz postprocessing
+
+The Rayleigh-Ritz postprocessing step is a small polishing step that
+attempts to improve the accuracy of the returned eigenvectors. It
+removes the known constant null direction and then projects the
+remaining eigenvectors onto the candidate span. It may help with mixed
+or rotated vectors in the clustered low-eigenvalue case. It can’t
+recover an entirely missing eigenvector, hence the use of `eig_k` as
+mentioned above.
+
+## Comparison to scikit-learn LTSA
+
+The Python implementation in scikit-learn (using
+[LocallyLinearEmbedding](https://scikit-learn.org/stable/modules/generated/sklearn.manifold.LocallyLinearEmbedding.htm))
+with `method="ltsa"`) will be faster on very large datasets because it
+can use approximate nearest neighbor neighbors and will usually converge
+with datasets where ARPACK (used by the scikit-learn implementation)
+fails.
+
+However, the clustered eigenvalue problem may be better handled with
+ARPACK.
+
+## A Clustered Eigenvalue Example
+
+The example below shows a case where the RSpectra backend fails to find
+all the eigenvectors. I will use the synthetic S-curve-with-a-hole
+dataset from the `snedata` package:
 
 ``` r
 
-res <- ltsa(X, output = "result")
-res$eigen[c("status", "eig_k", "rank")]
-res$eigen$messages
+pak::pak("jlmelville/snedata")
+set.seed(42)
+sch <- snedata::s_curve_hole(n_samples = 10000)
 ```
 
-The most useful public fields are:
+Let’s see what happens where we run with only 6 eigenvectors:
 
-- `status`: solver-neutral classification of the requested solve.
-- `messages`: short explanations for warning or invalid classifications.
-- `eig_k`: number of backend candidate vectors requested.
-- `values`: selected embedding eigenvalues.
-- `ritz_values`: values available after null-vector projection inside
-  the candidate span.
-- `residuals`: scaled residuals for the selected vectors.
-- `rank`: post-null rank available in the candidate span.
-- `backend`: backend metadata such as convergence counts where
-  available.
+``` r
 
-These diagnostics classify the requested solve; they are not
-mathematical certificates for the entire low-energy eigenspace.
+ltsa_result <- ltsa(sch, eig_k = 6)
+```
 
-## Backend notes
+![eig_k = 6](figures/s-curve-hole-eig-k-6.png)
 
-`eig_method = "rspectra"` is the default. It reports RSpectra
-convergence metadata, so hard backend convergence failures can be
-distinguished from post-hoc residual or boundary diagnostics.
+`eig_k = 6`
 
-`eig_method = "irlba"` and `eig_method = "svdr"` use irlba routines to
-produce candidate vectors. They do not expose the same convergence
-metadata as RSpectra, so `flotsam` relies on residual and eigenspace
-diagnostics after the candidate block is returned.
+The embedding is not a disaster, but it’s got a very obvious bend and
+you can’t see the hole (maybe the embedding is also twisted).
 
-`eig_method = "eig"` and `"eigen"` use dense
-[`base::eigen()`](https://rdrr.io/r/base/eigen.html) and are intended as
-small diagnostic references.
+Increasing the tolerance might be seen as the obvious step:
 
-The RSpectra path uses shifted largest-algebraic solves rather than
-asking ARPACK/Spectra to work directly at zero. That approach was
-motivated by practical issues around small clustered eigenvalues and by
-discussion between Aaron Lun, Kevin Doherty, and Yixuan Qiu in
-<https://github.com/yixuan/spectra/issues/126>.
+``` r
 
-## Normalization
+res_strict <- ltsa(sch, eig_k = 6, tol = 1e-8)
+```
 
-`normalize = TRUE` solves a normalized LTSA formulation. It can be
-useful for comparison, but it is a different spectral objective from the
-default unnormalized alignment matrix. If a downstream task depends on
-geometry or clustering in the embedding, compare diagnostics and
-behavior before relying on the normalized result.
+But this fails to converge:
 
-## Performance notes
+    Error: Eigenanalysis failed: RSpectra failed to converge enough LTSA candidate vectors: 0 / 6
+    In addition: Warning message:
+    In do.call(.Call, args = dot_call_args) :
+      only 0 eigenvalue(s) converged, less than k = 6
 
-Nearest-neighbor search is controlled by `n_threads`. Sparse
-alignment-matrix assembly is controlled separately by
-`n_assembly_threads`.
+Increasing the number of eigenvectors to 18 helps the convergence
+succeed:
 
-When `n_assembly_threads > 1`, avoid oversubscribing the machine with an
-already-multithreaded BLAS/LAPACK setup. In practice that often means
-using outer LTSA assembly threads while keeping BLAS threads low, or
-keeping LTSA assembly serial while BLAS is free to use threads.
+``` r
 
-`copy_max_mib` caps an optional row-major copy of `X` used by the
-high-dimensional local Gram route. Set it to `0` to disable that copy
-when peak memory matters more than local-weight speed.
+res_strict <- ltsa(sch, eig_k = 18, tol = 1e-8)
+```
 
-## Why spectral methods can still be finicky
+![eig_k = 18, tol = 1e-8](figures/s-curve-hole-eig-k-18-tol-1e-8.png) \|
 
-Some spectral manifold-learning failures are not implementation bugs.
-Very long, thin, uneven, disconnected, or weakly connected manifolds can
-make the normalization and eigenspace selection problem ill-conditioned.
-This is one reason `flotsam` keeps compact diagnostics visible instead
-of returning only an embedding and hoping for the best.
+Now the embedding looks correct: properly unrolled and the hole is
+visible.
 
-For more background on spectral caveats, see Goldberg, Zakai, Kushnir,
-and Ritov (2008), *Manifold learning: The price of normalization*, and
-the other references listed in the README.
+### LTSA eigenanalysis and diagnostics
+
+Examples below use a swiss roll dataset:
+
+``` r
+
+n <- 1000
+max_z <- 10
+
+# phi represents the position along the roll
+phi <- stats::runif(n, min = 1.5 * pi, max = 4.5 * pi)
+x <- phi * cos(phi)
+y <- phi * sin(phi)
+z <- stats::runif(n, max = max_z)
+swiss_roll <- data.frame(x, y, z)
+```
+
+Use `output = "result"` to inspect diagnostics:
+
+``` r
+
+ltsa_result <- ltsa(
+  swiss_roll,
+  eig_k = 16,
+  output = "result"
+)
+
+ltsa_result$eigen[c("status", "eig_k", "rank")]
+ltsa_result$eigen$messages
+```
+
+A large number of other values are returned, but they probably aren’t
+that useful except for isolating bugs in particular code paths. If the
+`eigen$messages` complain about a weak Ritz boundary gap, then there is
+a risk of missing eigenvectors in my experience. Stricter convergence
+criteria can help here at the cost of longer computation.
+
+## Convergence controls
+
+For the default RSpectra backend, the main convergence controls are
+`tol`, `maxitr` and `ncv` and are passed directly to `ltsa`:
+
+``` r
+
+ltsa_strict <- ltsa(
+  swiss_roll,
+  eig_k = 16,
+  output = "result",
+  tol = 1e-8,
+  maxitr = 5000,
+  ncv = 40
+)
+```
+
+Backend-specific tuning is passed through `...`:
+
+- `eig_method = "rspectra"`: `tol`, `maxitr`, and `ncv`.
+- `eig_method = "irlba"`: `tol`, `maxit`, and `reorth`.
+- `eig_method = "svdr"`: `tol` and `it`.
+
+In the event of a convergence failure with stricter convergence, you may
+also need to increase `eig_k` (the number of eigenvectors returned
+before the Rayleigh-Ritz processing):
+
+``` r
+
+ltsa_wider <- ltsa(
+  swiss_roll,
+  eig_k = 32,
+  output = "result"
+)
+```
+
+However the default is already quite generous, so usually tighter
+convergence is the answer with default `eig_k`.
+
+Use `output = "B"` to return the assembled unnormalized LTSA matrix
+without final eigenanalysis:
+
+``` r
+
+B <- ltsa(swiss_roll, output = "B")
+```
+
+If you use `eig_method = "irlba"` or `eig_method = "svdr"` then
+different functions in irlba will be used instead of RSpectra. They do
+not expose the same convergence metadata as RSpectra, so they rely on
+post-hoc residual diagnostics rather than hard backend convergence
+counts. For small diagnostic cases, `eig_method = "eig"` and
+`eig_method = "eigen"` are synonyms for base
+[`eigen()`](https://rdrr.io/r/base/eigen.html). This is not affected by
+clustering issues and will always return the correct eigenvectors, but
+is very expensive and slow for all but the smallest datasets.
+
+Set `include_B = TRUE` with `output = "result"` if the detailed result
+should also carry the assembled unnormalized matrix.
