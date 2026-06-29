@@ -139,7 +139,9 @@ succeed:
 res_strict <- ltsa(sch, eig_k = 18, tol = 1e-8)
 ```
 
-![eig_k = 18, tol = 1e-8](figures/s-curve-hole-eig-k-18-tol-1e-8.png) \|
+![eig_k = 18, tol = 1e-8](figures/s-curve-hole-eig-k-18-tol-1e-8.png)
+
+`eig_k = 18`, `tol = 1e-8`
 
 Now the embedding looks correct: properly unrolled and the hole is
 visible.
