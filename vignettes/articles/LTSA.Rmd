@@ -1,0 +1,73 @@
+---
+title: "Local Tangent Space Alignment"
+---
+
+# A Brief Description of LTSA
+
+The mathematics and some of the descriptions of LTSA are not always very clear,
+but this is what happens:
+
+1. You have a dataset `X` with `N` items that you would like to reduce to `d` dimensions.
+1. Create an empty `N` x `N` matrix B (filled with zeros).
+1. For each item in the dataset, define a neighborhood, i.e. the `k`-nearest neighbors.
+1. Calculate the SVD for just that neighborhood.
+1. Create the `k` x `k` matrix `W = I - V.V'` where `V` is the right singular vectors of the SVD
+(with some centering).
+1. Update the elements of the `N` x `N` matrix `B` with the values of `W` by adding the elements of
+ `W` to the entries in `B` that correspond to the items in the neighborhood.
+1. Repeat for all items in the dataset.
+1. `B` is now an un-normalized graph Laplacian matrix. Discard the smallest eigenvector, and the 
+next `d` eigenvectors are the coordinates of the reduced dimension. This step is carried out like
+any other related spectral method, like Laplacian eigenmaps or diffusion maps.
+
+## Parameters
+
+There's only one function in `flotsam`: `ltsa`. Some parameters that may be worth modifying in
+roughly descending order of importance:
+
+* `ndim`: The number of dimensions to reduce to. Usually 2 for visualization.
+* `n_neighbors`: The number of neighbors to use for the local neighborhood. Default is `15`.
+  Usually  this is the performance bottleneck, but if you set `n_neighbors` too low, you risk a 
+  disconnected (or close to disconnected) graph which can make the eigensolver slow or even fail to
+  converge.
+* `nn_method`: The method to use for finding nearest neighbors:
+  * `"nnd"`: Use approximate nearest neighbors by Nearest Neighbor Descent. This is the default and 
+  appropriate for large datasets.
+  * `"exact"`: Use exact nearest neighbors by exhaustively comparing all items. Slow for large 
+  datasets.
+  * A precomputed nearest-neighbor index matrix of size `N` x `n_neighbors`.
+  * A nearest-neighbor result object with an `idx` matrix of size `N` x `n_neighbors`.
+* `include_self`: Whether to include the item itself as a neighbor. 
+  [Zhang and co-workers](https://doi.org/10.1109/JSTARS.2017.2682189) suggest that this is in 
+  effect the main difference between LTSA and the Hessian Locally Linear Embedding (HLLE) method, 
+  so setting this to `FALSE` may allow emulating HLLE. Default is `TRUE`.
+* `n_threads`: The number of threads to use for the nearest neighbor calculation. Default is `1`.
+* `n_assembly_threads`: The number of threads to use when constructing the LTSA matrix `B`. Default 
+   is `1` which means to be single-threaded. Values greater than `1` opt into parallel construction 
+   of `B`, which can be faster but may increase peak memory use.
+* `eig_method`: The method to use for finding eigenvalues.
+  * `"rspectra"`: Use `RSpectra::eigs_sym()`. This is the default.
+  * `"irlba"`: Use `irlba::irlba()` and post-hoc residual diagnostics.
+  * `"svdr"`: Use `irlba::svdr()` and post-hoc residual diagnostics.
+  * `"eigen"`: Use `base::eigen()`. This will convert the sparse matrix `B` to a dense matrix 
+  and also calculates all eigenvectors (`eig_k` is ignored). In terms of both memory usage and CPU
+  time this is only feasible for small datasets, but will give very reliable results.
+* `eig_k`: The number of eigenvectors to return before a post-processing step and final `ndim` 
+  return. If `NULL`, the default is `min(N - 1L, max(12, ndim + 2))`. Must satisfy 
+  `ndim + 1 <= eig_k < n`. Asking for more eigenvectors than necessary seems to improve the
+  reliability of the final result: RSpectra may otherwise miss eigenvectors that are close to zero,
+  or fail to converge if the tolerance is tightened. The default seems sufficiently generous for
+  most cases. The "Numerical Diagnostics" article has more details.
+* `normalize`: Whether to normalize the LTSA matrix, in the style of a normalized graph Laplacian.
+  Can converge much faster, but may not be as faithful to the original manifold.
+* `output`: The type of output to return:
+  * `"embedding"`: Return the embedding matrix. This is the default.
+  * `"result"`: Return a list containing the embedding, compact eigenanalysis diagnostics, assembly 
+    diagnostics, and optionally the assembled unnormalized LTSA matrix `B`. 
+  * `"B"`: Return the assembled unnormalized LTSA matrix and skip final eigenanalysis.
+* `include_B`: Whether to include the assembled unnormalized LTSA matrix `B` in the result.
+* `copy_max_mib` is a parameter that controls whether to make a row-major copy of `X` when the 
+   number of columns in `X` is greater than `n_neighbors`. If the copy would take up more memory in
+   MiB than this value, the copy is disabled. The default is 256 MiB. If you have the memory to
+   spare this will make the `B` matrix assembly stage faster, but this is rarely the speed 
+   bottleneck.

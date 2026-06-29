@@ -5,4 +5,5 @@ template:
 articles:
 - title: Notes
   contents:
+  - articles/LTSA
   - articles/numerical-diagnostics

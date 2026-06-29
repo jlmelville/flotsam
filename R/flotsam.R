@@ -150,7 +150,7 @@ ltsa <-
     include_B = FALSE,
     include_self = TRUE,
     normalize = FALSE,
-    n_threads = 0,
+    n_threads = 1,
     n_assembly_threads = 1,
     copy_max_mib = 256,
     verbose = FALSE,

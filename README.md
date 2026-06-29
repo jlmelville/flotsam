@@ -85,7 +85,7 @@ Nonlinear dimensionality reduction via the ENH-LTSA method for hyperspectral ima
 *IEEE Journal of Selected Topics in Applied Earth Observations and Remote Sensing*, *7*(2), 375-388.
 <https://doi.org/10.1109/JSTARS.2013.2238890>
 
-Hong, D., Yokoya, N., & Zhu, X. X. (2017). 
+Hong, D., Yokoya, N., & Zhu, X. X. (2017).
 Learning a robust local manifold representation for hyperspectral dimensionality reduction.
 *IEEE Journal of Selected Topics in Applied Earth Observations and Remote Sensing*, *10*(6), 2960-2975.
 <https://doi.org/10.1109/JSTARS.2017.2682189>
