@@ -268,15 +268,15 @@ ltsa_diagnose_ritz <- function(
       )
     )
   }
+
+  # Flag the case where the selected block appears to cut through a near-zero
+  # nonconstant cluster.
   resid_ok <- is.finite(max_residual) && max_residual <= resid_tol
-  if (
-    ltsa_partial_near_zero_block(
-      near_zero_count = rr$near_zero_nonconstant_count,
-      ndim = ndim,
-      rank_ok = rr$rank_after_null >= ndim,
-      resid_ok = resid_ok
-    )
-  ) {
+  partial_near_zero <- rr$near_zero_nonconstant_count > 0L &&
+    rr$near_zero_nonconstant_count < ndim &&
+    rr$rank_after_null >= ndim &&
+    resid_ok
+  if (partial_near_zero) {
     warning_messages <- c(
       warning_messages,
       "Only part of a near-zero selected Ritz block is present."
@@ -444,20 +444,4 @@ ltsa_ritz_eig <- function(
     lambda_max = eigen$lambda_max,
     eig_k = eig_k
   )
-}
-
-# Flag the case where the selected block appears to cut through a near-zero
-# nonconstant cluster.
-ltsa_partial_near_zero_block <- function(
-  near_zero_count,
-  ndim,
-  rank_ok,
-  resid_ok
-) {
-  if (!isTRUE(rank_ok) || !isTRUE(resid_ok)) {
-    return(FALSE)
-  }
-
-  near_zero_count <- near_zero_count %||% 0L
-  near_zero_count > 0L && near_zero_count < ndim
 }
