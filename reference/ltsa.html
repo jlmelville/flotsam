@@ -139,9 +139,14 @@ may allow emulating the HLLE method.</p></dd>
 
 
 <dt id="arg-normalize">normalize<a class="anchor" aria-label="anchor" href="#arg-normalize"></a></dt>
-<dd><p>If <code>TRUE</code>, calculate the final decomposition on a normalized
-LTSA formulation rather than the unnormalized alignment matrix. This is a
-separate spectral objective and may have different downstream properties.</p></dd>
+<dd><p>If <code>TRUE</code>, calculate the final decomposition on a symmetric
+normalization of the LTSA matrix. This is analogous to forming the
+normalized graph Laplacian. This reduces the influence of uneven
+neighborhood coverage and can give more "interesting" embeddings on data
+sets that violate the single-smooth manifold assumption and often
+converges faster than the standard LTSA formulation, but may also produce
+a different geometry. The default is <code>FALSE</code> (use the standard LTSA
+formulation).</p></dd>
 
 
 <dt id="arg-n-threads">n_threads<a class="anchor" aria-label="anchor" href="#arg-n-threads"></a></dt>

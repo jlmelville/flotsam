@@ -116,10 +116,14 @@ ltsa(
 
 - normalize:
 
-  If `TRUE`, calculate the final decomposition on a normalized LTSA
-  formulation rather than the unnormalized alignment matrix. This is a
-  separate spectral objective and may have different downstream
-  properties.
+  If `TRUE`, calculate the final decomposition on a symmetric
+  normalization of the LTSA matrix. This is analogous to forming the
+  normalized graph Laplacian. This reduces the influence of uneven
+  neighborhood coverage and can give more "interesting" embeddings on
+  data sets that violate the single-smooth manifold assumption and often
+  converges faster than the standard LTSA formulation, but may also
+  produce a different geometry. The default is `FALSE` (use the standard
+  LTSA formulation).
 
 - n_threads:
 
