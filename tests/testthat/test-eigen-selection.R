@@ -28,12 +28,8 @@ orthonormalize_test_basis <- function(V) {
 expect_same_subspace <- function(actual, expected, tolerance = 1e-10) {
   q_actual <- orthonormalize_test_basis(actual)
   q_expected <- orthonormalize_test_basis(expected)
-  sv <- svd(crossprod(q_actual, q_expected), nu = 0, nv = 0)$d
-  sv <- pmax(0, pmin(1, sv))
-  projection_distance <- sqrt(max(
-    0,
-    ncol(q_actual) + ncol(q_expected) - 2 * sum(sv^2)
-  ))
+  projector_delta <- tcrossprod(q_actual) - tcrossprod(q_expected)
+  projection_distance <- sqrt(sum(projector_delta * projector_delta))
 
   expect_equal(ncol(q_actual), ncol(q_expected))
   expect_lt(projection_distance, tolerance)
