@@ -78,9 +78,14 @@
 #'   suggests that this is in effect the main difference between LTSA and the
 #'   Hessian Locally Linear Embedding (HLLE) method, so setting this to `FALSE`
 #'   may allow emulating the HLLE method.
-#' @param normalize If `TRUE`, calculate the final decomposition on a normalized
-#'   LTSA formulation rather than the unnormalized alignment matrix. This is a
-#'   separate spectral objective and may have different downstream properties.
+#' @param normalize If `TRUE`, calculate the final decomposition on a symmetric
+#'   normalization of the LTSA matrix. This is analogous to forming the
+#'   normalized graph Laplacian. This reduces the influence of uneven
+#'   neighborhood coverage and can give more "interesting" embeddings on data
+#'   sets that violate the single-smooth manifold assumption and often
+#'   converges faster than the standard LTSA formulation, but may also produce
+#'   a different geometry. The default is `FALSE` (use the standard LTSA
+#'   formulation).
 #' @param n_threads Number of threads to use. Applies only to the nearest
 #'   neighbor calculation.
 #' @param n_assembly_threads Number of threads to use when constructing the LTSA
@@ -224,7 +229,7 @@ ltsa <-
     B_operator <- B
     nullvec <- ltsa_default_null_vector(nrow(B_operator))
     if (validated$normalize) {
-      tsmessage("Forming normalized Lsym")
+      tsmessage("Forming normalized Bsym")
       normalized <- ltsa_normalize_sparse_operator(B_operator)
       Dinvs <- normalized$Dinvs
       nullvec <- normalized$nullvec

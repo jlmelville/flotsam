@@ -83,9 +83,14 @@ suggests that this is in effect the main difference between LTSA and the
 Hessian Locally Linear Embedding (HLLE) method, so setting this to \code{FALSE}
 may allow emulating the HLLE method.}
 
-\item{normalize}{If \code{TRUE}, calculate the final decomposition on a normalized
-LTSA formulation rather than the unnormalized alignment matrix. This is a
-separate spectral objective and may have different downstream properties.}
+\item{normalize}{If \code{TRUE}, calculate the final decomposition on a symmetric
+normalization of the LTSA matrix. This is analogous to forming the
+normalized graph Laplacian. This reduces the influence of uneven
+neighborhood coverage and can give more "interesting" embeddings on data
+sets that violate the single-smooth manifold assumption and often
+converges faster than the standard LTSA formulation, but may also produce
+a different geometry. The default is \code{FALSE} (use the standard LTSA
+formulation).}
 
 \item{n_threads}{Number of threads to use. Applies only to the nearest
 neighbor calculation.}
