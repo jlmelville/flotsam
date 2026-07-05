@@ -33,12 +33,12 @@
 #' influence of points that appear in many neighborhoods (i.e. hubness) and can
 #' improve eigensolver convergence.
 #'
-#' However, other effects, such as boundary behavior, curvature, and local 
+#' However, other effects, such as boundary behavior, curvature, and local
 #' scale, also contribute to `diag(B)` and it's hard to know a priori which
-#' will dominate. Additionally, points with small diagonal mass are 
+#' will dominate. Additionally, points with small diagonal mass are
 #' relatively amplified by the `D^(-1/2)` scaling so the scaling may not always
 #' be beneficial. Empirically, in testing across a variety of datasets, when
-#' the assumption of a single-smooth manifold is violated, the normalized 
+#' the assumption of a single-smooth manifold is violated, the normalized
 #' embeddings often show more local structure and converge faster, compared to
 #' the standard formulation.
 #'
