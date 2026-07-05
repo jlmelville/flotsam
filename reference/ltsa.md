@@ -116,14 +116,9 @@ ltsa(
 
 - normalize:
 
-  If `TRUE`, calculate the final decomposition on a symmetric
-  normalization of the LTSA matrix. This is analogous to forming the
-  normalized graph Laplacian. This reduces the influence of uneven
-  neighborhood coverage and can give more "interesting" embeddings on
-  data sets that violate the single-smooth manifold assumption and often
-  converges faster than the standard LTSA formulation, but may also
-  produce a different geometry. The default is `FALSE` (use the standard
-  LTSA formulation).
+  If `TRUE`, use the normalized LTSA formulation described in the
+  "Normalized LTSA" section. The default is `FALSE`, which uses the
+  standard LTSA formulation.
 
 - n_threads:
 
@@ -174,9 +169,30 @@ settings.
 Use `output = "B"` to return the assembled unnormalized LTSA matrix and
 skip final eigenanalysis.
 
-`normalize = TRUE` selects a separate normalized LTSA formulation. It
-may have different downstream behavior from the default unnormalized
-objective.
+## Normalized LTSA
+
+`normalize = TRUE` applies symmetric Jacobi scaling to the assembled
+LTSA alignment matrix `B`. Let `D = diag(B)`. The eigensolve is
+performed on `D^(-1/2) B D^(-1/2)`, and the selected vectors are mapped
+back with `D^(-1/2)`. Equivalently, this solves the generalized
+eigenproblem `B v = lambda D v`.
+
+This keeps the same LTSA alignment energy but changes the pointwise mass
+used by the final eigenproblem, so it can produce a different embedding
+from the standard formulation. The diagonal `diag(B)` measures pointwise
+participation in the LTSA alignment energy. Reverse-neighborhood
+participation often contributes strongly, so the scaling can reduce the
+influence of points that appear in many neighborhoods (i.e. hubness) and
+can improve eigensolver convergence.
+
+However, other effects, such as boundary behavior, curvature, and local
+scale, also contribute to `diag(B)` and it's hard to know a priori which
+will dominate. Additionally, points with small diagonal mass are
+relatively amplified by the `D^(-1/2)` scaling so the scaling may not
+always be beneficial. Empirically, in testing across a variety of
+datasets, when the assumption of a single-smooth manifold is violated,
+the normalized embeddings often show more local structure and converge
+faster, compared to the standard formulation.
 
 ## Precomputed neighbor input
 

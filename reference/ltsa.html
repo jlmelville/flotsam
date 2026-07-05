@@ -139,14 +139,9 @@ may allow emulating the HLLE method.</p></dd>
 
 
 <dt id="arg-normalize">normalize<a class="anchor" aria-label="anchor" href="#arg-normalize"></a></dt>
-<dd><p>If <code>TRUE</code>, calculate the final decomposition on a symmetric
-normalization of the LTSA matrix. This is analogous to forming the
-normalized graph Laplacian. This reduces the influence of uneven
-neighborhood coverage and can give more "interesting" embeddings on data
-sets that violate the single-smooth manifold assumption and often
-converges faster than the standard LTSA formulation, but may also produce
-a different geometry. The default is <code>FALSE</code> (use the standard LTSA
-formulation).</p></dd>
+<dd><p>If <code>TRUE</code>, use the normalized LTSA formulation described in
+the "Normalized LTSA" section. The default is <code>FALSE</code>, which uses the
+standard LTSA formulation.</p></dd>
 
 
 <dt id="arg-n-threads">n_threads<a class="anchor" aria-label="anchor" href="#arg-n-threads"></a></dt>
@@ -193,8 +188,31 @@ eigenanalysis diagnostics, assembly diagnostics, and, when
 suspicious, rerun with a larger <code>eig_k</code> or stricter backend settings.</p>
 <p>Use <code>output = "B"</code> to return the assembled unnormalized LTSA matrix and skip
 final eigenanalysis.</p>
-<p><code>normalize = TRUE</code> selects a separate normalized LTSA formulation. It may
-have different downstream behavior from the default unnormalized objective.</p>
+    </div>
+    <div class="section level2">
+    <h2 id="normalized-ltsa">Normalized LTSA<a class="anchor" aria-label="anchor" href="#normalized-ltsa"></a></h2>
+
+
+<p><code>normalize = TRUE</code> applies symmetric Jacobi scaling to the assembled LTSA
+alignment matrix <code>B</code>. Let <code>D = diag(B)</code>. The eigensolve is performed on
+<code>D^(-1/2) B D^(-1/2)</code>, and the selected vectors are mapped back with
+<code>D^(-1/2)</code>. Equivalently, this solves the generalized eigenproblem
+<code>B v = lambda D v</code>.</p>
+<p>This keeps the same LTSA alignment energy but changes the pointwise mass
+used by the final eigenproblem, so it can produce a different embedding from
+the standard formulation. The diagonal <code>diag(B)</code> measures pointwise
+participation in the LTSA alignment energy. Reverse-neighborhood
+participation often contributes strongly, so the scaling can reduce the
+influence of points that appear in many neighborhoods (i.e. hubness) and can
+improve eigensolver convergence.</p>
+<p>However, other effects, such as boundary behavior, curvature, and local
+scale, also contribute to <code>diag(B)</code> and it's hard to know a priori which
+will dominate. Additionally, points with small diagonal mass are
+relatively amplified by the <code>D^(-1/2)</code> scaling so the scaling may not always
+be beneficial. Empirically, in testing across a variety of datasets, when
+the assumption of a single-smooth manifold is violated, the normalized
+embeddings often show more local structure and converge faster, compared to
+the standard formulation.</p>
     </div>
     <div class="section level2">
     <h2 id="precomputed-neighbor-input">Precomputed neighbor input<a class="anchor" aria-label="anchor" href="#precomputed-neighbor-input"></a></h2>
