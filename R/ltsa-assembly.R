@@ -19,11 +19,7 @@ assemble_ltsa_B <- function(
   row_major_copy_max_bytes <- copy_max_mib * 1024 * 1024
 
   n <- nrow(X)
-  weight_idx <- if (include_self) {
-    nn_idx
-  } else {
-    nn_idx[, -1L, drop = FALSE]
-  }
+  weight_idx <- ltsa_effective_weight_idx(nn_idx, include_self)
   k <- ncol(weight_idx)
 
   if (verbose) {
@@ -51,6 +47,14 @@ assemble_ltsa_B <- function(
     min_local_rank = components$min_local_rank,
     diagnostics = ltsa_assembly_diagnostics(components)
   )
+}
+
+ltsa_effective_weight_idx <- function(nn_idx, include_self) {
+  if (include_self) {
+    nn_idx
+  } else {
+    nn_idx[, -1L, drop = FALSE]
+  }
 }
 
 ltsa_assembly_diagnostics <- function(components) {
