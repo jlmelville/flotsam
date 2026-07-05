@@ -83,14 +83,9 @@ suggests that this is in effect the main difference between LTSA and the
 Hessian Locally Linear Embedding (HLLE) method, so setting this to \code{FALSE}
 may allow emulating the HLLE method.}
 
-\item{normalize}{If \code{TRUE}, calculate the final decomposition on a symmetric
-normalization of the LTSA matrix. This is analogous to forming the
-normalized graph Laplacian. This reduces the influence of uneven
-neighborhood coverage and can give more "interesting" embeddings on data
-sets that violate the single-smooth manifold assumption and often
-converges faster than the standard LTSA formulation, but may also produce
-a different geometry. The default is \code{FALSE} (use the standard LTSA
-formulation).}
+\item{normalize}{If \code{TRUE}, use the normalized LTSA formulation described in
+the "Normalized LTSA" section. The default is \code{FALSE}, which uses the
+standard LTSA formulation.}
 
 \item{n_threads}{Number of threads to use. Applies only to the nearest
 neighbor calculation.}
@@ -131,10 +126,33 @@ suspicious, rerun with a larger \code{eig_k} or stricter backend settings.
 
 Use \code{output = "B"} to return the assembled unnormalized LTSA matrix and skip
 final eigenanalysis.
-
-\code{normalize = TRUE} selects a separate normalized LTSA formulation. It may
-have different downstream behavior from the default unnormalized objective.
 }
+\section{Normalized LTSA}{
+
+\code{normalize = TRUE} applies symmetric Jacobi scaling to the assembled LTSA
+alignment matrix \code{B}. Let \code{D = diag(B)}. The eigensolve is performed on
+\verb{D^(-1/2) B D^(-1/2)}, and the selected vectors are mapped back with
+\code{D^(-1/2)}. Equivalently, this solves the generalized eigenproblem
+\verb{B v = lambda D v}.
+
+This keeps the same LTSA alignment energy but changes the pointwise mass
+used by the final eigenproblem, so it can produce a different embedding from
+the standard formulation. The diagonal \code{diag(B)} measures pointwise
+participation in the LTSA alignment energy. Reverse-neighborhood
+participation often contributes strongly, so the scaling can reduce the
+influence of points that appear in many neighborhoods (i.e. hubness) and can
+improve eigensolver convergence.
+
+However, other effects, such as boundary behavior, curvature, and local
+scale, also contribute to \code{diag(B)} and it's hard to know a priori which
+will dominate. Additionally, points with small diagonal mass are
+relatively amplified by the \code{D^(-1/2)} scaling so the scaling may not always
+be beneficial. Empirically, in testing across a variety of datasets, when
+the assumption of a single-smooth manifold is violated, the normalized
+embeddings often show more local structure and converge faster, compared to
+the standard formulation.
+}
+
 \section{Precomputed neighbor input}{
 
 \code{nn_method} may be a precomputed 1-based neighbor index matrix or an object
