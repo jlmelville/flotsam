@@ -70,6 +70,32 @@ test_that("precomputed exact neighborhoods match computed exact LTSA B", {
   }
 })
 
+test_that("default nnd neighbor path returns usable public diagnostics", {
+  set.seed(123)
+  X <- as.matrix(iris[seq_len(30L), seq_len(4L)])
+
+  expect_warning(
+    result <- ltsa(
+      X,
+      n_neighbors = 8L,
+      ndim = 2L,
+      eig_method = "eig",
+      output = "result",
+      n_threads = 0L
+    ),
+    NA
+  )
+
+  expect_equal(dim(result$embedding), c(30L, 2L))
+  expect_identical(result$assembly$neighbor_source, "nnd")
+  expect_identical(result$assembly$n_neighbors, 8L)
+  expect_true(is.finite(result$assembly$neighbor_elapsed))
+  expect_gte(result$assembly$neighbor_elapsed, 0)
+  expect_identical(result$eigen$method, "eig")
+  expect_identical(result$eigen$status, "ok")
+  expect_false("B" %in% names(result))
+})
+
 test_that("precomputed graph supplied as nn_method skips nearest-neighbor search", {
   set.seed(20)
   X <- matrix(rnorm(8L * 10L), nrow = 8L)

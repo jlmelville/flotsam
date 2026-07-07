@@ -482,6 +482,35 @@ test_that("Ritz diagnostics mark RSpectra nconv shortfall invalid", {
   expect_true(any(grepl("3 / 4", res$eigen$messages, fixed = TRUE)))
 })
 
+test_that("Ritz diagnostics report generic shortfalls and weak gaps", {
+  problem <- synthetic_ltsa_problem(c(0, 0.1, 0.2, 0.20001, 1, 2))
+  fixture <- synthetic_candidate_provider_factory(
+    problem,
+    backend = "synthetic_backend",
+    convergence_known = TRUE,
+    converged_columns = function(eig_k) eig_k - 1L
+  )
+
+  res <- flotsam:::ltsa_ritz_eig(
+    problem$matrix,
+    ndim = 2L,
+    provider = fixture$provider,
+    eig_k = 4L
+  )
+
+  expect_identical(res$eigen$status, "invalid")
+  expect_true(any(grepl(
+    "Backend reported fewer converged LTSA candidate vectors than requested",
+    res$eigen$messages,
+    fixed = TRUE
+  )))
+  expect_true(any(grepl(
+    "Weak Ritz boundary gap after the selected block",
+    res$eigen$messages,
+    fixed = TRUE
+  )))
+})
+
 test_that("Ritz diagnostics do not invent non-RSpectra convergence", {
   problem <- synthetic_ltsa_problem(c(0, 0.1, 0.2, 1, 2, 3))
   fixture <- synthetic_candidate_provider_factory(
