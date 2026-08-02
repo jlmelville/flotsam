@@ -81,9 +81,10 @@ synthetic_candidate_provider_factory <- function(
     )
   }
   lambda_max_value <- lambda_max
-  calls <- data.frame(eig_k = integer())
+  state <- new.env(parent = emptyenv())
+  state$calls <- data.frame(eig_k = integer())
   provider <- function(B, eig_k, lambda_max = NULL, verbose = FALSE) {
-    calls <<- rbind(calls, data.frame(eig_k = eig_k))
+    state$calls <- rbind(state$calls, data.frame(eig_k = eig_k))
     cols_i <- cols(eig_k)
     nconv_i <- if (is.function(nconv)) nconv(eig_k) else nconv
     converged_i <- if (is.function(converged_columns)) {
@@ -110,7 +111,7 @@ synthetic_candidate_provider_factory <- function(
 
   list(
     provider = provider,
-    calls = function() calls
+    calls = function() state$calls
   )
 }
 
