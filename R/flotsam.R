@@ -60,7 +60,9 @@
 #' @param n_neighbors  The size of local neighborhood (in terms of number of
 #'   neighboring sample points) used for manifold approximation. If `NULL`, the
 #'   default is `15` when neighbors are computed, or inferred when a precomputed
-#'   graph is supplied as `nn_method`.
+#'   graph is supplied as `nn_method`. It must be at least `ndim + 2` so each
+#'   local projector has a residual direction beyond the constant and tangent
+#'   subspaces.
 #' @param ndim The dimension of the space to embed into.
 #' @param nn_method Method for finding nearest neighbors, or a precomputed
 #'   nearest-neighbor graph. Can be one of:

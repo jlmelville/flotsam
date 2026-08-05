@@ -167,8 +167,12 @@ validate_ltsa_neighbor_count <- function(
   n_obs,
   include_self
 ) {
-  if (n_neighbors <= ndim) {
-    stop("n_neighbors must be greater than ndim", call. = FALSE)
+  if (n_neighbors < ndim + 2) {
+    stop(
+      "n_neighbors must be at least ndim + 2 to leave at least one local ",
+      "residual direction beyond the constant and tangent subspaces",
+      call. = FALSE
+    )
   }
 
   max_neighbors <- if (include_self) n_obs else n_obs - 1L

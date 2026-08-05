@@ -107,8 +107,8 @@ test_that("dimension and neighborhood arguments are validated", {
     "n_neighbors"
   )
   expect_error(
-    ltsa(iris[1:10, ], n_neighbors = 2, ndim = 2),
-    "greater than ndim"
+    ltsa(iris[1:10, ], n_neighbors = 3, ndim = 2),
+    "at least ndim \\+ 2"
   )
   expect_error(
     ltsa(iris[1:10, ], n_neighbors = 11, include_self = TRUE),
@@ -164,6 +164,83 @@ test_that("dimension and neighborhood arguments are validated", {
   )
 })
 
+make_c1_precomputed_neighbors <- function(n, include_self, n_neighbors) {
+  offsets <- if (include_self) {
+    seq.int(0L, n_neighbors - 1L)
+  } else {
+    seq.int(0L, n_neighbors)
+  }
+  t(vapply(
+    seq_len(n),
+    function(i) as.integer((i - 1L + offsets) %% n + 1L),
+    integer(length(offsets))
+  ))
+}
+
+test_that("effective neighborhood size is validated before processing", {
+  set.seed(101)
+  X <- matrix(stats::rnorm(6L * 4L), nrow = 6L, ncol = 4L)
+
+  for (include_self in c(TRUE, FALSE)) {
+    expect_error(
+      ltsa(
+        X,
+        ndim = 2L,
+        n_neighbors = 3L,
+        nn_method = "exact",
+        include_self = include_self,
+        output = "B"
+      ),
+      "at least ndim \\+ 2.*local residual direction"
+    )
+
+    expect_error(
+      ltsa(
+        X,
+        ndim = 2L,
+        n_neighbors = 3L,
+        nn_method = make_c1_precomputed_neighbors(6L, include_self, 3L),
+        include_self = include_self,
+        output = "B"
+      ),
+      "at least ndim \\+ 2.*local residual direction"
+    )
+  }
+})
+
+test_that("ndim plus two is the smallest accepted effective neighborhood", {
+  set.seed(102)
+  X <- matrix(stats::rnorm(6L * 4L), nrow = 6L, ncol = 4L)
+
+  for (include_self in c(TRUE, FALSE)) {
+    expect_warning(
+      computed <- ltsa(
+        X,
+        ndim = 2L,
+        n_neighbors = 4L,
+        nn_method = "exact",
+        include_self = include_self,
+        output = "B"
+      ),
+      NA
+    )
+    expect_s4_class(computed, "dgCMatrix")
+
+    expect_warning(
+      precomputed <- ltsa(
+        X,
+        ndim = 2L,
+        n_neighbors = 4L,
+        nn_method = make_c1_precomputed_neighbors(6L, include_self, 4L),
+        include_self = include_self,
+        output = "B"
+      ),
+      NA
+    )
+    expect_s4_class(precomputed, "dgCMatrix")
+  }
+})
+
 test_that("logical arguments must be scalar TRUE or FALSE", {
   expect_error(
     ltsa(iris[1:10, ], include_self = NA),
@@ -212,7 +289,7 @@ test_that("eigen diagnostic tolerances must be finite positive numbers", {
   )
 })
 
-test_that("normalized LTSA rejects matrices with non-positive diagonal", {
+test_that("minimum neighborhood size rejects the former normalized failure", {
   expect_error(
     ltsa(
       iris[1:4, ],
@@ -223,7 +300,7 @@ test_that("normalized LTSA rejects matrices with non-positive diagonal", {
       normalize = TRUE,
       eig_method = "eig"
     ),
-    "Cannot normalize the LTSA matrix"
+    "at least ndim \\+ 2.*local residual direction"
   )
 })
 

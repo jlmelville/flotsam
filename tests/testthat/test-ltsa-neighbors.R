@@ -236,7 +236,7 @@ test_that("precomputed neighbor graph validation rejects invalid graphs", {
 
   expect_error(
     ltsa(X, ndim = 2L, nn_method = nn_idx[, 1:2], output = "B"),
-    "greater than ndim"
+    "at least ndim \\+ 2"
   )
 
   expect_error(
