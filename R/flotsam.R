@@ -277,6 +277,10 @@ ltsa <-
       embedding <- Dinvs * embedding
     }
 
+    if (identical(validated$output, "embedding")) {
+      signal_eigen_status(eig_res$eigen)
+    }
+
     tsmessage("Finished")
     if (identical(validated$output, "embedding")) {
       return(embedding)
@@ -295,7 +299,8 @@ ltsa <-
         lambda_max = eig_res$eigen$lambda_max,
         status = eig_res$eigen$status,
         messages = eig_res$eigen$messages,
-        backend = eig_res$eigen$backend
+        backend = eig_res$eigen$backend,
+        diagnostics = eig_res$eigen$diagnostics
       ),
       assembly = lmerge(
         list(
@@ -314,3 +319,28 @@ ltsa <-
     }
     result
   }
+
+signal_eigen_status <- function(eigen) {
+  if (identical(eigen$status, "ok")) {
+    return(invisible(NULL))
+  }
+
+  message <- paste(eigen$messages, collapse = " ")
+  if (identical(eigen$status, "invalid")) {
+    stop(
+      "LTSA eigenanalysis status is invalid: ",
+      message,
+      call. = FALSE
+    )
+  }
+
+  if (identical(eigen$status, "warning")) {
+    warning(
+      "LTSA eigenanalysis status is warning: ",
+      message,
+      call. = FALSE
+    )
+  }
+
+  invisible(NULL)
+}

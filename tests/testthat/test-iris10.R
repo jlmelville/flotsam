@@ -159,7 +159,8 @@ expect_ltsa_public_result <- function(
       "lambda_max",
       "status",
       "messages",
-      "backend"
+      "backend",
+      "diagnostics"
     )
   )
   expect_identical(result$eigen$method, method)
@@ -171,6 +172,24 @@ expect_ltsa_public_result <- function(
   expect_gte(result$eigen$rank, ndim)
   expect_true(result$eigen$status %in% c("ok", "warning", "invalid"))
   expect_true(is.list(result$eigen$backend))
+  expect_named(
+    result$eigen$diagnostics,
+    c(
+      "global_gap",
+      "local_gap",
+      "near_zero_nonconstant_count",
+      "near_zero_nonconstant_counts",
+      "near_zero_threshold",
+      "near_zero_thresholds",
+      "near_zero_block_truncated"
+    )
+  )
+  expect_type(
+    result$eigen$diagnostics$near_zero_nonconstant_count,
+    "integer"
+  )
+  expect_type(result$eigen$diagnostics$near_zero_threshold, "double")
+  expect_type(result$eigen$diagnostics$near_zero_block_truncated, "logical")
   expect_false("B" %in% names(result))
   expect_identical(result$assembly$n_neighbors, 8L)
   expect_identical(result$assembly$neighbor_source, "exact")
@@ -191,6 +210,60 @@ test_that("default public return remains an embedding matrix", {
 
   expect_true(is.matrix(iris10_ltsa))
   expect_equal(dim(iris10_ltsa), c(10L, 2L))
+})
+
+test_that("public embedding status is actionable and result status is inspectable", {
+  warning_embedding <- NULL
+  expect_warning(
+    warning_embedding <- ltsa(
+      iris[1:10, ],
+      nn_method = "exact",
+      n_neighbors = 8,
+      include_self = FALSE,
+      eig_method = "eig",
+      eig_k = 3L
+    ),
+    "LTSA eigenanalysis status is warning:.*no spare boundary"
+  )
+  expect_true(is.matrix(warning_embedding))
+
+  warning_result <- expect_silent(
+    ltsa(
+      iris[1:10, ],
+      nn_method = "exact",
+      n_neighbors = 8,
+      include_self = FALSE,
+      eig_method = "eig",
+      eig_k = 3L,
+      output = "result"
+    )
+  )
+  expect_identical(warning_result$eigen$status, "warning")
+
+  expect_error(
+    ltsa(
+      iris[1:10, ],
+      nn_method = "exact",
+      n_neighbors = 8,
+      include_self = FALSE,
+      eig_method = "eig",
+      resid_tol = 1e-20
+    ),
+    "LTSA eigenanalysis status is invalid"
+  )
+
+  invalid_result <- expect_silent(
+    ltsa(
+      iris[1:10, ],
+      nn_method = "exact",
+      n_neighbors = 8,
+      include_self = FALSE,
+      eig_method = "eig",
+      resid_tol = 1e-20,
+      output = "result"
+    )
+  )
+  expect_identical(invalid_result$eigen$status, "invalid")
 })
 
 test_that("all solver methods support detailed public results", {

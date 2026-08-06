@@ -16,7 +16,7 @@ test_that("default RSpectra path unfolds a swiss roll", {
       eig_method = "rspectra",
       n_threads = 0
     ),
-    NA
+    "LTSA eigenanalysis status is warning:.*Weak Ritz boundary gap"
   )
 
   truth <- scale(cbind(phi = phi, z = swiss_roll$z))

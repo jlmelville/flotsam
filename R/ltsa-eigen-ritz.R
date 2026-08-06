@@ -110,7 +110,9 @@ ltsa_ritz_select <- function(
     global_gap = global_gap,
     local_gap = local_gap,
     near_zero_nonconstant_count = near_zero_nonconstant_count,
-    near_zero_nonconstant_counts = near_zero_nonconstant_counts
+    near_zero_nonconstant_counts = near_zero_nonconstant_counts,
+    near_zero_tol = near_zero_tol,
+    near_zero_thresholds = near_zero_thresholds
   )
 }
 
@@ -269,17 +271,20 @@ ltsa_diagnose_ritz <- function(
     )
   }
 
-  # Flag the case where the selected block appears to cut through a near-zero
-  # nonconstant cluster.
-  resid_ok <- is.finite(max_residual) && max_residual <= resid_tol
-  partial_near_zero <- rr$near_zero_nonconstant_count > 0L &&
-    rr$near_zero_nonconstant_count < ndim &&
-    rr$rank_after_null >= ndim &&
-    resid_ok
-  if (partial_near_zero) {
+  # The observed candidate span shows truncation when more near-zero modes
+  # are present than the requested embedding dimensions. This is an
+  # identifiability warning, not evidence of clustering.
+  near_zero_block_truncated <- rr$near_zero_nonconstant_count > ndim
+  if (near_zero_block_truncated) {
     warning_messages <- c(
       warning_messages,
-      "Only part of a near-zero selected Ritz block is present."
+      paste0(
+        "The requested embedding cuts through a larger near-zero eigenspace; ",
+        "individual coordinates are not uniquely identifiable. Increase ",
+        "eig_k to inspect more of the observed block, or use a larger ndim ",
+        "or subspace-based downstream analysis. A stricter tolerance does ",
+        "not resolve a genuine repeated eigenspace."
+      )
     )
   }
 
@@ -291,14 +296,6 @@ ltsa_diagnose_ritz <- function(
     "ok"
   }
   messages <- c(invalid_messages, warning_messages)
-  if (length(messages) > 0L) {
-    messages <- c(
-      messages,
-      paste0(
-        "Increasing eig_k or using stricter backend settings may help."
-      )
-    )
-  }
 
   list(
     method = backend$name,
@@ -310,7 +307,18 @@ ltsa_diagnose_ritz <- function(
     lambda_max = lambda_max,
     status = status,
     messages = messages,
-    backend = backend
+    backend = backend,
+    diagnostics = list(
+      global_gap = rr$global_gap,
+      local_gap = rr$local_gap,
+      near_zero_nonconstant_count = as.integer(
+        rr$near_zero_nonconstant_count
+      ),
+      near_zero_nonconstant_counts = rr$near_zero_nonconstant_counts,
+      near_zero_threshold = as.numeric(rr$near_zero_tol),
+      near_zero_thresholds = rr$near_zero_thresholds,
+      near_zero_block_truncated = isTRUE(near_zero_block_truncated)
+    )
   )
 }
 

@@ -285,6 +285,55 @@ test_that("near-zero Ritz counts are reported at multiple thresholds", {
   expect_lt(max(abs(rr$ritz_values - expected_ritz_values)), 1e-14)
 })
 
+test_that("near-zero truncation counts use the observed candidate span", {
+  ndim <- 2L
+  threshold <- flotsam:::ltsa_near_zero_tol(4)
+  cases <- list(
+    below = list(
+      values = c(0, threshold / 2, 0.1, 1, 2, 3, 4),
+      count = 1L
+    ),
+    equal = list(
+      values = c(0, threshold / 2, threshold / 2, 0.1, 1, 2, 4),
+      count = 2L
+    ),
+    above = list(
+      values = c(
+        0,
+        threshold / 2,
+        threshold / 2,
+        threshold / 2,
+        0.1,
+        1,
+        4
+      ),
+      count = 3L
+    )
+  )
+
+  for (case in cases) {
+    problem <- synthetic_ltsa_problem(case$values)
+    fixture <- synthetic_candidate_provider_factory(problem)
+    result <- flotsam:::ltsa_ritz_eig(
+      problem$matrix,
+      ndim = ndim,
+      provider = fixture$provider,
+      eig_k = 6L
+    )
+    diagnostics <- result$eigen$diagnostics
+
+    expect_identical(
+      diagnostics$near_zero_nonconstant_count,
+      case$count
+    )
+    expect_equal(diagnostics$near_zero_threshold, threshold, tolerance = 1e-15)
+    expect_identical(
+      diagnostics$near_zero_block_truncated,
+      case$count > ndim
+    )
+  }
+})
+
 test_that("small Ritz-selected cases agree with dense eigen reference subspaces", {
   B <- synthetic_ltsa_matrix(c(0, 0.1, 0.2, 0.8, 1.5, 3))
   dense <- eigen(B, symmetric = TRUE)
@@ -435,7 +484,8 @@ test_that("Ritz diagnostics use compact solver-neutral shape", {
       "lambda_max",
       "status",
       "messages",
-      "backend"
+      "backend",
+      "diagnostics"
     )
   )
   expect_equal(res$eigen$values, res$values, tolerance = 1e-12)
@@ -450,10 +500,25 @@ test_that("Ritz diagnostics use compact solver-neutral shape", {
       "global_gap",
       "local_gap",
       "zero_tol",
-      "near_zero_tol"
+      "near_zero_tol",
+      "near_zero_nonconstant_count",
+      "near_zero_threshold",
+      "near_zero_block_truncated"
     ) %in%
       names(res$eigen)
   ))
+  expect_named(
+    res$eigen$diagnostics,
+    c(
+      "global_gap",
+      "local_gap",
+      "near_zero_nonconstant_count",
+      "near_zero_nonconstant_counts",
+      "near_zero_threshold",
+      "near_zero_thresholds",
+      "near_zero_block_truncated"
+    )
+  )
   expect_false(any(c("attempts", "acceptance", "ritz") %in% names(res)))
 })
 
@@ -539,8 +604,8 @@ test_that("Ritz diagnostics do not invent non-RSpectra convergence", {
   expect_length(res$eigen$messages, 0L)
 })
 
-test_that("Ritz diagnostics give eig_k and backend-setting guidance", {
-  problem <- synthetic_ltsa_problem(c(0, 1e-10, 1e-3, 2e-3, 1))
+test_that("Ritz diagnostics give near-zero truncation guidance", {
+  problem <- synthetic_ltsa_problem(c(0, 1e-10, 1e-10, 1e-10, 0.002, 1))
   fixture <- synthetic_candidate_provider_factory(problem)
 
   res <- flotsam:::ltsa_ritz_eig(
@@ -553,12 +618,13 @@ test_that("Ritz diagnostics give eig_k and backend-setting guidance", {
   expect_equal(nrow(fixture$calls()), 1L)
   expect_identical(res$eigen$status, "warning")
   expect_true(any(grepl(
-    "Only part of a near-zero selected Ritz block",
+    "individual coordinates are not uniquely identifiable",
     res$eigen$messages,
     fixed = TRUE
   )))
+  expect_true(any(grepl("Increase eig_k", res$eigen$messages, fixed = TRUE)))
   expect_true(any(grepl(
-    "Increasing eig_k",
+    "does not resolve a genuine repeated eigenspace",
     res$eigen$messages,
     fixed = TRUE
   )))
