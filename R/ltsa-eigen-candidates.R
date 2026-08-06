@@ -53,13 +53,14 @@ ltsa_rspectra_candidate_provider <- function(
   verbose = FALSE,
   shift_eps = 1e-6,
   dense_n = 100L,
-  dense_fraction = 0.5
+  dense_fraction = 0.5,
+  force_iterative = FALSE
 ) {
   varargs <- list(...)
   n <- ncol(B)
 
   if (
-    length(varargs) == 0L &&
+    !isTRUE(force_iterative) &&
       ltsa_use_dense_eig(
         n,
         eig_k,
@@ -293,13 +294,14 @@ ltsa_irlba_candidate_provider <- function(
   verbose = FALSE,
   shift_eps = 1e-6,
   dense_n = 100L,
-  dense_fraction = 0.5
+  dense_fraction = 0.5,
+  force_iterative = FALSE
 ) {
   varargs <- list(...)
   n <- ncol(B)
 
   if (
-    length(varargs) == 0L &&
+    !isTRUE(force_iterative) &&
       ltsa_use_dense_eig(
         n,
         eig_k,
@@ -365,13 +367,14 @@ ltsa_svdr_candidate_provider <- function(
   verbose = FALSE,
   shift_eps = 1e-6,
   dense_n = 100L,
-  dense_fraction = 0.5
+  dense_fraction = 0.5,
+  force_iterative = FALSE
 ) {
   varargs <- list(...)
   n <- ncol(B)
 
   if (
-    length(varargs) == 0L &&
+    !isTRUE(force_iterative) &&
       ltsa_use_dense_eig(
         n,
         eig_k,

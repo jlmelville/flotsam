@@ -322,13 +322,71 @@ ltsa_diagnose_ritz <- function(
   )
 }
 
-ltsa_split_public_eigen_args <- function(args) {
+validate_eigen_controls <- function(args, eig_method, output) {
   if (is.null(args)) {
     args <- list()
   }
+  if (length(args) == 0L) {
+    return(
+      list(
+        provider_args = list(),
+        resid_tol = 1e-5,
+        gap_tol = 1e-4,
+        force_iterative = FALSE
+      )
+    )
+  }
+
+  if (identical(output, "B")) {
+    stop(
+      "output = \"B\" does not accept arguments in `...`",
+      call. = FALSE
+    )
+  }
+
   arg_names <- names(args)
   if (is.null(arg_names)) {
     arg_names <- rep.int("", length(args))
+  }
+  if (any(is.na(arg_names) | !nzchar(arg_names))) {
+    stop(
+      "Every argument in `...` must be named",
+      call. = FALSE
+    )
+  }
+  if (anyDuplicated(arg_names)) {
+    duplicate_name <- arg_names[duplicated(arg_names)][[1L]]
+    stop(
+      "Argument `",
+      duplicate_name,
+      "` is supplied more than once",
+      call. = FALSE
+    )
+  }
+
+  diagnostic_names <- c("resid_tol", "gap_tol")
+  routing_names <- c("dense_n", "dense_fraction", "shift_eps")
+  backend_names <- list(
+    rspectra = c("tol", "maxitr", "ncv"),
+    irlba = c("tol", "maxit", "reorth"),
+    svdr = c("tol", "it", "extra"),
+    eig = character()
+  )
+  supported_names <- unique(c(
+    diagnostic_names,
+    if (identical(eig_method, "eig")) character() else routing_names,
+    backend_names[[eig_method]]
+  ))
+  unsupported_names <- setdiff(arg_names, supported_names)
+  if (length(unsupported_names) > 0L) {
+    stop(
+      "Argument `",
+      unsupported_names[[1L]],
+      "` is not supported for eig_method = \"",
+      eig_method,
+      "\"",
+      call. = FALSE
+    )
   }
 
   resid_tol <- args$resid_tol %||% 1e-5
@@ -336,13 +394,36 @@ ltsa_split_public_eigen_args <- function(args) {
   resid_tol <- ltsa_check_positive_finite(resid_tol, "resid_tol")
   gap_tol <- ltsa_check_positive_finite(gap_tol, "gap_tol")
 
-  diagnostic_arg_names <- c("resid_tol", "gap_tol")
-  provider_args <- args[!(arg_names %in% diagnostic_arg_names)]
+  if ("shift_eps" %in% arg_names) {
+    args$shift_eps <- ltsa_check_positive_finite(args$shift_eps, "shift_eps")
+  }
+  if ("dense_n" %in% arg_names) {
+    args$dense_n <- check_whole_number(args$dense_n, "dense_n", min = 0)
+  }
+  if ("dense_fraction" %in% arg_names) {
+    args$dense_fraction <- ltsa_check_positive_finite(
+      args$dense_fraction,
+      "dense_fraction"
+    )
+    if (args$dense_fraction > 1) {
+      stop("dense_fraction must be <= 1", call. = FALSE)
+    }
+  }
+
+  provider_args <- args[!(arg_names %in% diagnostic_names)]
+  force_iterative <- switch(
+    eig_method,
+    rspectra = any(c("tol", "maxitr", "ncv", "shift_eps") %in% arg_names),
+    irlba = any(c("tol", "maxit", "reorth", "shift_eps") %in% arg_names),
+    svdr = any(c("tol", "it", "extra", "shift_eps") %in% arg_names),
+    eig = FALSE
+  )
 
   list(
     provider_args = provider_args,
     resid_tol = resid_tol,
-    gap_tol = gap_tol
+    gap_tol = gap_tol,
+    force_iterative = force_iterative
   )
 }
 
@@ -388,11 +469,16 @@ ltsa_run_eigenanalysis <- function(
     }
   )
 
+  provider_args <- eigen_args$provider_args
+  if (eig_method %in% c("rspectra", "irlba", "svdr")) {
+    provider_args$force_iterative <- isTRUE(eigen_args$force_iterative)
+  }
+
   ltsa_ritz_eig(
     B = B,
     ndim = ndim,
     provider = provider,
-    provider_args = eigen_args$provider_args,
+    provider_args = provider_args,
     nullvec = nullvec,
     eig_k = eig_k,
     resid_tol = eigen_args$resid_tol,

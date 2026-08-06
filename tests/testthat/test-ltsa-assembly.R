@@ -239,8 +239,7 @@ test_that("public output modes control B and detailed result contents", {
     ndim = 2L,
     nn_method = "exact",
     include_self = TRUE,
-    output = "B",
-    not_an_eigensolver_argument = TRUE
+    output = "B"
   )
   expect_s4_class(B, "dgCMatrix")
 

@@ -12,11 +12,15 @@
 #' eigenspace ambiguity matters. The result contains the embedding,
 #' eigenanalysis diagnostics, assembly diagnostics, and, when
 #' `include_B = TRUE`, the assembled unnormalized matrix `B`. The diagnostic
-#' `status` and `messages` fields summarize the requested solve; if they look
-#' suspicious, rerun with a larger `eig_k` or stricter backend settings.
+#' `status` and `messages` fields summarize the requested solve; inspect those
+#' condition-specific messages when the status is not `"ok"`.
 #'
 #' Use `output = "B"` to return the assembled unnormalized LTSA matrix and skip
 #' final eigenanalysis.
+#'
+#' When `output = "result"`, `eigen$method` records the requested method and
+#' `eigen$backend$name` records the backend actually used. Iterative methods
+#' may use the dense fallback described under `Eigensolver controls`.
 #'
 #' @section Normalized LTSA:
 #' `normalize = TRUE` applies symmetric Jacobi scaling to the assembled LTSA
@@ -115,11 +119,32 @@
 #'   copy of `X` used during high-dimensional local Gram assembly. Set to `0`
 #'   to disable this copy.
 #' @param verbose If `TRUE` log information about progress to the console.
-#' @param ... Extra eigensolver controls. For `"rspectra"`, common controls are
-#'   `tol`, `maxitr`, and `ncv`. For `"irlba"`, common controls are `tol`,
-#'   `maxit`, and `reorth`. For `"svdr"`, common controls are `tol` and `it`.
-#'   `resid_tol` and `gap_tol` tune the diagnostic thresholds used to classify
-#'   the requested solve. Other backend arguments may cause the solve to fail.
+#' @param ... Optional eigensolver and diagnostic controls. See the
+#'   `Eigensolver controls` section.
+#'
+#' @section Eigensolver controls:
+#' Backend controls:
+#'
+#' * `"rspectra"`: `tol`, `maxitr`, and `ncv`. See
+#'   \link[RSpectra:eigs_sym]{RSpectra::eigs_sym()} for their meanings. The
+#'   package default for `tol` is `1e-6`.
+#' * `"irlba"`: `tol`, `maxit`, and `reorth`.
+#'   See \link[irlba:irlba]{irlba::irlba()} for their meanings.
+#' * `"svdr"`: `tol`, `it`, and `extra`. See
+#'   \link[irlba:svdr]{irlba::svdr()} for their meanings.
+#'
+#' `resid_tol` and `gap_tol` set diagnostic thresholds for candidate residuals
+#' and the Ritz boundary gap. They default to `1e-5` and `1e-4`, respectively,
+#' and do not affect backend selection.
+#'
+#' `dense_n` and `dense_fraction` control the automatic dense fallback. Dense
+#' eigenanalysis is selected when `n <= dense_n` or
+#' `eig_k >= dense_fraction * n`; their defaults are `100` and `0.5`.
+#' `shift_eps` controls the positive shift margin used by iterative methods and
+#' defaults to `1e-6`. Backend controls and `shift_eps` use the requested
+#' iterative backend instead of the automatic dense fallback. The requested
+#' method remains in `eigen$method`, while `eigen$backend$name` identifies the
+#' backend actually used.
 #'
 #' @references
 #' Zhang, Z., & Zha, H. (2004).
@@ -205,6 +230,12 @@ ltsa <-
       verbose = verbose
     )
 
+    eigen_args <- validate_eigen_controls(
+      args = list(...),
+      eig_method = validated$eig_method,
+      output = validated$output
+    )
+
     neighbors <- prepare_ltsa_neighbors(
       X = X,
       n_neighbors = validated$n_neighbors,
@@ -243,7 +274,6 @@ ltsa <-
       return(B)
     }
 
-    eigen_args <- ltsa_split_public_eigen_args(list(...))
     B_operator <- B
     nullvec <- ltsa_default_null_vector(nrow(B_operator))
     if (validated$normalize) {

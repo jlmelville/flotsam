@@ -30,7 +30,9 @@ numeric column is required.}
 \item{n_neighbors}{The size of local neighborhood (in terms of number of
 neighboring sample points) used for manifold approximation. If \code{NULL}, the
 default is \code{15} when neighbors are computed, or inferred when a precomputed
-graph is supplied as \code{nn_method}.}
+graph is supplied as \code{nn_method}. It must be at least \code{ndim + 2} so each
+local projector has a residual direction beyond the constant and tangent
+subspaces.}
 
 \item{ndim}{The dimension of the space to embed into.}
 
@@ -102,11 +104,8 @@ to disable this copy.}
 
 \item{verbose}{If \code{TRUE} log information about progress to the console.}
 
-\item{...}{Extra eigensolver controls. For \code{"rspectra"}, common controls are
-\code{tol}, \code{maxitr}, and \code{ncv}. For \code{"irlba"}, common controls are \code{tol},
-\code{maxit}, and \code{reorth}. For \code{"svdr"}, common controls are \code{tol} and \code{it}.
-\code{resid_tol} and \code{gap_tol} tune the diagnostic thresholds used to classify
-the requested solve. Other backend arguments may cause the solve to fail.}
+\item{...}{Optional eigensolver and diagnostic controls. See the
+\verb{Eigensolver controls} section.}
 }
 \description{
 Apply the Local Tangent Space Alignment (LTSA) method (Zhang and Zha, 2004)
@@ -121,11 +120,15 @@ Use \code{output = "result"} to inspect compact diagnostics when convergence or
 eigenspace ambiguity matters. The result contains the embedding,
 eigenanalysis diagnostics, assembly diagnostics, and, when
 \code{include_B = TRUE}, the assembled unnormalized matrix \code{B}. The diagnostic
-\code{status} and \code{messages} fields summarize the requested solve; if they look
-suspicious, rerun with a larger \code{eig_k} or stricter backend settings.
+\code{status} and \code{messages} fields summarize the requested solve; inspect those
+condition-specific messages when the status is not \code{"ok"}.
 
 Use \code{output = "B"} to return the assembled unnormalized LTSA matrix and skip
 final eigenanalysis.
+
+When \code{output = "result"}, \code{eigen$method} records the requested method and
+\code{eigen$backend$name} records the backend actually used. Iterative methods
+may use the dense fallback described under \verb{Eigensolver controls}.
 }
 \section{Normalized LTSA}{
 
@@ -167,6 +170,33 @@ assembly, so the matrix must have \code{n_neighbors + 1} columns.
 \code{copy_max_mib} limits an optional row-major dense copy of \code{X} used during
 high-dimensional local Gram assembly. Increase it only when that copy is
 useful and enough memory is available; set it to \code{0} to disable the copy.
+}
+
+\section{Eigensolver controls}{
+
+Backend controls:
+\itemize{
+\item \code{"rspectra"}: \code{tol}, \code{maxitr}, and \code{ncv}. See
+\link[RSpectra:eigs_sym]{RSpectra::eigs_sym()} for their meanings. The
+package default for \code{tol} is \code{1e-6}.
+\item \code{"irlba"}: \code{tol}, \code{maxit}, and \code{reorth}.
+See \link[irlba:irlba]{irlba::irlba()} for their meanings.
+\item \code{"svdr"}: \code{tol}, \code{it}, and \code{extra}. See
+\link[irlba:svdr]{irlba::svdr()} for their meanings.
+}
+
+\code{resid_tol} and \code{gap_tol} set diagnostic thresholds for candidate residuals
+and the Ritz boundary gap. They default to \code{1e-5} and \code{1e-4}, respectively,
+and do not affect backend selection.
+
+\code{dense_n} and \code{dense_fraction} control the automatic dense fallback. Dense
+eigenanalysis is selected when \code{n <= dense_n} or
+\code{eig_k >= dense_fraction * n}; their defaults are \code{100} and \code{0.5}.
+\code{shift_eps} controls the positive shift margin used by iterative methods and
+defaults to \code{1e-6}. Backend controls and \code{shift_eps} use the requested
+iterative backend instead of the automatic dense fallback. The requested
+method remains in \code{eigen$method}, while \code{eigen$backend$name} identifies the
+backend actually used.
 }
 
 \examples{

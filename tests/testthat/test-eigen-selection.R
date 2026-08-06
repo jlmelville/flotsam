@@ -454,6 +454,7 @@ test_that("public iterative LTSA honors explicit eig_k", {
     )
 
     expect_identical(result$eigen$method, method)
+    expect_identical(result$eigen$backend$name, method)
     expect_identical(result$eigen$eig_k, 4L)
     expect_false("attempts" %in% names(result))
     expect_false("acceptance" %in% names(result$eigen))

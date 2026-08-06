@@ -304,7 +304,7 @@ test_that("minimum neighborhood size rejects the former normalized failure", {
   )
 })
 
-test_that("eigenanalysis errors include ltsa context and solver details", {
+test_that("unsupported eigen controls fail concisely", {
   expect_error(
     ltsa(
       iris[1:10, ],
@@ -314,6 +314,351 @@ test_that("eigenanalysis errors include ltsa context and solver details", {
       eig_method = "svdr",
       not_an_argument = TRUE
     ),
-    "Eigenanalysis failed:.*unused argument"
+    '^Argument `not_an_argument` is not supported for eig_method = "svdr"$'
   )
+})
+
+test_that("public eigen control names are validated before eigenanalysis", {
+  base_args <- list(
+    X = iris[1:10, ],
+    nn_method = "exact",
+    n_neighbors = 8L,
+    include_self = FALSE,
+    eig_k = 4L,
+    output = "result"
+  )
+
+  accepted <- list(
+    rspectra = list(
+      tol = 1e-8,
+      maxitr = 5000L,
+      ncv = 8L
+    ),
+    irlba = list(tol = 1e-8, maxit = 5000L, reorth = TRUE),
+    svdr = list(tol = 1e-8, it = 500L, extra = 2L)
+  )
+  for (method in names(accepted)) {
+    for (argument in names(accepted[[method]])) {
+      result <- expect_silent(
+        do.call(
+          ltsa,
+          c(
+            base_args,
+            list(eig_method = method),
+            accepted[[method]][argument]
+          )
+        )
+      )
+      expect_identical(result$eigen$method, method)
+      expect_identical(result$eigen$backend$name, method)
+    }
+  }
+
+  expect_error(
+    do.call(
+      ltsa,
+      c(base_args, list(eig_method = "rspectra", tol_resid = 1e-8))
+    ),
+    '^Argument `tol_resid` is not supported for eig_method = "rspectra"$'
+  )
+  expect_error(
+    do.call(
+      ltsa,
+      c(base_args, list(eig_method = "rspectra", maxit = 100L))
+    ),
+    '^Argument `maxit` is not supported for eig_method = "rspectra"$'
+  )
+  expect_error(
+    do.call(
+      ltsa,
+      c(base_args, list(eig_method = "irlba", maxitr = 100L))
+    ),
+    '^Argument `maxitr` is not supported for eig_method = "irlba"$'
+  )
+  expect_error(
+    do.call(
+      ltsa,
+      c(base_args, list(eig_method = "svdr", maxit = 100L))
+    ),
+    '^Argument `maxit` is not supported for eig_method = "svdr"$'
+  )
+  expect_error(
+    do.call(
+      ltsa,
+      c(base_args, list(eig_method = "eig", tol = 1e-8))
+    ),
+    '^Argument `tol` is not supported for eig_method = "eig"$'
+  )
+
+  expect_error(
+    do.call(
+      ltsa,
+      c(
+        base_args,
+        list(
+          ndim = 2L,
+          include_B = FALSE,
+          normalize = FALSE,
+          n_threads = 1L,
+          n_assembly_threads = 1L,
+          copy_max_mib = 256,
+          verbose = FALSE,
+          eig_method = "rspectra",
+          1e-8
+        )
+      )
+    ),
+    "must be named"
+  )
+  expect_error(
+    do.call(
+      ltsa,
+      c(
+        base_args,
+        list(eig_method = "rspectra", tol = 1e-8, tol = 1e-9)
+      )
+    ),
+    '^Argument `tol` is supplied more than once$'
+  )
+  expect_error(
+    do.call(
+      ltsa,
+      c(base_args, list(eig_method = "rspectra", retvec = FALSE))
+    ),
+    '^Argument `retvec` is not supported for eig_method = "rspectra"$'
+  )
+  expect_error(
+    do.call(
+      ltsa,
+      c(base_args, list(eig_method = "irlba", nv = 0L))
+    ),
+    '^Argument `nv` is not supported for eig_method = "irlba"$'
+  )
+  expect_error(
+    do.call(
+      ltsa,
+      c(base_args, list(eig_method = "svdr", k = 0L))
+    ),
+    '^Argument `k` is not supported for eig_method = "svdr"$'
+  )
+})
+
+test_that("backend control values are passed through unchanged", {
+  # Direct helper coverage is intentional: asserting these values through
+  # ltsa() would assert the installed backends' current validation policies.
+  backend_args <- list(
+    rspectra = list(tol = 0, maxitr = 2.5, ncv = NA_integer_),
+    irlba = list(tol = 0, maxit = 2.5, reorth = 1),
+    svdr = list(tol = 0, it = 2.5, extra = 100)
+  )
+
+  for (method in names(backend_args)) {
+    controls <- flotsam:::validate_eigen_controls(
+      args = backend_args[[method]],
+      eig_method = method,
+      output = "result"
+    )
+    expect_identical(controls$provider_args, backend_args[[method]])
+  }
+})
+
+test_that("flotsam-owned eigen controls are validated locally", {
+  base_args <- list(
+    X = iris[1:10, ],
+    nn_method = "exact",
+    n_neighbors = 8L,
+    include_self = FALSE,
+    eig_k = 4L,
+    output = "result"
+  )
+
+  expect_error(
+    do.call(ltsa, c(base_args, list(dense_n = 1.5))),
+    "dense_n"
+  )
+  expect_error(
+    do.call(ltsa, c(base_args, list(dense_fraction = 1.1))),
+    "dense_fraction"
+  )
+  expect_error(
+    do.call(ltsa, c(base_args, list(shift_eps = 0))),
+    "shift_eps"
+  )
+})
+
+test_that("output B rejects all eigenanalysis controls before assembly", {
+  expect_error(
+    ltsa(
+      iris[1:10, ],
+      nn_method = "exact",
+      n_neighbors = 8L,
+      output = "B",
+      tol = 1e-8
+    ),
+    'output = "B" does not accept arguments in `...`'
+  )
+  expect_error(
+    do.call(
+      ltsa,
+      list(
+        X = iris[1:10, ],
+        nn_method = "exact",
+        n_neighbors = 8L,
+        ndim = 2L,
+        eig_method = "rspectra",
+        eig_k = NULL,
+        output = "B",
+        include_B = FALSE,
+        include_self = TRUE,
+        normalize = FALSE,
+        n_threads = 1L,
+        n_assembly_threads = 1L,
+        copy_max_mib = 256,
+        verbose = FALSE,
+        1e-8
+      )
+    ),
+    'output = "B" does not accept arguments in `...`'
+  )
+})
+
+test_that("public routing without controls uses the dense fallback", {
+  base_args <- list(
+    X = iris[1:10, ],
+    nn_method = "exact",
+    n_neighbors = 8L,
+    include_self = FALSE,
+    eig_k = 4L,
+    output = "result"
+  )
+  for (method in c("rspectra", "irlba", "svdr")) {
+    dense <- expect_silent(
+      do.call(ltsa, c(base_args, list(eig_method = method)))
+    )
+    expect_identical(dense$eigen$method, method)
+    expect_identical(dense$eigen$backend$name, "dense_eigen")
+  }
+})
+
+test_that("backend-specific arguments request the selected iterative backend", {
+  base_args <- list(
+    X = iris[1:10, ],
+    nn_method = "exact",
+    n_neighbors = 8L,
+    include_self = FALSE,
+    eig_k = 4L,
+    output = "result"
+  )
+  backend_arguments <- list(
+    rspectra = list(tol = 1e-8, maxitr = 5000L, ncv = 8L),
+    irlba = list(tol = 1e-8, maxit = 5000L, reorth = TRUE),
+    svdr = list(tol = 1e-8, it = 500L, extra = 2L)
+  )
+
+  for (method in names(backend_arguments)) {
+    for (argument in names(backend_arguments[[method]])) {
+      result <- expect_silent(
+        do.call(
+          ltsa,
+          c(
+            base_args,
+            list(eig_method = method),
+            backend_arguments[[method]][argument]
+          )
+        )
+      )
+      expect_identical(result$eigen$method, method)
+      expect_identical(result$eigen$backend$name, method)
+    }
+  }
+})
+
+test_that("shift_eps requests the selected iterative backend", {
+  base_args <- list(
+    X = iris[1:10, ],
+    nn_method = "exact",
+    n_neighbors = 8L,
+    include_self = FALSE,
+    eig_k = 4L,
+    output = "result",
+    shift_eps = 1e-6
+  )
+
+  for (method in c("rspectra", "irlba", "svdr")) {
+    result <- expect_silent(
+      do.call(ltsa, c(base_args, list(eig_method = method)))
+    )
+    expect_identical(result$eigen$method, method)
+    expect_identical(result$eigen$backend$name, method)
+  }
+})
+
+test_that("dense threshold values select dense and iterative routes", {
+  base_args <- list(
+    X = iris[1:10, ],
+    nn_method = "exact",
+    n_neighbors = 8L,
+    include_self = FALSE,
+    eig_k = 4L,
+    output = "result"
+  )
+
+  for (method in c("rspectra", "irlba", "svdr")) {
+    dense_n_result <- expect_silent(
+      do.call(ltsa, c(base_args, list(eig_method = method, dense_n = 200L)))
+    )
+    expect_identical(dense_n_result$eigen$backend$name, "dense_eigen")
+
+    iterative_n_result <- expect_silent(
+      do.call(ltsa, c(base_args, list(eig_method = method, dense_n = 0L)))
+    )
+    expect_identical(iterative_n_result$eigen$backend$name, method)
+
+    dense_fraction_result <- expect_silent(
+      do.call(
+        ltsa,
+        c(
+          base_args,
+          list(eig_method = method, dense_n = 0L, dense_fraction = 0.1)
+        )
+      )
+    )
+    expect_identical(dense_fraction_result$eigen$backend$name, "dense_eigen")
+
+    iterative_fraction_result <- expect_silent(
+      do.call(
+        ltsa,
+        c(
+          base_args,
+          list(eig_method = method, dense_n = 0L, dense_fraction = 1)
+        )
+      )
+    )
+    expect_identical(iterative_fraction_result$eigen$backend$name, method)
+  }
+})
+
+test_that("diagnostic arguments preserve ordinary dense routing", {
+  base_args <- list(
+    X = iris[1:10, ],
+    nn_method = "exact",
+    n_neighbors = 8L,
+    include_self = FALSE,
+    eig_k = 4L,
+    output = "result"
+  )
+
+  for (method in c("rspectra", "irlba", "svdr")) {
+    for (argument_name in c("resid_tol", "gap_tol")) {
+      argument <- setNames(
+        list(if (argument_name == "resid_tol") 1e-5 else 1e-4),
+        argument_name
+      )
+      result <- expect_silent(
+        do.call(ltsa, c(base_args, list(eig_method = method), argument))
+      )
+      expect_identical(result$eigen$method, method)
+      expect_identical(result$eigen$backend$name, "dense_eigen")
+    }
+  }
 })
