@@ -23,7 +23,10 @@ assemble_ltsa_B <- function(
   k <- ncol(weight_idx)
 
   if (verbose) {
-    tsmessage("Computing local weights and assembling sparse matrix")
+    tsmessage(
+      "Computing local weights and assembling sparse matrix",
+      verbose = verbose
+    )
   }
   value_nnt <- t(weight_idx)
   components <- if (n_assembly_threads <= 1L) {
@@ -83,19 +86,26 @@ log_ltsa_assembly_diagnostics <- function(components, verbose) {
     "; assembly workers requested/active: ",
     diagnostics$requested_assembly_threads,
     "/",
-    diagnostics$effective_assembly_threads
+    diagnostics$effective_assembly_threads,
+    verbose = verbose
   )
-  tsmessage("LTSA row-major Gram used: ", diagnostics$row_major_used)
+  tsmessage(
+    "LTSA row-major Gram used: ",
+    diagnostics$row_major_used,
+    verbose = verbose
+  )
   if (ltsa_log_fallback_reason(diagnostics$row_major_fallback_reason)) {
     tsmessage(
       "LTSA row-major fallback reason: ",
-      diagnostics$row_major_fallback_reason
+      diagnostics$row_major_fallback_reason,
+      verbose = verbose
     )
   }
   if (ltsa_log_fallback_reason(diagnostics$parallel_fallback_reason)) {
     tsmessage(
       "LTSA parallel fallback reason: ",
-      diagnostics$parallel_fallback_reason
+      diagnostics$parallel_fallback_reason,
+      verbose = verbose
     )
   }
   invisible(NULL)

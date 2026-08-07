@@ -20,12 +20,17 @@ prepare_ltsa_neighbors <- function(
   verbose = FALSE
 ) {
   if (!is.null(nn_idx)) {
-    tsmessage("Using precomputed nearest-neighbor graph with k = ", n_neighbors)
-    if (n_threads > 0L) {
+    tsmessage(
+      "Using precomputed nearest-neighbor graph with k = ",
+      n_neighbors,
+      verbose = verbose
+    )
+    if (n_threads != 1L) {
       tsmessage(
         "Ignoring n_threads = ",
         n_threads,
-        " because precomputed nearest-neighbor graph was supplied"
+        " because precomputed nearest-neighbor graph was supplied",
+        verbose = verbose
       )
     }
     return(list(
@@ -45,7 +50,8 @@ prepare_ltsa_neighbors <- function(
     "Finding nearest neighbors with method '",
     nn_method,
     "' using n_threads = ",
-    n_threads
+    n_threads,
+    verbose = verbose
   )
   nn_args <- list(
     data = X,

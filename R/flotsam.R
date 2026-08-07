@@ -246,7 +246,7 @@ ltsa <-
       verbose = validated$verbose
     )
 
-    tsmessage("Assembling LTSA matrix")
+    tsmessage("Assembling LTSA matrix", verbose = validated$verbose)
     assembly <- assemble_ltsa_B(
       X = X,
       nn_idx = neighbors$nn_idx,
@@ -277,14 +277,14 @@ ltsa <-
     B_operator <- B
     nullvec <- ltsa_default_null_vector(nrow(B_operator))
     if (validated$normalize) {
-      tsmessage("Forming normalized Bsym")
+      tsmessage("Forming normalized Bsym", verbose = validated$verbose)
       normalized <- ltsa_normalize_sparse_operator(B_operator)
       Dinvs <- normalized$Dinvs
       nullvec <- normalized$nullvec
       B_operator <- normalized$Lsym
     }
 
-    tsmessage("Performing eigenanalysis")
+    tsmessage("Performing eigenanalysis", verbose = validated$verbose)
 
     eig_res <- tryCatch(
       {
@@ -311,7 +311,7 @@ ltsa <-
       signal_eigen_status(eig_res$eigen)
     }
 
-    tsmessage("Finished")
+    tsmessage("Finished", verbose = validated$verbose)
     if (identical(validated$output, "embedding")) {
       return(embedding)
     }

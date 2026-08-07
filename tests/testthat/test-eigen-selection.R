@@ -892,3 +892,44 @@ test_that("RSpectra partial convergence is a hard LTSA error", {
     "RSpectra failed to converge enough LTSA candidate vectors: 0 / 20"
   )
 })
+
+test_that("verbose public iterative backends report candidate residual summaries", {
+  base_args <- list(
+    X = iris[1:10, ],
+    nn_method = "exact",
+    n_neighbors = 8L,
+    include_self = FALSE,
+    eig_k = 4L,
+    output = "result",
+    verbose = TRUE
+  )
+  backend_arguments <- list(
+    rspectra = list(tol = 1e-8, maxitr = 5000L, ncv = 8L),
+    irlba = list(tol = 1e-8, maxit = 5000L, reorth = TRUE),
+    svdr = list(tol = 1e-8, it = 500L, extra = 2L)
+  )
+  backend_labels <- c(rspectra = "RSpectra", irlba = "irlba", svdr = "svdr")
+
+  for (method in names(backend_arguments)) {
+    set.seed(42)
+    messages <- capture.output(
+      invisible(do.call(
+        ltsa,
+        c(
+          base_args,
+          list(eig_method = method),
+          backend_arguments[[method]]
+        )
+      )),
+      type = "message"
+    )
+
+    expect_true(any(grepl(
+      paste0(
+        backend_labels[[method]],
+        ".* LTSA candidate vectors; max scaled residual = "
+      ),
+      messages
+    )))
+  }
+})

@@ -68,13 +68,13 @@ ltsa_rspectra_candidate_provider <- function(
         dense_fraction = dense_fraction
       )
   ) {
-    tsmessage("Using dense eigenvalue decomposition")
+    tsmessage("Using dense eigenvalue decomposition", verbose = verbose)
     return(dense_ltsa_eig(B, eig_k))
   }
 
   lambda_probe <- NULL
   if (is.null(lambda_max)) {
-    tsmessage("Finding largest eigenvalue")
+    tsmessage("Finding largest eigenvalue", verbose = verbose)
     lambda_probe <- ltsa_lambda_max_probe(B, varargs)
     lambda_max <- lambda_probe$value
   } else {
@@ -87,7 +87,7 @@ ltsa_rspectra_candidate_provider <- function(
   shift <- lambda_max + ltsa_shift_margin(lambda_max, shift_eps)
   X_shift <- ltsa_shift_for_smallest(B, shift)
 
-  tsmessage("Decomposing shifted matrix")
+  tsmessage("Decomposing shifted matrix", verbose = verbose)
   opts <- ltsa_rspectra_opts(eig_k = eig_k, n = n)
   opts <- lmerge(opts, varargs)
   args <- list(
@@ -121,7 +121,8 @@ ltsa_rspectra_candidate_provider <- function(
     " / ",
     eig_k,
     " LTSA candidate vectors; max scaled residual = ",
-    signif(max(finished$residuals$scaled_residuals), 4)
+    signif(max(finished$residuals$scaled_residuals), 4),
+    verbose = verbose
   )
 
   candidate <- new_ltsa_candidates(
@@ -237,7 +238,8 @@ new_ltsa_shifted_candidates <- function(
   nops = NA_integer_,
   mprod = NA_integer_,
   opts = NULL,
-  returned_columns = ncol(as.matrix(vectors))
+  returned_columns = ncol(as.matrix(vectors)),
+  verbose = FALSE
 ) {
   finished <- ltsa_sort_and_score_candidates(
     B = B,
@@ -252,7 +254,8 @@ new_ltsa_shifted_candidates <- function(
     " returned ",
     eig_k,
     " LTSA candidate vectors; max scaled residual = ",
-    signif(max(finished$residuals$scaled_residuals), 4)
+    signif(max(finished$residuals$scaled_residuals), 4),
+    verbose = verbose
   )
 
   candidate <- new_ltsa_candidates(
@@ -309,13 +312,13 @@ ltsa_irlba_candidate_provider <- function(
         dense_fraction = dense_fraction
       )
   ) {
-    tsmessage("Using dense eigenvalue decomposition")
+    tsmessage("Using dense eigenvalue decomposition", verbose = verbose)
     return(dense_ltsa_eig(B, eig_k))
   }
 
   lambda_probe <- NULL
   if (is.null(lambda_max)) {
-    tsmessage("Finding largest eigenvalue")
+    tsmessage("Finding largest eigenvalue", verbose = verbose)
     lambda_probe <- ltsa_irlba_lambda_max_probe(B)
     lambda_max <- lambda_probe$value
   } else {
@@ -328,7 +331,7 @@ ltsa_irlba_candidate_provider <- function(
   shift <- lambda_max + ltsa_shift_margin(lambda_max, shift_eps)
   X_shift <- ltsa_shift_for_smallest(B, shift)
 
-  tsmessage("Decomposing shifted matrix")
+  tsmessage("Decomposing shifted matrix", verbose = verbose)
   args <- lmerge(
     list(
       A = X_shift,
@@ -352,7 +355,8 @@ ltsa_irlba_candidate_provider <- function(
     niter = res$iter %||% NA_integer_,
     mprod = res$mprod %||% NA_integer_,
     opts = args,
-    returned_columns = ncol(res$v)
+    returned_columns = ncol(res$v),
+    verbose = verbose
   )
 }
 
@@ -382,13 +386,13 @@ ltsa_svdr_candidate_provider <- function(
         dense_fraction = dense_fraction
       )
   ) {
-    tsmessage("Using dense eigenvalue decomposition")
+    tsmessage("Using dense eigenvalue decomposition", verbose = verbose)
     return(dense_ltsa_eig(B, eig_k))
   }
 
   lambda_probe <- NULL
   if (is.null(lambda_max)) {
-    tsmessage("Finding largest eigenvalue")
+    tsmessage("Finding largest eigenvalue", verbose = verbose)
     lambda_probe <- ltsa_svdr_lambda_max_probe(B)
     lambda_max <- lambda_probe$value
   } else {
@@ -401,7 +405,7 @@ ltsa_svdr_candidate_provider <- function(
   shift <- lambda_max + ltsa_shift_margin(lambda_max, shift_eps)
   X_shift <- ltsa_shift_for_smallest(B, shift)
 
-  tsmessage("Decomposing shifted matrix")
+  tsmessage("Decomposing shifted matrix", verbose = verbose)
   args <- lmerge(
     list(
       x = X_shift,
@@ -423,7 +427,8 @@ ltsa_svdr_candidate_provider <- function(
     shifted_values = res$d,
     mprod = res$mprod %||% NA_integer_,
     opts = args,
-    returned_columns = ncol(res$v)
+    returned_columns = ncol(res$v),
+    verbose = verbose
   )
 }
 

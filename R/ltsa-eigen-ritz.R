@@ -452,19 +452,19 @@ ltsa_run_eigenanalysis <- function(
   provider <- switch(
     eig_method,
     rspectra = {
-      tsmessage("Calling rspectra")
+      tsmessage("Calling rspectra", verbose = verbose)
       ltsa_rspectra_candidate_provider
     },
     irlba = {
-      tsmessage("Calling irlba")
+      tsmessage("Calling irlba", verbose = verbose)
       ltsa_irlba_candidate_provider
     },
     svdr = {
-      tsmessage("Calling irlba svdr")
+      tsmessage("Calling irlba svdr", verbose = verbose)
       ltsa_svdr_candidate_provider
     },
     eig = {
-      tsmessage("Using full eigenvalue decomposition")
+      tsmessage("Using full eigenvalue decomposition", verbose = verbose)
       ltsa_eig_candidate_provider
     }
   )

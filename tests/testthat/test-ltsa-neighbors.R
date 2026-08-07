@@ -435,6 +435,28 @@ test_that("verbose output describes computed and precomputed neighbor handling",
   X <- as.matrix(iris[seq_len(18L), seq_len(4L)])
   nn_idx <- exact_nn_idx(X, n_neighbors = 6L, include_self = TRUE)
 
+  expect_length(
+    capture_ltsa_messages(
+      X,
+      n_neighbors = 6L,
+      ndim = 2L,
+      nn_method = "exact",
+      include_self = TRUE,
+      output = "B"
+    ),
+    0L
+  )
+  expect_length(
+    capture_ltsa_messages(
+      X,
+      ndim = 2L,
+      nn_method = nn_idx,
+      include_self = TRUE,
+      output = "B"
+    ),
+    0L
+  )
+
   computed_messages <- capture_ltsa_messages(
     X,
     n_neighbors = 6L,
@@ -448,6 +470,25 @@ test_that("verbose output describes computed and precomputed neighbor handling",
   expect_true(any(grepl(
     "Finding nearest neighbors with method 'exact' using n_threads = 2",
     computed_messages,
+    fixed = TRUE
+  )))
+
+  default_precomputed_messages <- capture_ltsa_messages(
+    X,
+    ndim = 2L,
+    nn_method = nn_idx,
+    include_self = TRUE,
+    output = "B",
+    verbose = TRUE
+  )
+  expect_true(any(grepl(
+    "Using precomputed nearest-neighbor graph with k = 6",
+    default_precomputed_messages,
+    fixed = TRUE
+  )))
+  expect_false(any(grepl(
+    "Ignoring n_threads",
+    default_precomputed_messages,
     fixed = TRUE
   )))
 
