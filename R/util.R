@@ -249,6 +249,20 @@ validate_ltsa_nn_idx <- function(
     )
   }
 
+  duplicate_row <- which(vapply(
+    seq_len(n_obs),
+    function(i) anyDuplicated(nn_idx[i, ]) > 0L,
+    logical(1)
+  ))
+  if (length(duplicate_row) > 0L) {
+    stop(
+      "Precomputed nearest-neighbor graph row ",
+      duplicate_row[1L],
+      " contains duplicate indices",
+      call. = FALSE
+    )
+  }
+
   if (include_self) {
     has_self <- vapply(
       seq_len(n_obs),
