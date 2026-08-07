@@ -64,7 +64,6 @@ ltsa_assembly_diagnostics <- function(components) {
     "effective_assembly_threads",
     "raw_entries_estimate",
     "raw_bytes_estimate",
-    "duplicate_fallback_count",
     "row_major_used",
     "row_major_fallback_reason",
     "parallel_fallback_reason"
@@ -86,12 +85,7 @@ log_ltsa_assembly_diagnostics <- function(components, verbose) {
     "/",
     diagnostics$effective_assembly_threads
   )
-  tsmessage(
-    "LTSA duplicate-neighborhood fallback count: ",
-    diagnostics$duplicate_fallback_count,
-    "; row-major Gram used: ",
-    diagnostics$row_major_used
-  )
+  tsmessage("LTSA row-major Gram used: ", diagnostics$row_major_used)
   if (ltsa_log_fallback_reason(diagnostics$row_major_fallback_reason)) {
     tsmessage(
       "LTSA row-major fallback reason: ",

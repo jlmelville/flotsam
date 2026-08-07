@@ -1,10 +1,8 @@
 #include "ltsa_internal.h"
 
-[[cpp11::register]] cpp11::list
-ltsa_assemble_local_weights(const cpp11::doubles_matrix<>& x,
-                            const cpp11::integers& value_nnt,
-                            std::size_t value_n_nbrs, int ndim,
-                            double row_major_copy_max_bytes) {
+[[cpp11::register]] cpp11::list ltsa_assemble_local_weights(
+    const cpp11::doubles_matrix<>& x, const cpp11::integers& value_nnt,
+    std::size_t value_n_nbrs, int ndim, double row_major_copy_max_bytes) {
   checked_ndim(ndim);
   const std::size_t row_major_copy_max =
       checked_row_major_copy_max_bytes(row_major_copy_max_bytes);
@@ -85,7 +83,7 @@ ltsa_assemble_local_weights(const cpp11::doubles_matrix<>& x,
 
   SparseComponents components = builder.finalize_components();
   const std::size_t raw_entries = builder.raw_entries_estimate();
-  const std::size_t raw_bytes = checked_raw_staging_bytes(raw_entries, 0);
+  const std::size_t raw_bytes = checked_raw_staging_bytes(raw_entries);
   const std::string fallback_reason = row_major_fallback_reason(
       use_gram_workspace, use_row_major_gram, row_major_within_limit);
 
@@ -101,8 +99,6 @@ ltsa_assemble_local_weights(const cpp11::doubles_matrix<>& x,
        cpp11::named_arg("raw_entries_estimate") =
            static_cast<double>(raw_entries),
        cpp11::named_arg("raw_bytes_estimate") = static_cast<double>(raw_bytes),
-       cpp11::named_arg("duplicate_fallback_count") =
-           static_cast<int>(builder.duplicate_fallback_count()),
        cpp11::named_arg("row_major_used") = use_row_major_gram,
        cpp11::named_arg("row_major_fallback_reason") = fallback_reason,
        cpp11::named_arg("parallel_fallback_reason") = "not_requested"});

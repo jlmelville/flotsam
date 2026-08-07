@@ -182,7 +182,6 @@ test_that("default assembly behavior remains serial", {
     default$diagnostics$effective_assembly_threads,
     1L
   )
-
   default_ltsa <- ltsa(
     X,
     n_neighbors = 6L,
@@ -266,6 +265,9 @@ test_that("public output modes control B and detailed result contents", {
   )
   expect_true(is.list(result_without_B))
   expect_false("B" %in% names(result_without_B))
+  expect_false(
+    "duplicate_fallback_count" %in% names(result_without_B$assembly)
+  )
 
   result_with_B <- ltsa(
     X,
@@ -401,37 +403,6 @@ test_that("parallel assembly preserves rank-deficient Gram and SVD metadata", {
   )
   expect_identical(svd_parallel$rank_deficient_count, nrow(svd_X))
   expect_identical(svd_parallel$min_local_rank, 1L)
-})
-
-test_that("parallel assembly preserves duplicate-neighborhood fallback", {
-  set.seed(12)
-  X <- matrix(rnorm(8L * 10L), nrow = 8L)
-  # fmt: skip
-  nn_idx <- matrix(
-    c(
-      1L, 1L, 2L, 3L,
-      2L, 3L, 3L, 4L,
-      3L, 4L, 5L, 5L,
-      4L, 6L, 6L, 7L,
-      5L, 7L, 8L, 8L,
-      6L, 1L, 2L, 2L,
-      7L, 3L, 4L, 4L,
-      8L, 5L, 6L, 6L
-    ),
-    nrow = 8L,
-    byrow = TRUE
-  )
-  storage.mode(nn_idx) <- "integer"
-
-  parallel <- expect_ltsa_assembly_parallel_matches(
-    X,
-    nn_idx,
-    ndim = 2L,
-    include_self = TRUE,
-    n_assembly_threads = 4L,
-    tolerance = 1e-11
-  )
-  expect_identical(parallel$diagnostics$duplicate_fallback_count, nrow(X))
 })
 
 test_that("parallel assembly keeps centered Gram stable on hostile offsets", {

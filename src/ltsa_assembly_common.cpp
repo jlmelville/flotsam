@@ -28,15 +28,11 @@ std::size_t triangular_pair_offset(std::size_t local_col,
   return local_col * (local_col + 1) / 2 + local_row;
 }
 
-std::size_t checked_raw_staging_bytes(std::size_t canonical_count,
-                                      std::size_t full_count) {
-  const std::size_t total_count = checked_size_add(
-      canonical_count, full_count, "Too many raw LTSA contributions to stage");
+std::size_t checked_raw_staging_bytes(std::size_t raw_count) {
   const std::size_t row_bytes = checked_size_mul(
-      total_count, sizeof(int), "Raw LTSA row staging buffer is too large");
-  const std::size_t value_bytes =
-      checked_size_mul(total_count, sizeof(double),
-                       "Raw LTSA value staging buffer is too large");
+      raw_count, sizeof(int), "Raw LTSA row staging buffer is too large");
+  const std::size_t value_bytes = checked_size_mul(
+      raw_count, sizeof(double), "Raw LTSA value staging buffer is too large");
   return checked_size_add(row_bytes, value_bytes,
                           "Raw LTSA staging buffers are too large");
 }

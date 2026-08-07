@@ -95,8 +95,7 @@ void fill_weights_from_basis(std::size_t n_nbrs, const std::vector<int>& keep,
 
 int select_local_basis_columns(const std::vector<double>& values, int n_values,
                                int n_nbrs, int n_dim, int requested,
-                               bool values_ascending,
-                               std::vector<int>& keep);
+                               bool values_ascending, std::vector<int>& keep);
 
 int query_dsyev_workspace(int n, std::vector<double>& gram,
                           std::vector<double>& values);
@@ -117,9 +116,9 @@ int compute_local_weights_gram_workspace(const double* x_data,
                                          GramLocalWeightsWorkspace& workspace,
                                          const std::vector<double>* row_major);
 
-LocalWeights compute_local_weights_shape_routed(const cpp11::doubles_matrix<>& x,
-                                                const std::vector<int>& nni,
-                                                int ndim);
+LocalWeights
+compute_local_weights_shape_routed(const cpp11::doubles_matrix<>& x,
+                                   const std::vector<int>& nni, int ndim);
 
 std::size_t checked_size_add(std::size_t lhs, std::size_t rhs,
                              const char* message);
@@ -127,8 +126,7 @@ std::size_t checked_size_add(std::size_t lhs, std::size_t rhs,
 std::size_t checked_size_mul(std::size_t lhs, std::size_t rhs,
                              const char* message);
 
-std::size_t checked_raw_staging_bytes(std::size_t canonical_count,
-                                      std::size_t full_count);
+std::size_t checked_raw_staging_bytes(std::size_t raw_count);
 
 std::size_t triangular_pair_count(std::size_t n_nbrs);
 
@@ -152,24 +150,15 @@ public:
 
   std::size_t raw_entries_estimate() const;
 
-  std::size_t duplicate_fallback_count() const;
-
 private:
   std::size_t n_obs_;
   std::size_t value_n_nbrs_;
   std::size_t max_int_;
   std::size_t n_appended_ = 0;
   std::size_t raw_entries_estimate_ = 0;
-  std::size_t duplicate_fallback_count_ = 0;
   bool finalized_ = false;
   std::vector<std::vector<CompactEntry>> canonical_columns_;
   std::vector<std::vector<CompactEntry>> full_columns_;
-  std::vector<int> append_seen_;
-
-  bool has_duplicate_neighbors(const std::vector<int>& nni);
-
-  void append_full_prechecked(const std::vector<int>& nni,
-                              const std::vector<double>& weights);
 
   void append_triangular_prechecked(const std::vector<int>& nni,
                                     const std::vector<double>& weights);

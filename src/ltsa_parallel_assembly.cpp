@@ -59,23 +59,17 @@ struct ParallelLocalWeightsWorkspace {
 struct ParallelWorkerDiagnostics {
   int rank_deficient_count = 0;
   int min_local_rank = std::numeric_limits<int>::max();
-  int duplicate_fallback_count = 0;
   int failed_step = 0;
   int failed_info = 0;
   int failed_obs = -1;
 };
 
 struct TriangularSlotPlan {
-  std::vector<std::size_t> canonical_column_starts;
-  std::vector<std::size_t> canonical_column_counts;
-  std::vector<std::size_t> canonical_slot_offsets;
-  std::vector<std::size_t> full_column_starts;
-  std::vector<std::size_t> full_column_counts;
-  std::vector<std::size_t> full_slot_offsets;
-  std::vector<unsigned char> duplicate_flags;
+  std::vector<std::size_t> column_starts;
+  std::vector<std::size_t> column_counts;
+  std::vector<std::size_t> slot_offsets;
   std::size_t raw_entries = 0;
   std::size_t raw_bytes = 0;
-  std::size_t duplicate_fallback_count = 0;
 };
 
 struct ReduceWorkspace {
@@ -162,9 +156,9 @@ int compute_gram_weights_workspace_info(
     return info;
   }
 
-  rank = select_local_basis_columns(
-      workspace.values, workspace.n_nbrs, workspace.n_nbrs, workspace.n_dim,
-      workspace.requested, true, workspace.keep);
+  rank = select_local_basis_columns(workspace.values, workspace.n_nbrs,
+                                    workspace.n_nbrs, workspace.n_dim,
+                                    workspace.requested, true, workspace.keep);
 
   fill_weights_from_basis(workspace.n_nbrs_size, workspace.keep, workspace.gram,
                           workspace.weights);
@@ -224,47 +218,20 @@ TriangularSlotPlan assign_triangular_two_pass_slots_flat(const int* value_ptr,
 
   TriangularSlotPlan plan;
   const std::size_t tri_count = triangular_pair_count(n_nbrs);
-  plan.canonical_column_counts.assign(n_obs, 0);
-  plan.full_column_counts.assign(n_obs, 0);
+  plan.column_counts.assign(n_obs, 0);
   checked_resize_vector(
-      plan.canonical_slot_offsets,
+      plan.slot_offsets,
       checked_size_mul(n_obs, tri_count,
                        "Too many triangular LTSA slot offsets"),
       "triangular LTSA slot offsets");
-  checked_resize_vector(
-      plan.full_slot_offsets,
-      checked_size_mul(n_obs, n_nbrs, "Too many full LTSA slot offsets"),
-      "full LTSA slot offsets");
-  plan.duplicate_flags.assign(n_obs, 0);
 
   std::vector<int> nni(n_nbrs);
-  std::vector<int> seen(n_obs, -1);
   for (std::size_t obs = 0; obs < n_obs; obs++) {
     const std::size_t offset = obs * n_nbrs;
-    const int marker = static_cast<int>(obs + 1);
-    bool has_duplicate = false;
 
     for (std::size_t local = 0; local < n_nbrs; local++) {
       const int idx = checked_neighbor_index(value_ptr[offset + local], n_obs);
       nni[local] = idx;
-      if (seen[idx] == marker) {
-        has_duplicate = true;
-      }
-      seen[idx] = marker;
-    }
-
-    if (has_duplicate) {
-      plan.duplicate_flags[obs] = 1;
-      plan.duplicate_fallback_count++;
-      for (std::size_t local_col = 0; local_col < n_nbrs; local_col++) {
-        const int col = nni[local_col];
-        plan.full_slot_offsets[offset + local_col] =
-            plan.full_column_counts[col];
-        plan.full_column_counts[col] =
-            checked_size_add(plan.full_column_counts[col], n_nbrs,
-                             "Too many duplicate LTSA contributions to stage");
-      }
-      continue;
     }
 
     const std::size_t obs_tri_offset = obs * tri_count;
@@ -275,31 +242,23 @@ TriangularSlotPlan assign_triangular_two_pass_slots_flat(const int* value_ptr,
         const int col = std::max(global_row, global_col);
         const std::size_t pair_offset =
             obs_tri_offset + triangular_pair_offset(local_col, local_row);
-        plan.canonical_slot_offsets[pair_offset] =
-            plan.canonical_column_counts[col];
-        plan.canonical_column_counts[col] =
-            checked_size_add(plan.canonical_column_counts[col], 1,
+        plan.slot_offsets[pair_offset] = plan.column_counts[col];
+        plan.column_counts[col] =
+            checked_size_add(plan.column_counts[col], 1,
                              "Too many triangular LTSA contributions to stage");
       }
     }
   }
 
-  plan.canonical_column_starts.assign(n_obs + 1, 0);
-  plan.full_column_starts.assign(n_obs + 1, 0);
+  plan.column_starts.assign(n_obs + 1, 0);
   for (std::size_t col = 0; col < n_obs; col++) {
-    plan.canonical_column_starts[col + 1] = checked_size_add(
-        plan.canonical_column_starts[col], plan.canonical_column_counts[col],
-        "Too many triangular LTSA contributions to stage");
-    plan.full_column_starts[col + 1] = checked_size_add(
-        plan.full_column_starts[col], plan.full_column_counts[col],
-        "Too many duplicate LTSA contributions to stage");
+    plan.column_starts[col + 1] =
+        checked_size_add(plan.column_starts[col], plan.column_counts[col],
+                         "Too many triangular LTSA contributions to stage");
   }
 
-  plan.raw_entries = checked_size_add(
-      plan.canonical_column_starts[n_obs], plan.full_column_starts[n_obs],
-      "Too many raw LTSA contributions to stage");
-  plan.raw_bytes = checked_raw_staging_bytes(
-      plan.canonical_column_starts[n_obs], plan.full_column_starts[n_obs]);
+  plan.raw_entries = plan.column_starts[n_obs];
+  plan.raw_bytes = checked_raw_staging_bytes(plan.raw_entries);
   return plan;
 }
 
@@ -311,15 +270,10 @@ struct ParallelTriangularFillWorker {
   std::size_t n_nbrs;
   std::size_t tri_count;
   int ndim;
-  const std::vector<std::size_t>* canonical_column_starts;
-  const std::vector<std::size_t>* canonical_slot_offsets;
-  std::vector<int>* canonical_raw_rows;
-  std::vector<double>* canonical_raw_values;
-  const std::vector<std::size_t>* full_column_starts;
-  const std::vector<std::size_t>* full_slot_offsets;
-  std::vector<int>* full_raw_rows;
-  std::vector<double>* full_raw_values;
-  const std::vector<unsigned char>* duplicate_flags;
+  const std::vector<std::size_t>* column_starts;
+  const std::vector<std::size_t>* slot_offsets;
+  std::vector<int>* raw_rows;
+  std::vector<double>* raw_values;
   std::vector<ParallelLocalWeightsWorkspace>* workspaces;
   std::vector<ParallelWorkerDiagnostics>* diagnostics;
 
@@ -336,35 +290,20 @@ struct ParallelTriangularFillWorker {
         break;
       }
 
-      if ((*duplicate_flags)[obs]) {
-        worker_diagnostics.duplicate_fallback_count++;
-        for (std::size_t local_col = 0; local_col < n_nbrs; local_col++) {
-          const int col = workspace.nni[local_col];
-          const std::size_t slot = (*full_column_starts)[col] +
-                                   (*full_slot_offsets)[offset + local_col];
-          for (std::size_t local_row = 0; local_row < n_nbrs; local_row++) {
-            const std::size_t pos = slot + local_row;
-            (*full_raw_rows)[pos] = workspace.nni[local_row];
-            (*full_raw_values)[pos] =
-                workspace.weights[local_col * n_nbrs + local_row];
-          }
-        }
-      } else {
-        const std::size_t obs_tri_offset = obs * tri_count;
-        for (std::size_t local_col = 0; local_col < n_nbrs; local_col++) {
-          for (std::size_t local_row = 0; local_row <= local_col; local_row++) {
-            const int global_row = workspace.nni[local_row];
-            const int global_col = workspace.nni[local_col];
-            const int row = std::min(global_row, global_col);
-            const int col = std::max(global_row, global_col);
-            const std::size_t pair_offset =
-                obs_tri_offset + triangular_pair_offset(local_col, local_row);
-            const std::size_t pos = (*canonical_column_starts)[col] +
-                                    (*canonical_slot_offsets)[pair_offset];
-            (*canonical_raw_rows)[pos] = row;
-            (*canonical_raw_values)[pos] =
-                workspace.weights[local_col * n_nbrs + local_row];
-          }
+      const std::size_t obs_tri_offset = obs * tri_count;
+      for (std::size_t local_col = 0; local_col < n_nbrs; local_col++) {
+        for (std::size_t local_row = 0; local_row <= local_col; local_row++) {
+          const int global_row = workspace.nni[local_row];
+          const int global_col = workspace.nni[local_col];
+          const int row = std::min(global_row, global_col);
+          const int col = std::max(global_row, global_col);
+          const std::size_t pair_offset =
+              obs_tri_offset + triangular_pair_offset(local_col, local_row);
+          const std::size_t pos =
+              (*column_starts)[col] + (*slot_offsets)[pair_offset];
+          (*raw_rows)[pos] = row;
+          (*raw_values)[pos] =
+              workspace.weights[local_col * n_nbrs + local_row];
         }
       }
     }
@@ -445,15 +384,6 @@ void expand_canonical_columns_to_full(
   }
 }
 
-void append_reduced_columns(
-    const std::vector<std::vector<CompactEntry>>& source,
-    std::vector<std::vector<CompactEntry>>& target) {
-  for (std::size_t col = 0; col < source.size(); col++) {
-    target[col].insert(target[col].end(), source[col].begin(),
-                       source[col].end());
-  }
-}
-
 SparseComponents
 finalize_compact_columns(const std::vector<std::vector<CompactEntry>>& columns,
                          std::size_t n_obs, std::size_t max_int) {
@@ -491,26 +421,15 @@ finalize_compact_columns(const std::vector<std::vector<CompactEntry>>& columns,
 }
 
 SparseComponents finalize_triangular_two_pass_raw(
-    const TriangularSlotPlan& plan, const std::vector<int>& canonical_raw_rows,
-    const std::vector<double>& canonical_raw_values,
-    const std::vector<int>& full_raw_rows,
-    const std::vector<double>& full_raw_values, std::size_t n_obs,
+    const TriangularSlotPlan& plan, const std::vector<int>& raw_rows,
+    const std::vector<double>& raw_values, std::size_t n_obs,
     std::size_t n_threads, std::size_t max_int) {
-  std::vector<std::vector<CompactEntry>> canonical_columns =
-      reduce_raw_columns_parallel(
-          plan.canonical_column_starts, plan.canonical_column_counts,
-          canonical_raw_rows, canonical_raw_values, n_obs, n_threads);
+  std::vector<std::vector<CompactEntry>> triangular_columns =
+      reduce_raw_columns_parallel(plan.column_starts, plan.column_counts,
+                                  raw_rows, raw_values, n_obs, n_threads);
 
   std::vector<std::vector<CompactEntry>> full_columns(n_obs);
-  expand_canonical_columns_to_full(canonical_columns, full_columns);
-
-  if (!full_raw_rows.empty()) {
-    std::vector<std::vector<CompactEntry>> duplicate_columns =
-        reduce_raw_columns_parallel(plan.full_column_starts,
-                                    plan.full_column_counts, full_raw_rows,
-                                    full_raw_values, n_obs, n_threads);
-    append_reduced_columns(duplicate_columns, full_columns);
-  }
+  expand_canonical_columns_to_full(triangular_columns, full_columns);
 
   return finalize_compact_columns(full_columns, n_obs, max_int);
 }
@@ -521,7 +440,6 @@ ParallelWorkerDiagnostics combine_worker_diagnostics(
   for (const ParallelWorkerDiagnostics& worker : diagnostics) {
     out.rank_deficient_count += worker.rank_deficient_count;
     out.min_local_rank = std::min(out.min_local_rank, worker.min_local_rank);
-    out.duplicate_fallback_count += worker.duplicate_fallback_count;
   }
   if (out.min_local_rank == std::numeric_limits<int>::max()) {
     out.min_local_rank = ndim;
@@ -615,20 +533,11 @@ void stop_on_parallel_worker_failure(
                             ndim, use_svd_route, row_major_ptr != nullptr);
   }
 
-  const std::size_t canonical_count = slot_plan.canonical_column_starts[n_obs];
-  const std::size_t full_count = slot_plan.full_column_starts[n_obs];
-  std::vector<int> canonical_raw_rows;
-  std::vector<double> canonical_raw_values;
-  std::vector<int> full_raw_rows;
-  std::vector<double> full_raw_values;
-  checked_resize_vector(canonical_raw_rows, canonical_count,
-                        "canonical raw LTSA row buffer");
-  checked_resize_vector(canonical_raw_values, canonical_count,
-                        "canonical raw LTSA value buffer");
-  checked_resize_vector(full_raw_rows, full_count,
-                        "duplicate raw LTSA row buffer");
-  checked_resize_vector(full_raw_values, full_count,
-                        "duplicate raw LTSA value buffer");
+  const std::size_t raw_count = slot_plan.column_starts[n_obs];
+  std::vector<int> raw_rows;
+  std::vector<double> raw_values;
+  checked_resize_vector(raw_rows, raw_count, "raw LTSA row buffer");
+  checked_resize_vector(raw_values, raw_count, "raw LTSA value buffer");
 
   ParallelTriangularFillWorker worker{x_data,
                                       row_major_ptr,
@@ -637,15 +546,10 @@ void stop_on_parallel_worker_failure(
                                       value_n_nbrs,
                                       triangular_pair_count(value_n_nbrs),
                                       ndim,
-                                      &slot_plan.canonical_column_starts,
-                                      &slot_plan.canonical_slot_offsets,
-                                      &canonical_raw_rows,
-                                      &canonical_raw_values,
-                                      &slot_plan.full_column_starts,
-                                      &slot_plan.full_slot_offsets,
-                                      &full_raw_rows,
-                                      &full_raw_values,
-                                      &slot_plan.duplicate_flags,
+                                      &slot_plan.column_starts,
+                                      &slot_plan.slot_offsets,
+                                      &raw_rows,
+                                      &raw_values,
                                       &workspaces,
                                       &worker_diagnostics};
 
@@ -653,8 +557,7 @@ void stop_on_parallel_worker_failure(
   stop_on_parallel_worker_failure(worker_diagnostics);
 
   SparseComponents components = finalize_triangular_two_pass_raw(
-      slot_plan, canonical_raw_rows, canonical_raw_values, full_raw_rows,
-      full_raw_values, n_obs, requested_thread_count, max_int);
+      slot_plan, raw_rows, raw_values, n_obs, requested_thread_count, max_int);
   ParallelWorkerDiagnostics diagnostics =
       combine_worker_diagnostics(worker_diagnostics, ndim);
   const std::string fallback_reason = row_major_fallback_reason(
@@ -675,8 +578,6 @@ void stop_on_parallel_worker_failure(
            static_cast<double>(slot_plan.raw_entries),
        cpp11::named_arg("raw_bytes_estimate") =
            static_cast<double>(slot_plan.raw_bytes),
-       cpp11::named_arg("duplicate_fallback_count") =
-           diagnostics.duplicate_fallback_count,
        cpp11::named_arg("row_major_used") = row_major_ptr != nullptr,
        cpp11::named_arg("row_major_fallback_reason") = fallback_reason,
        cpp11::named_arg("parallel_fallback_reason") = ""});
