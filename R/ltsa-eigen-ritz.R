@@ -89,6 +89,7 @@ ltsa_ritz_select <- function(
         zero_tol
       )
   } else {
+    boundary_gap <- NA_real_
     global_gap <- NA_real_
     local_gap <- NA_real_
   }
@@ -100,6 +101,24 @@ ltsa_ritz_select <- function(
     values_all,
     near_zero_thresholds
   )
+  # These counts and boundaries describe only the returned candidate span.
+  # An unobserved boundary means it lies outside that span; it is not a claim
+  # that the full operator has no additional near-zero directions.
+  near_zero_boundary_gap <- ltsa_observed_block_boundary_gap(
+    values_all,
+    near_zero_nonconstant_count
+  )
+  near_zero_boundary_gaps <- vapply(
+    near_zero_nonconstant_counts,
+    function(count) ltsa_observed_block_boundary_gap(values_all, count),
+    numeric(1L)
+  )
+  near_zero_boundary_observed <-
+    near_zero_nonconstant_count > 0L &&
+    near_zero_nonconstant_count < length(values_all)
+  near_zero_boundaries_observed <-
+    near_zero_nonconstant_counts > 0L &
+    near_zero_nonconstant_counts < length(values_all)
 
   list(
     vectors = vectors_all[, take, drop = FALSE],
@@ -107,13 +126,26 @@ ltsa_ritz_select <- function(
     ritz_values = values_all,
     residuals = residuals_all$scaled_residuals[take],
     rank_after_null = rank_after_null,
+    selected_boundary_gap = boundary_gap,
     global_gap = global_gap,
     local_gap = local_gap,
+    candidate_span_size = length(values_all),
     near_zero_nonconstant_count = near_zero_nonconstant_count,
     near_zero_nonconstant_counts = near_zero_nonconstant_counts,
     near_zero_tol = near_zero_tol,
-    near_zero_thresholds = near_zero_thresholds
+    near_zero_thresholds = near_zero_thresholds,
+    near_zero_boundary_gap = near_zero_boundary_gap,
+    near_zero_boundary_gaps = near_zero_boundary_gaps,
+    near_zero_boundary_observed = near_zero_boundary_observed,
+    near_zero_boundaries_observed = near_zero_boundaries_observed
   )
+}
+
+ltsa_observed_block_boundary_gap <- function(values, count) {
+  if (count < 1L || count >= length(values)) {
+    return(NA_real_)
+  }
+  as.numeric(values[[count + 1L]] - values[[count]])
 }
 
 ltsa_backend_metadata <- function(eig_res) {
@@ -309,14 +341,22 @@ ltsa_diagnose_ritz <- function(
     messages = messages,
     backend = backend,
     diagnostics = list(
+      selected_boundary_gap = as.numeric(rr$selected_boundary_gap),
       global_gap = rr$global_gap,
       local_gap = rr$local_gap,
+      candidate_span_size = as.integer(rr$candidate_span_size),
       near_zero_nonconstant_count = as.integer(
         rr$near_zero_nonconstant_count
       ),
       near_zero_nonconstant_counts = rr$near_zero_nonconstant_counts,
       near_zero_threshold = as.numeric(rr$near_zero_tol),
       near_zero_thresholds = rr$near_zero_thresholds,
+      near_zero_boundary_gap = as.numeric(rr$near_zero_boundary_gap),
+      near_zero_boundary_gaps = rr$near_zero_boundary_gaps,
+      near_zero_boundary_observed = isTRUE(
+        rr$near_zero_boundary_observed
+      ),
+      near_zero_boundaries_observed = rr$near_zero_boundaries_observed,
       near_zero_block_truncated = isTRUE(near_zero_block_truncated)
     )
   )

@@ -159,12 +159,18 @@ expect_ltsa_public_result <- function(
   expect_named(
     result$eigen$diagnostics,
     c(
+      "selected_boundary_gap",
       "global_gap",
       "local_gap",
+      "candidate_span_size",
       "near_zero_nonconstant_count",
       "near_zero_nonconstant_counts",
       "near_zero_threshold",
       "near_zero_thresholds",
+      "near_zero_boundary_gap",
+      "near_zero_boundary_gaps",
+      "near_zero_boundary_observed",
+      "near_zero_boundaries_observed",
       "near_zero_block_truncated"
     )
   )
@@ -294,5 +300,6 @@ test_that("normalized iterative detailed results have consistent diagnostics", {
       method = method,
       normalized = TRUE
     )
+    expect_false("component_embedding_overlap" %in% names(result$assembly))
   }
 })

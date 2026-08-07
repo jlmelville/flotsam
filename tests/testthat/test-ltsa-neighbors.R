@@ -267,6 +267,86 @@ test_that("detailed results report precomputed neighbor diagnostics", {
   expect_true(is.na(result$assembly$neighbor_elapsed))
 })
 
+test_that("effective components use assembled co-membership neighborhoods", {
+  X <- matrix(c(0, 1, 2, 3, 10, 11, 12, 13), ncol = 1L)
+  # Queries deliberately point across the two groups. With include_self =
+  # FALSE, only the final three members of each row are passed to assembly,
+  # so directed query-to-neighbor connectivity must not join the groups.
+  # fmt: skip
+  nn_idx <- matrix(
+    c(
+      1L, 5L, 6L, 7L,
+      2L, 5L, 7L, 8L,
+      3L, 6L, 7L, 8L,
+      4L, 5L, 6L, 8L,
+      5L, 1L, 2L, 3L,
+      6L, 1L, 3L, 4L,
+      7L, 2L, 3L, 4L,
+      8L, 1L, 2L, 4L
+    ),
+    nrow = 8L,
+    byrow = TRUE
+  )
+
+  expect_warning(
+    result <- ltsa(
+      X,
+      ndim = 1L,
+      nn_method = nn_idx,
+      include_self = FALSE,
+      eig_method = "eig",
+      output = "result"
+    ),
+    NA
+  )
+
+  expect_identical(result$assembly$component_count, 2L)
+  expect_identical(result$assembly$component_sizes, c(4L, 4L))
+  expect_identical(
+    result$assembly$component_membership,
+    c(1L, 1L, 1L, 1L, 2L, 2L, 2L, 2L)
+  )
+  overlap <- result$assembly$component_embedding_overlap
+  component_contrast <- c(rep(1, 4L), rep(-1, 4L)) / sqrt(8)
+  embedding_basis <- qr.Q(qr(result$embedding))[, 1L, drop = FALSE]
+  expected_cosine <- abs(drop(crossprod(
+    component_contrast,
+    embedding_basis
+  )))
+  expect_equal(
+    overlap$principal_angle_cosines,
+    expected_cosine,
+    tolerance = 1e-10
+  )
+  expect_equal(
+    overlap$projection_energy,
+    expected_cosine^2,
+    tolerance = 1e-10
+  )
+  expect_identical(overlap$embedding_rank, 1L)
+  expect_identical(overlap$component_contrast_rank, 1L)
+
+  warning_messages <- character()
+  invisible(withCallingHandlers(
+    ltsa(
+      X,
+      ndim = 1L,
+      nn_method = nn_idx,
+      include_self = FALSE,
+      eig_method = "eig"
+    ),
+    warning = function(condition) {
+      warning_messages <<- c(warning_messages, conditionMessage(condition))
+      invokeRestart("muffleWarning")
+    }
+  ))
+  expect_true(any(grepl(
+    "effective-neighborhood co-membership graph has 2 disconnected",
+    warning_messages,
+    fixed = TRUE
+  )))
+})
+
 test_that("precomputed duplicate neighborhoods are rejected by row", {
   X <- matrix(seq_len(8L * 4L), nrow = 8L)
 

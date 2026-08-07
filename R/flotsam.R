@@ -309,11 +309,22 @@ ltsa <-
 
     if (identical(validated$output, "embedding")) {
       signal_eigen_status(eig_res$eigen)
+      signal_effective_component_status(assembly$diagnostics)
     }
 
     tsmessage("Finished", verbose = validated$verbose)
     if (identical(validated$output, "embedding")) {
       return(embedding)
+    }
+
+    assembly_diagnostics <- assembly$diagnostics %||% list()
+    if (!validated$normalize) {
+      assembly_diagnostics$component_embedding_overlap <-
+        ltsa_component_embedding_overlap(
+          eig_res$vectors,
+          assembly_diagnostics$component_membership,
+          assembly_diagnostics$component_sizes
+        )
     }
 
     result <- list(
@@ -341,7 +352,7 @@ ltsa <-
           rank_deficient_count = assembly$rank_deficient_count,
           min_local_rank = assembly$min_local_rank
         ),
-        assembly$diagnostics %||% list()
+        assembly_diagnostics
       )
     )
     if (validated$include_B) {
@@ -372,5 +383,28 @@ signal_eigen_status <- function(eigen) {
     )
   }
 
+  invisible(NULL)
+}
+
+signal_effective_component_status <- function(assembly) {
+  if (assembly$component_count <= 1L) {
+    return(invisible(NULL))
+  }
+
+  displayed_sizes <- head(assembly$component_sizes, 8L)
+  size_summary <- paste(displayed_sizes, collapse = ", ")
+  if (length(assembly$component_sizes) > length(displayed_sizes)) {
+    size_summary <- paste0(size_summary, ", ...")
+  }
+  warning(
+    "The effective-neighborhood co-membership graph has ",
+    assembly$component_count,
+    " disconnected components (sizes: ",
+    size_summary,
+    "). Inspect output = \"result\" component diagnostics and increase ",
+    "n_neighbors or revise neighbor construction so effective neighborhoods ",
+    "overlap.",
+    call. = FALSE
+  )
   invisible(NULL)
 }

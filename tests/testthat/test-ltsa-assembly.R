@@ -40,6 +40,30 @@ expect_ltsa_assembly_parallel_matches <- function(
     serial$rank_deficient_count
   )
   expect_identical(parallel$min_local_rank, serial$min_local_rank)
+  expect_identical(
+    parallel$diagnostics$local_solver_route,
+    serial$diagnostics$local_solver_route
+  )
+  expect_identical(
+    parallel$diagnostics$local_rank_histogram,
+    serial$diagnostics$local_rank_histogram
+  )
+  expect_identical(
+    parallel$diagnostics$rank_deficient_neighborhood_indices,
+    serial$diagnostics$rank_deficient_neighborhood_indices
+  )
+  expect_identical(
+    parallel$diagnostics$component_count,
+    serial$diagnostics$component_count
+  )
+  expect_identical(
+    parallel$diagnostics$component_sizes,
+    serial$diagnostics$component_sizes
+  )
+  expect_identical(
+    parallel$diagnostics$component_membership,
+    serial$diagnostics$component_membership
+  )
   expect_identical(serial$diagnostics$assembly_route, "serial_triangular")
   expect_identical(
     parallel$diagnostics$assembly_route,
@@ -403,6 +427,75 @@ test_that("parallel assembly preserves rank-deficient Gram and SVD metadata", {
   )
   expect_identical(svd_parallel$rank_deficient_count, nrow(svd_X))
   expect_identical(svd_parallel$min_local_rank, 1L)
+})
+
+test_that("public results expose serial and parallel local-rank diagnostics", {
+  x <- seq_len(18L)
+  fixtures <- list(
+    svd = cbind(x, 2 * x, -3 * x),
+    gram = outer(x, seq_len(12L))
+  )
+  neighborhood_sizes <- c(svd = 6L, gram = 5L)
+
+  for (route in names(fixtures)) {
+    X <- fixtures[[route]]
+    nn_idx <- exact_nn_idx(
+      X,
+      n_neighbors = neighborhood_sizes[[route]],
+      include_self = TRUE
+    )
+    expect_warning(
+      serial <- ltsa(
+        X,
+        ndim = 2L,
+        nn_method = nn_idx,
+        include_self = TRUE,
+        eig_method = "eig",
+        eig_k = 4L,
+        output = "result",
+        n_assembly_threads = 1L
+      ),
+      "numerical rank"
+    )
+    expect_warning(
+      parallel <- ltsa(
+        X,
+        ndim = 2L,
+        nn_method = nn_idx,
+        include_self = TRUE,
+        eig_method = "eig",
+        eig_k = 4L,
+        output = "result",
+        n_assembly_threads = 3L
+      ),
+      "numerical rank"
+    )
+
+    max_rank <- min(ncol(X), ncol(nn_idx))
+    expected_histogram <- stats::setNames(
+      integer(max_rank + 1L),
+      0:max_rank
+    )
+    expected_histogram[["1"]] <- nrow(X)
+    expect_identical(serial$assembly$local_solver_route, route)
+    expect_identical(parallel$assembly$local_solver_route, route)
+    expect_identical(
+      serial$assembly$local_rank_histogram,
+      expected_histogram
+    )
+    expect_identical(
+      parallel$assembly$local_rank_histogram,
+      expected_histogram
+    )
+    expect_identical(
+      serial$assembly$rank_deficient_neighborhood_indices,
+      seq_len(nrow(X))
+    )
+    expect_identical(
+      parallel$assembly$rank_deficient_neighborhood_indices,
+      seq_len(nrow(X))
+    )
+  }
 })
 
 test_that("parallel assembly keeps centered Gram stable on hostile offsets", {

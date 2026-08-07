@@ -170,8 +170,8 @@ int compute_parallel_local_weights(const double* x_data, std::size_t n_obs,
                                    const std::vector<double>* row_major,
                                    int ndim,
                                    ParallelWorkerDiagnostics& diagnostics,
-                                   std::size_t obs) {
-  int rank = 0;
+                                   std::size_t obs, int& rank) {
+  rank = 0;
   int info = 0;
   if (workspace.route_svd) {
     fill_centered_neighborhood_ptr(x_data, n_obs, workspace.nni,
@@ -274,6 +274,7 @@ struct ParallelTriangularFillWorker {
   const std::vector<std::size_t>* slot_offsets;
   std::vector<int>* raw_rows;
   std::vector<double>* raw_values;
+  std::vector<int>* local_ranks;
   std::vector<ParallelLocalWeightsWorkspace>* workspaces;
   std::vector<ParallelWorkerDiagnostics>* diagnostics;
 
@@ -285,10 +286,13 @@ struct ParallelTriangularFillWorker {
       const std::size_t offset = obs * n_nbrs;
       fill_flat_neighbors_zero_based_ptr(value_ptr, offset, n_nbrs,
                                          workspace.nni);
+      int local_rank = 0;
       if (compute_parallel_local_weights(x_data, n_obs, workspace, row_major,
-                                         ndim, worker_diagnostics, obs) != 0) {
+                                         ndim, worker_diagnostics, obs,
+                                         local_rank) != 0) {
         break;
       }
+      (*local_ranks)[obs] = local_rank;
 
       const std::size_t obs_tri_offset = obs * tri_count;
       for (std::size_t local_col = 0; local_col < n_nbrs; local_col++) {
@@ -536,6 +540,7 @@ void stop_on_parallel_worker_failure(
   const std::size_t raw_count = slot_plan.column_starts[n_obs];
   std::vector<int> raw_rows;
   std::vector<double> raw_values;
+  std::vector<int> local_ranks(n_obs, 0);
   checked_resize_vector(raw_rows, raw_count, "raw LTSA row buffer");
   checked_resize_vector(raw_values, raw_count, "raw LTSA value buffer");
 
@@ -550,6 +555,7 @@ void stop_on_parallel_worker_failure(
                                       &slot_plan.slot_offsets,
                                       &raw_rows,
                                       &raw_values,
+                                      &local_ranks,
                                       &workspaces,
                                       &worker_diagnostics};
 
@@ -570,6 +576,8 @@ void stop_on_parallel_worker_failure(
        cpp11::named_arg("rank_deficient_count") =
            diagnostics.rank_deficient_count,
        cpp11::named_arg("min_local_rank") = diagnostics.min_local_rank,
+       cpp11::named_arg("local_ranks") = local_ranks,
+       cpp11::named_arg("local_solver_route") = use_svd_route ? "svd" : "gram",
        cpp11::named_arg("assembly_route") = "parallel_triangular_two_pass",
        cpp11::named_arg("requested_assembly_threads") = requested_threads,
        cpp11::named_arg("effective_assembly_threads") =

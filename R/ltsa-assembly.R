@@ -41,6 +41,17 @@ assemble_ltsa_B <- function(
       row_major_copy_max_bytes
     )
   }
+  components <- lmerge(
+    lmerge(
+      components,
+      ltsa_local_rank_diagnostics(
+        components$local_ranks,
+        ndim,
+        max_rank = min(ncol(X), k)
+      )
+    ),
+    ltsa_effective_components(weight_idx, n)
+  )
   log_ltsa_assembly_diagnostics(components, verbose)
   B <- ltsa_components_to_dgCMatrix(components, n)
 
@@ -63,6 +74,12 @@ ltsa_effective_weight_idx <- function(nn_idx, include_self) {
 ltsa_assembly_diagnostics <- function(components) {
   fields <- c(
     "assembly_route",
+    "local_solver_route",
+    "local_rank_histogram",
+    "rank_deficient_neighborhood_indices",
+    "component_count",
+    "component_sizes",
+    "component_membership",
     "requested_assembly_threads",
     "effective_assembly_threads",
     "raw_entries_estimate",
@@ -72,6 +89,123 @@ ltsa_assembly_diagnostics <- function(components) {
     "parallel_fallback_reason"
   )
   components[intersect(fields, names(components))]
+}
+
+ltsa_local_rank_diagnostics <- function(local_ranks, ndim, max_rank) {
+  local_ranks <- as.integer(local_ranks)
+  if (any(local_ranks < 0L | local_ranks > max_rank)) {
+    stop("Invalid local ranks returned by assembly", call. = FALSE)
+  }
+
+  histogram <- tabulate(local_ranks + 1L, nbins = max_rank + 1L)
+  names(histogram) <- as.character(0:max_rank)
+  list(
+    local_rank_histogram = histogram,
+    rank_deficient_neighborhood_indices = which(local_ranks < ndim)
+  )
+}
+
+ltsa_effective_components <- function(weight_idx, n) {
+  parent <- seq_len(n)
+  tree_size <- rep.int(1L, n)
+
+  find_root <- function(node) {
+    root <- node
+    while (parent[[root]] != root) {
+      root <- parent[[root]]
+    }
+    while (parent[[node]] != node) {
+      next_node <- parent[[node]]
+      parent[[node]] <<- root
+      node <- next_node
+    }
+    root
+  }
+
+  union_nodes <- function(left, right) {
+    left_root <- find_root(left)
+    right_root <- find_root(right)
+    if (left_root == right_root) {
+      return(invisible(NULL))
+    }
+    if (tree_size[[left_root]] < tree_size[[right_root]]) {
+      tmp <- left_root
+      left_root <- right_root
+      right_root <- tmp
+    }
+    parent[[right_root]] <<- left_root
+    tree_size[[left_root]] <<-
+      tree_size[[left_root]] + tree_size[[right_root]]
+    invisible(NULL)
+  }
+
+  for (row in seq_len(nrow(weight_idx))) {
+    representative <- weight_idx[[row, 1L]]
+    if (ncol(weight_idx) > 1L) {
+      for (col in 2:ncol(weight_idx)) {
+        union_nodes(representative, weight_idx[[row, col]])
+      }
+    }
+  }
+
+  roots <- vapply(seq_len(n), find_root, integer(1L))
+  component_roots <- unique(roots)
+  membership <- match(roots, component_roots)
+  sizes <- tabulate(membership, nbins = length(component_roots))
+  list(
+    component_count = as.integer(length(component_roots)),
+    component_sizes = as.integer(sizes),
+    component_membership = as.integer(membership)
+  )
+}
+
+ltsa_component_embedding_overlap <- function(embedding, membership, sizes) {
+  embedding <- as.matrix(embedding)
+  decomposition <- qr(embedding)
+  embedding_rank <- decomposition$rank
+  component_contrast_rank <- max(0L, length(sizes) - 1L)
+  if (embedding_rank == 0L || component_contrast_rank == 0L) {
+    return(list(
+      principal_angle_cosines = numeric(),
+      projection_energy = 0,
+      embedding_rank = as.integer(embedding_rank),
+      component_contrast_rank = as.integer(component_contrast_rank)
+    ))
+  }
+
+  embedding_basis <- qr.Q(decomposition)[,
+    seq_len(embedding_rank),
+    drop = FALSE
+  ]
+  component_projection <- rowsum(
+    embedding_basis,
+    membership,
+    reorder = FALSE
+  ) /
+    sqrt(sizes)
+  global_direction <- sqrt(sizes / sum(sizes))
+  component_projection <- component_projection -
+    tcrossprod(
+      global_direction,
+      as.numeric(crossprod(global_direction, component_projection))
+    )
+  squared_cosines <- pmax(
+    eigen(
+      crossprod(component_projection),
+      symmetric = TRUE,
+      only.values = TRUE
+    )$values,
+    0
+  )
+  n_angles <- min(component_contrast_rank, embedding_rank)
+  cosines <- sqrt(squared_cosines[seq_len(n_angles)])
+
+  list(
+    principal_angle_cosines = pmin(as.numeric(cosines), 1),
+    projection_energy = as.numeric(sum(squared_cosines)),
+    embedding_rank = as.integer(embedding_rank),
+    component_contrast_rank = as.integer(component_contrast_rank)
+  )
 }
 
 log_ltsa_assembly_diagnostics <- function(components, verbose) {

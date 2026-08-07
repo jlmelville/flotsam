@@ -28,6 +28,7 @@
 
   int rank_deficient_count = 0;
   int min_local_rank = ndim;
+  std::vector<int> local_ranks(n_obs, 0);
   const bool use_gram_workspace =
       x.ncol() != 0 && static_cast<std::size_t>(x.ncol()) > value_n_nbrs;
   const double* x_data = use_gram_workspace ? REAL(x.data()) : nullptr;
@@ -63,6 +64,7 @@
       int rank = compute_local_weights_gram_workspace(
           x_data, n_obs, *gram_workspace,
           use_row_major_gram ? &row_major_x : nullptr);
+      local_ranks[obs] = rank;
       if (rank < ndim) {
         rank_deficient_count++;
         min_local_rank = std::min(min_local_rank, rank);
@@ -73,6 +75,7 @@
           flat_neighbors_zero_based(value_nnt, offset, value_n_nbrs);
       LocalWeights local =
           compute_local_weights_shape_routed(x, local_nni, ndim);
+      local_ranks[obs] = local.rank;
       if (local.rank < ndim) {
         rank_deficient_count++;
         min_local_rank = std::min(min_local_rank, local.rank);
@@ -93,6 +96,9 @@
        cpp11::named_arg("x") = components.x,
        cpp11::named_arg("rank_deficient_count") = rank_deficient_count,
        cpp11::named_arg("min_local_rank") = min_local_rank,
+       cpp11::named_arg("local_ranks") = local_ranks,
+       cpp11::named_arg("local_solver_route") =
+           use_gram_workspace ? "gram" : "svd",
        cpp11::named_arg("assembly_route") = "serial_triangular",
        cpp11::named_arg("requested_assembly_threads") = 1,
        cpp11::named_arg("effective_assembly_threads") = 1,
