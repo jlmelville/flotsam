@@ -59,16 +59,22 @@ test_that("normalized public results expose the generalized algebra", {
   values <- result$eigen$values
   generalized_residual <- as.matrix(B %*% V) -
     D * sweep(V, 2L, values, "*")
-  absolute_residuals <- sqrt(colSums(generalized_residual^2))
+  absolute_residuals <- unname(sqrt(colSums(generalized_residual^2)))
   residual_scale <- sqrt(max(D)) * max(result$eigen$lambda_max, 1)
 
   expect_equal(D, diag(B), tolerance = 0)
   expect_equal(
-    as.matrix(B %*% V),
-    D * sweep(V, 2L, values, "*"),
+    unname(as.matrix(B %*% V)),
+    unname(D * sweep(V, 2L, values, "*")),
     tolerance = 1e-10
   )
-  expect_equal(crossprod(V, D * V), diag(ncol(V)), tolerance = 1e-10)
+  expected_weighted_gram <- diag(ncol(V))
+  dimnames(expected_weighted_gram) <- list(colnames(V), colnames(V))
+  expect_equal(
+    crossprod(V, D * V),
+    expected_weighted_gram,
+    tolerance = 1e-10
+  )
   expect_equal(as.numeric(crossprod(V, D)), rep(0, ncol(V)), tolerance = 1e-10)
   expect_equal(U, sqrt(D) * V, tolerance = 1e-12)
   expect_equal(details$generalized_absolute_residuals, absolute_residuals)

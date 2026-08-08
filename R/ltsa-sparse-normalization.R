@@ -48,9 +48,9 @@ ltsa_normalized_details <- function(
   # in eigen$residuals.
   BV <- as.matrix(B %*% embedding)
   generalized_residual <- BV - mass * sweep(embedding, 2L, values, "*")
-  generalized_absolute_residuals <- sqrt(
+  generalized_absolute_residuals <- unname(sqrt(
     colSums(generalized_residual * generalized_residual)
-  )
+  ))
   generalized_residual_scale <- sqrt(max(mass)) *
     ltsa_residual_scale(lambda_max)
 

@@ -16,6 +16,10 @@ test_that("iris10", {
     ncol = 2,
     byrow = TRUE
   )
+  dimnames(iris10_ltsa_expected) <- list(
+    as.character(seq_len(10L)),
+    c("LTSA1", "LTSA2")
+  )
 
   iris10_ltsa <- ltsa(
     iris[1:10, ],
@@ -73,6 +77,10 @@ test_that("normalized", {
     ),
     ncol = 2,
     byrow = TRUE
+  )
+  dimnames(iris10_ltsa_expected) <- list(
+    as.character(seq_len(10L)),
+    c("LTSA1", "LTSA2")
   )
   iris10_ltsa <-
     ltsa(
@@ -201,6 +209,70 @@ test_that("default public return remains an embedding matrix", {
 
   expect_true(is.matrix(iris10_ltsa))
   expect_equal(dim(iris10_ltsa), c(10L, 2L))
+  expect_identical(
+    dimnames(iris10_ltsa),
+    list(as.character(seq_len(10L)), c("LTSA1", "LTSA2"))
+  )
+})
+
+test_that("public coordinate matrices preserve row names and name dimensions", {
+  named_iris <- as.matrix(iris[1:10, 1:4])
+  rownames(named_iris) <- paste0("sample-", seq_len(nrow(named_iris)))
+  expected_dimnames <- list(
+    rownames(named_iris),
+    c("LTSA1", "LTSA2")
+  )
+
+  embedding <- ltsa(
+    named_iris,
+    nn_method = "exact",
+    n_neighbors = 8L,
+    include_self = FALSE,
+    eig_method = "eig"
+  )
+  expect_identical(dimnames(embedding), expected_dimnames)
+
+  normalized_result <- ltsa(
+    named_iris,
+    nn_method = "exact",
+    n_neighbors = 8L,
+    include_self = TRUE,
+    normalize = TRUE,
+    eig_method = "eig",
+    eig_k = 4L,
+    output = "result"
+  )
+  normalized_details <- normalized_result$eigen$normalized_details
+  expect_identical(dimnames(normalized_result$embedding), expected_dimnames)
+  expect_identical(
+    dimnames(normalized_details$symmetric_embedding),
+    expected_dimnames
+  )
+  expect_null(names(normalized_details$generalized_absolute_residuals))
+  expect_null(names(normalized_details$generalized_residuals))
+
+  unnamed_iris <- named_iris
+  rownames(unnamed_iris) <- NULL
+  unnamed_embedding <- ltsa(
+    unnamed_iris,
+    nn_method = "exact",
+    n_neighbors = 8L,
+    include_self = FALSE,
+    eig_method = "eig"
+  )
+  expect_identical(
+    dimnames(unnamed_embedding),
+    list(NULL, c("LTSA1", "LTSA2"))
+  )
+
+  B <- ltsa(
+    named_iris,
+    nn_method = "exact",
+    n_neighbors = 8L,
+    include_self = TRUE,
+    output = "B"
+  )
+  expect_identical(dimnames(B), list(NULL, NULL))
 })
 
 test_that("public embedding status is actionable and result status is inspectable", {

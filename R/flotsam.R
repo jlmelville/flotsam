@@ -304,10 +304,16 @@ ltsa <-
       }
     )
     symmetric_embedding <- eig_res$vectors
+    embedding_dimnames <- list(
+      rownames(X),
+      paste0("LTSA", seq_len(validated$ndim))
+    )
+    dimnames(symmetric_embedding) <- embedding_dimnames
     embedding <- symmetric_embedding
     if (validated$normalize) {
       embedding <- Dinvs * embedding
     }
+    dimnames(embedding) <- embedding_dimnames
 
     if (identical(validated$output, "embedding")) {
       signal_eigen_status(eig_res$eigen)
