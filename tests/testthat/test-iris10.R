@@ -1,130 +1,49 @@
-test_that("iris10", {
-  # fmt: skip
-  iris10_ltsa_expected <- matrix(
-    c(
-       0.23438576,  0.09178531,
-      -0.14825134,  0.53317022,
-      -0.17014801, -0.13276554,
-      -0.26698890, -0.06793736,
-       0.22719947, -0.22434610,
-       0.69774771, -0.05138839,
-      -0.11459417, -0.61658030,
-       0.12743673,  0.11721779,
-      -0.49692296, -0.12175932,
-      -0.08986429,  0.47260369
-    ),
-    ncol = 2,
-    byrow = TRUE
-  )
-  dimnames(iris10_ltsa_expected) <- list(
-    as.character(seq_len(10L)),
-    c("LTSA1", "LTSA2")
-  )
-
-  iris10_ltsa <- ltsa(
-    iris[1:10, ],
+expect_iris10_backends_match_dense <- function(normalize, include_self) {
+  common_args <- list(
+    X = iris[1:10, ],
     nn_method = "exact",
-    n_neighbors = 8,
-    include_self = FALSE,
-    eig_method = "rspectra"
+    n_neighbors = 8L,
+    include_self = include_self,
+    normalize = normalize,
+    eig_k = 4L,
+    output = "result"
   )
-  expect_equal(abs(iris10_ltsa), abs(iris10_ltsa_expected), tolerance = 1e-2)
+  dense_reference <- do.call(
+    ltsa,
+    c(common_args, list(eig_method = "eig"))
+  )$embedding
 
-  iris10_ltsa <- ltsa(
-    iris[1:10, ],
-    nn_method = "exact",
-    n_neighbors = 8,
-    include_self = FALSE,
-    eig_method = "irlba"
-  )
-  expect_equal(abs(iris10_ltsa), abs(iris10_ltsa_expected), tolerance = 1e-2)
+  for (method in c("rspectra", "irlba", "svdr")) {
+    set.seed(7)
+    result <- do.call(
+      ltsa,
+      c(
+        common_args,
+        list(eig_method = method, dense_n = 0L)
+      )
+    )
 
-  iris10_ltsa <- ltsa(
-    iris[1:10, ],
-    nn_method = "exact",
-    n_neighbors = 8,
-    include_self = FALSE,
-    eig_method = "svdr"
-  )
-  expect_equal(abs(iris10_ltsa), abs(iris10_ltsa_expected), tolerance = 1e-2)
+    expect_identical(result$eigen$backend$name, method)
+    expect_same_subspace(
+      result$embedding,
+      dense_reference,
+      tolerance = 1e-5
+    )
+  }
+}
 
-  iris10_ltsa <- ltsa(
-    iris[1:10, ],
-    nn_method = "exact",
-    n_neighbors = 8,
-    include_self = FALSE,
-    eig_method = "eig"
+test_that("iris10 iterative backends match the dense reference subspace", {
+  expect_iris10_backends_match_dense(
+    normalize = FALSE,
+    include_self = FALSE
   )
-  expect_equal(abs(iris10_ltsa), abs(iris10_ltsa_expected), tolerance = 1e-2)
 })
 
-test_that("normalized", {
-  # A spare exact-search candidate changes include-self boundary ties before
-  # deterministic self canonicalization.
-  # fmt: skip
-  iris10_ltsa_expected <- matrix(
-    c(
-      -0.07766,  0.15450,
-       0.22300,  0.04879,
-      -0.01936, -0.11990,
-       0.04053, -0.16160,
-      -0.19330,  0.07628,
-      -0.27560,  0.39040,
-      -0.22190, -0.20310,
-      -0.02942,  0.10530,
-       0.10190, -0.29940,
-       0.18200,  0.06882
-    ),
-    ncol = 2,
-    byrow = TRUE
+test_that("normalized iris10 backends match the dense reference subspace", {
+  expect_iris10_backends_match_dense(
+    normalize = TRUE,
+    include_self = TRUE
   )
-  dimnames(iris10_ltsa_expected) <- list(
-    as.character(seq_len(10L)),
-    c("LTSA1", "LTSA2")
-  )
-  iris10_ltsa <-
-    ltsa(
-      iris[1:10, ],
-      nn_method = "exact",
-      n_neighbors = 8,
-      include_self = TRUE,
-      normalize = TRUE,
-      eig_method = "rspectra"
-    )
-  expect_equal(abs(iris10_ltsa), abs(iris10_ltsa_expected), tolerance = 1e-2)
-
-  iris10_ltsa <-
-    ltsa(
-      iris[1:10, ],
-      nn_method = "exact",
-      n_neighbors = 8,
-      include_self = TRUE,
-      normalize = TRUE,
-      eig_method = "irlba"
-    )
-  expect_equal(abs(iris10_ltsa), abs(iris10_ltsa_expected), tolerance = 1e-2)
-
-  iris10_ltsa <-
-    ltsa(
-      iris[1:10, ],
-      nn_method = "exact",
-      n_neighbors = 8,
-      include_self = TRUE,
-      normalize = TRUE,
-      eig_method = "svdr"
-    )
-  expect_equal(abs(iris10_ltsa), abs(iris10_ltsa_expected), tolerance = 1e-2)
-
-  iris10_ltsa <-
-    ltsa(
-      iris[1:10, ],
-      nn_method = "exact",
-      n_neighbors = 8,
-      include_self = TRUE,
-      normalize = TRUE,
-      eig_method = "eig"
-    )
-  expect_equal(abs(iris10_ltsa), abs(iris10_ltsa_expected), tolerance = 1e-2)
 })
 
 expect_ltsa_public_result <- function(

@@ -84,13 +84,7 @@ expect_embedding_subspace_equivalent <- function(
   reference,
   tolerance = 1e-8
 ) {
-  candidate_q <- qr.Q(qr(candidate))
-  reference_q <- qr.Q(qr(reference))
-  expect_equal(
-    tcrossprod(candidate_q),
-    tcrossprod(reference_q),
-    tolerance = tolerance
-  )
+  expect_same_subspace(candidate, reference, tolerance = tolerance)
 }
 
 exact_nn_idx <- function(X, n_neighbors, include_self) {
