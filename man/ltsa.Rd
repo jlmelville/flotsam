@@ -19,7 +19,8 @@ ltsa(
   n_assembly_threads = 1,
   copy_max_mib = 256,
   verbose = FALSE,
-  ...
+  ...,
+  assembly_max_mib = 4096
 )
 }
 \arguments{
@@ -110,6 +111,12 @@ to disable this copy.}
 
 \item{...}{Optional eigensolver and diagnostic controls. See the
 \verb{Eigensolver controls} section.}
+
+\item{assembly_max_mib}{Maximum modeled assembly peak, in MiB. The default
+\code{4096} permits moderate assembly workloads while rejecting or routing
+multi-gigabyte staging plans before their large allocations. This cap is
+separate from \code{copy_max_mib} and does not cover pre-existing inputs or the
+later eigensolver.}
 }
 \description{
 Apply the Local Tangent Space Alignment (LTSA) method (Zhang and Zha, 2004)
@@ -216,6 +223,28 @@ assembly, so the matrix must have \code{n_neighbors + 1} columns.
 \code{copy_max_mib} limits an optional row-major dense copy of \code{X} used during
 high-dimensional local Gram assembly. Increase it only when that copy is
 useful and enough memory is available; set it to \code{0} to disable the copy.
+\code{assembly_max_mib} is a separate cap on the modeled assembly peak. The
+preflight includes the optional row-major copy when eligible, along with
+route-specific staging, workspace, reduction, C++-to-R sparse and local-rank
+conversion, sparse-output bounds, and post-assembly R payloads for rank and
+component diagnostics, sparse-slot validation, and reverse occurrence. It
+excludes the existing input, allocator overhead, thread stacks, library
+internals, R object headers and diagnostic character-string contents,
+workspaces internal to R primitives, and later eigensolver storage, so it is
+not an exact peak-RSS prediction.
+
+Sparse-output size depends on neighborhood overlap and numerical
+cancellation. The preflight therefore labels the full compact staging and
+representable final \code{dgCMatrix} output as separate conservative slot bounds.
+When requested parallel assembly exceeds \code{assembly_max_mib}, \code{ltsa()} warns
+and falls back to serial only if the serial bound is within the cap;
+otherwise it fails before assembly staging is allocated. With
+\code{output = "result"}, \code{assembly$memory} reports the requested and selected
+routes, cap, relevant \code{sizeof} values, and component and phase bounds in
+bytes.
+\code{assembly$raw_entries_estimate} remains the triangular contribution count;
+\code{assembly$raw_bytes_estimate} is present only for parallel assembly, where
+raw integer-row and double-value staging buffers actually exist.
 
 Local bases use a direct SVD when \code{ncol(X)} is no larger than the effective
 neighborhood size and an eigendecomposition of the centered Gram matrix

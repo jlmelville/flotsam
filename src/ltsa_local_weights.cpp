@@ -1,5 +1,26 @@
 #include "ltsa_internal.h"
 
+int query_dsyev_workspace_size(int n) {
+  char jobz = 'V';
+  char uplo = 'U';
+  int lwork = -1;
+  int info = 0;
+  double matrix_dummy = 0.0;
+  double value_dummy = 0.0;
+  double work_query = 0.0;
+
+  F77_CALL(dsyev)(&jobz, &uplo, &n, &matrix_dummy, &n, &value_dummy,
+                  &work_query, &lwork, &info FCONE FCONE);
+  if (info != 0) {
+    cpp11::stop("LAPACK dsyev workspace query failed with info = %d", info);
+  }
+  if (work_query > std::numeric_limits<int>::max()) {
+    cpp11::stop("LAPACK dsyev workspace is too large");
+  }
+
+  return std::max(1, static_cast<int>(work_query));
+}
+
 int query_dsyev_workspace(int n, std::vector<double>& gram,
                           std::vector<double>& values) {
   char jobz = 'V';
@@ -37,6 +58,35 @@ int query_dgesdd_workspace(int n_nbrs, int n_dim, int min_dim,
   F77_CALL(dgesdd)(&jobz, &m, &n, a.data(), &lda, d.data(), u.data(), &ldu,
                    vt.data(), &ldvt, &work_query, &lwork, iwork.data(),
                    &info FCONE);
+  if (info != 0) {
+    cpp11::stop("LAPACK dgesdd workspace query failed with info = %d", info);
+  }
+  if (work_query > std::numeric_limits<int>::max()) {
+    cpp11::stop("LAPACK dgesdd workspace is too large");
+  }
+
+  return std::max(1, static_cast<int>(work_query));
+}
+
+int query_dgesdd_workspace_size(int n_nbrs, int n_dim, int min_dim) {
+  char jobz = 'S';
+  int m = n_nbrs;
+  int n = n_dim;
+  int lda = n_nbrs;
+  int ldu = n_nbrs;
+  int ldvt = min_dim;
+  int info = 0;
+  int lwork = -1;
+  double matrix_dummy = 0.0;
+  double singular_value_dummy = 0.0;
+  double u_dummy = 0.0;
+  double vt_dummy = 0.0;
+  double work_query = 0.0;
+  int iwork_dummy = 0;
+
+  F77_CALL(dgesdd)(&jobz, &m, &n, &matrix_dummy, &lda, &singular_value_dummy,
+                   &u_dummy, &ldu, &vt_dummy, &ldvt, &work_query, &lwork,
+                   &iwork_dummy, &info FCONE);
   if (info != 0) {
     cpp11::stop("LAPACK dgesdd workspace query failed with info = %d", info);
   }

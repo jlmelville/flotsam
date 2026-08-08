@@ -73,6 +73,10 @@ expect_ltsa_assembly_parallel_matches <- function(
     parallel$diagnostics$requested_assembly_threads,
     as.integer(n_assembly_threads)
   )
+  expect_false("raw_bytes_estimate" %in% names(serial$diagnostics))
+  expect_true("raw_bytes_estimate" %in% names(parallel$diagnostics))
+  expect_identical(parallel$diagnostics$memory$requested_route, "parallel")
+  expect_identical(parallel$diagnostics$memory$selected_route, "parallel")
   expect_true(Matrix::isSymmetric(parallel$B))
   expect_equal(sum(parallel$B@x == 0), 0)
 
@@ -379,6 +383,350 @@ test_that("copy_max_mib controls optional row-major Gram copy", {
     parallel_disabled$B,
     serial_default$B,
     tolerance = 1e-12
+  )
+})
+
+test_that("assembly estimator reports checked route components without allocation", {
+  estimates <- flotsam:::ltsa_assembly_memory_estimates(
+    n = 10,
+    k = 4,
+    p = 3,
+    ndim = 2L,
+    requested_assembly_threads = 3L,
+    include_self = TRUE,
+    row_major_copy_max_bytes = 256 * 1024^2
+  )
+
+  expect_identical(estimates$serial$estimate_kind, "modeled_storage_bound")
+  expect_identical(estimates$parallel$estimate_kind, "modeled_storage_bound")
+  expect_equal(estimates$parallel$raw_entries, 100)
+  expect_equal(
+    estimates$parallel$components_bytes$sparse_slot_offsets,
+    100 * estimates$sizeof_bytes$size_t
+  )
+  expect_equal(
+    estimates$parallel$components_bytes$raw_row_staging,
+    100 * estimates$sizeof_bytes$int
+  )
+  expect_equal(
+    estimates$parallel$components_bytes$raw_value_staging,
+    100 * estimates$sizeof_bytes$double
+  )
+  expect_equal(estimates$serial$components_bytes$sparse_slot_offsets, 0)
+  expect_equal(estimates$serial$components_bytes$raw_row_staging, 0)
+  expect_equal(estimates$serial$components_bytes$raw_value_staging, 0)
+  expect_equal(estimates$serial$full_compact_slots_bound, 100)
+  expect_equal(estimates$serial$final_sparse_slots_bound, 100)
+  expect_equal(
+    estimates$serial$components_bytes$final_sparse_output_bound,
+    11 *
+      estimates$sizeof_bytes$int +
+      100 * (estimates$sizeof_bytes$int + estimates$sizeof_bytes$double)
+  )
+  expect_equal(
+    estimates$serial$components_bytes$accepted_rank_diagnostics_bound,
+    10 *
+      estimates$sizeof_bytes$int +
+      4 * estimates$sizeof_bytes$int +
+      4 * estimates$sizeof_bytes$r_sexp_pointer
+  )
+  expect_equal(
+    estimates$serial$components_bytes$rank_diagnostics_workspaces_bound,
+    30 * estimates$sizeof_bytes$int
+  )
+  expect_equal(
+    estimates$serial$components_bytes$accepted_component_diagnostics_bound,
+    21 * estimates$sizeof_bytes$int
+  )
+  expect_equal(
+    estimates$serial$components_bytes$component_discovery_workspaces_bound,
+    40 * estimates$sizeof_bytes$int
+  )
+  expect_equal(
+    estimates$serial$components_bytes$sparse_validation_staging_bound,
+    100 * estimates$sizeof_bytes$int
+  )
+  expect_equal(
+    estimates$serial$components_bytes$reverse_occurrence,
+    10 * estimates$sizeof_bytes$int
+  )
+  expect_named(
+    estimates$serial$phase_bytes_bound,
+    c(
+      "fill",
+      "reduction",
+      "expansion",
+      "finalization",
+      "return_copy",
+      "r_rank_diagnostics",
+      "r_component_diagnostics",
+      "r_sparse_validation",
+      "r_return"
+    )
+  )
+  components <- estimates$serial$components_bytes
+  r_base <- components$neighborhood_index_staging +
+    components$local_rank_staging +
+    components$final_sparse_output_bound
+  expect_equal(
+    estimates$serial$phase_bytes_bound$r_component_diagnostics,
+    r_base +
+      components$accepted_rank_diagnostics_bound +
+      components$accepted_component_diagnostics_bound +
+      components$component_discovery_workspaces_bound
+  )
+  expect_equal(
+    estimates$serial$phase_bytes_bound$r_sparse_validation,
+    r_base +
+      components$accepted_rank_diagnostics_bound +
+      components$accepted_component_diagnostics_bound +
+      components$sparse_validation_staging_bound
+  )
+  expect_equal(
+    estimates$serial$phase_bytes_bound$r_return,
+    r_base +
+      components$accepted_rank_diagnostics_bound +
+      components$accepted_component_diagnostics_bound +
+      components$reverse_occurrence
+  )
+  expect_equal(
+    estimates$parallel$modeled_peak_bytes_bound,
+    max(unlist(estimates$parallel$phase_bytes_bound))
+  )
+})
+
+test_that("assembly estimator keeps compact and sparse slot bounds distinct", {
+  args <- list(
+    n = 50000,
+    k = 250,
+    p = 1,
+    ndim = 1L,
+    requested_assembly_threads = 2L,
+    include_self = TRUE,
+    row_major_copy_max_bytes = 0
+  )
+
+  if (.Machine$sizeof.pointer == 4L) {
+    expect_error(
+      do.call(flotsam:::ltsa_assembly_memory_estimates, args),
+      "memory estimate overflowed"
+    )
+  } else {
+    estimates <- do.call(flotsam:::ltsa_assembly_memory_estimates, args)
+    expect_equal(estimates$serial$raw_entries, 1568750000)
+    expect_equal(estimates$serial$full_compact_slots_bound, 2500000000)
+    expect_gt(
+      estimates$serial$full_compact_slots_bound,
+      .Machine$integer.max
+    )
+    expect_equal(
+      estimates$serial$final_sparse_slots_bound,
+      .Machine$integer.max
+    )
+    expect_equal(
+      estimates$serial$components_bytes$full_compact_staging_bound,
+      2500000000 * estimates$sizeof_bytes$compact_entry
+    )
+  }
+})
+
+test_that("assembly estimator models the protected C++ to R return boundary", {
+  estimates <- flotsam:::ltsa_assembly_memory_estimates(
+    n = 37,
+    k = 6,
+    p = 4,
+    ndim = 2L,
+    requested_assembly_threads = 3L,
+    include_self = FALSE,
+    row_major_copy_max_bytes = 0
+  )
+
+  for (route_name in c("serial", "parallel")) {
+    route <- estimates[[route_name]]
+    components <- route$components_bytes
+    expect_equal(
+      components$cpp_to_r_output_copy_bound,
+      components$final_sparse_output_bound
+    )
+    expect_equal(
+      components$cpp_to_r_local_rank_copy,
+      components$local_rank_staging
+    )
+
+    route_staging <- if (route_name == "serial") {
+      "compact_column_containers"
+    } else {
+      c(
+        "sparse_slot_offsets",
+        "raw_row_staging",
+        "raw_value_staging",
+        "column_counters",
+        "column_starts"
+      )
+    }
+    return_components <- c(
+      "neighborhood_index_staging",
+      route_staging,
+      "local_rank_staging",
+      "worker_workspaces",
+      "optional_row_major_copy",
+      "final_sparse_output_bound",
+      "cpp_to_r_output_copy_bound",
+      "cpp_to_r_local_rank_copy",
+      "control_objects"
+    )
+    expect_equal(
+      route$phase_bytes_bound$return_copy,
+      sum(unlist(components[return_components], use.names = FALSE))
+    )
+  }
+})
+
+test_that("assembly estimator accounts for optional row-major and neighbor copies", {
+  with_copy <- flotsam:::ltsa_assembly_memory_estimates(
+    n = 10,
+    k = 4,
+    p = 8,
+    ndim = 2L,
+    requested_assembly_threads = 3L,
+    include_self = FALSE,
+    row_major_copy_max_bytes = 256 * 1024^2
+  )
+  without_copy <- flotsam:::ltsa_assembly_memory_estimates(
+    n = 10,
+    k = 4,
+    p = 8,
+    ndim = 2L,
+    requested_assembly_threads = 3L,
+    include_self = FALSE,
+    row_major_copy_max_bytes = 0
+  )
+
+  expect_true(with_copy$parallel$row_major_copy_included)
+  expect_false(without_copy$parallel$row_major_copy_included)
+  expect_equal(
+    with_copy$parallel$components_bytes$optional_row_major_copy,
+    10 * 8 * with_copy$sizeof_bytes$double
+  )
+  expect_equal(
+    with_copy$parallel$components_bytes$neighborhood_index_staging,
+    2 * 10 * 4 * with_copy$sizeof_bytes$int
+  )
+})
+
+test_that("assembly estimator rejects overflow without large allocations", {
+  expect_error(
+    flotsam:::ltsa_assembly_memory_estimates(
+      n = .Machine$integer.max - 1,
+      k = .Machine$integer.max - 1,
+      p = 1,
+      ndim = 1L,
+      requested_assembly_threads = 2L,
+      include_self = TRUE,
+      row_major_copy_max_bytes = 0
+    ),
+    "Too many LTSA triplets"
+  )
+  overflow_args <- if (.Machine$sizeof.pointer == 4L) {
+    list(n = 2, k = 2, p = .Machine$integer.max)
+  } else {
+    list(n = 1, k = 2^30, p = 2^30)
+  }
+  expect_error(
+    do.call(
+      flotsam:::ltsa_assembly_memory_estimates,
+      c(
+        overflow_args,
+        list(
+          ndim = 1L,
+          requested_assembly_threads = 2L,
+          include_self = TRUE,
+          row_major_copy_max_bytes = 0
+        )
+      )
+    ),
+    "memory estimate overflowed"
+  )
+})
+
+test_that("public assembly cap falls back to serial with intact diagnostics", {
+  set.seed(102)
+  X <- matrix(rnorm(18L * 14L), nrow = 18L)
+  nn_idx <- exact_nn_idx(X, n_neighbors = 6L, include_self = TRUE)
+  estimates <- flotsam:::ltsa_assembly_memory_estimates(
+    n = nrow(X),
+    k = ncol(nn_idx),
+    p = ncol(X),
+    ndim = 2L,
+    requested_assembly_threads = 3L,
+    include_self = TRUE,
+    row_major_copy_max_bytes = 256 * 1024^2
+  )
+  fallback_cap_mib <- mean(c(
+    estimates$serial$modeled_peak_mib_bound,
+    estimates$parallel$modeled_peak_mib_bound
+  ))
+
+  serial <- ltsa(
+    X,
+    ndim = 2L,
+    nn_method = nn_idx,
+    eig_method = "eig",
+    eig_k = 4L,
+    output = "result",
+    include_B = TRUE,
+    n_assembly_threads = 1L
+  )
+  expect_warning(
+    fallback <- ltsa(
+      X,
+      ndim = 2L,
+      nn_method = nn_idx,
+      eig_method = "eig",
+      eig_k = 4L,
+      output = "result",
+      include_B = TRUE,
+      n_assembly_threads = 3L,
+      assembly_max_mib = fallback_cap_mib
+    ),
+    "using serial assembly"
+  )
+
+  expect_sparse_equivalent(fallback$B, serial$B, tolerance = 0)
+  expect_identical(
+    fallback$assembly$local_rank_histogram,
+    serial$assembly$local_rank_histogram
+  )
+  expect_identical(
+    fallback$assembly$rank_deficient_neighborhood_indices,
+    serial$assembly$rank_deficient_neighborhood_indices
+  )
+  expect_identical(fallback$assembly$assembly_route, "serial_triangular")
+  expect_identical(fallback$assembly$requested_assembly_threads, 3L)
+  expect_identical(fallback$assembly$effective_assembly_threads, 1L)
+  expect_identical(fallback$assembly$memory$requested_route, "parallel")
+  expect_identical(fallback$assembly$memory$selected_route, "serial")
+  expect_identical(
+    fallback$assembly$parallel_fallback_reason,
+    "parallel_estimate_exceeds_assembly_cap"
+  )
+  expect_false("raw_bytes_estimate" %in% names(fallback$assembly))
+})
+
+test_that("public assembly cap fails before assembly staging", {
+  X <- as.matrix(iris[seq_len(18L), seq_len(4L)])
+  nn_idx <- exact_nn_idx(X, n_neighbors = 6L, include_self = TRUE)
+
+  expect_error(
+    ltsa(
+      X,
+      ndim = 2L,
+      nn_method = nn_idx,
+      output = "B",
+      n_assembly_threads = 3L,
+      assembly_max_mib = 0
+    ),
+    "memory preflight failed before assembly staging.*Largest modeled components"
   )
 })
 

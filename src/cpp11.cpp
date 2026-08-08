@@ -6,6 +6,13 @@
 #include <R_ext/Visibility.h>
 
 // ltsa_parallel_assembly.cpp
+cpp11::list ltsa_assembly_memory_estimates_cpp(std::size_t n_obs, std::size_t n_nbrs, std::size_t n_dim, int ndim, int requested_threads, bool include_self, double row_major_copy_max_bytes);
+extern "C" SEXP _flotsam_ltsa_assembly_memory_estimates_cpp(SEXP n_obs, SEXP n_nbrs, SEXP n_dim, SEXP ndim, SEXP requested_threads, SEXP include_self, SEXP row_major_copy_max_bytes) {
+  BEGIN_CPP11
+    return cpp11::as_sexp(ltsa_assembly_memory_estimates_cpp(cpp11::as_cpp<cpp11::decay_t<std::size_t>>(n_obs), cpp11::as_cpp<cpp11::decay_t<std::size_t>>(n_nbrs), cpp11::as_cpp<cpp11::decay_t<std::size_t>>(n_dim), cpp11::as_cpp<cpp11::decay_t<int>>(ndim), cpp11::as_cpp<cpp11::decay_t<int>>(requested_threads), cpp11::as_cpp<cpp11::decay_t<bool>>(include_self), cpp11::as_cpp<cpp11::decay_t<double>>(row_major_copy_max_bytes)));
+  END_CPP11
+}
+// ltsa_parallel_assembly.cpp
 cpp11::list ltsa_assemble_local_weights_parallel(const cpp11::doubles_matrix<>& x, const cpp11::integers& value_nnt, std::size_t value_n_nbrs, int ndim, int requested_threads, double row_major_copy_max_bytes);
 extern "C" SEXP _flotsam_ltsa_assemble_local_weights_parallel(SEXP x, SEXP value_nnt, SEXP value_n_nbrs, SEXP ndim, SEXP requested_threads, SEXP row_major_copy_max_bytes) {
   BEGIN_CPP11
@@ -31,6 +38,7 @@ extern "C" {
 static const R_CallMethodDef CallEntries[] = {
     {"_flotsam_ltsa_assemble_local_weights",          (DL_FUNC) &_flotsam_ltsa_assemble_local_weights,          5},
     {"_flotsam_ltsa_assemble_local_weights_parallel", (DL_FUNC) &_flotsam_ltsa_assemble_local_weights_parallel, 6},
+    {"_flotsam_ltsa_assembly_memory_estimates_cpp",   (DL_FUNC) &_flotsam_ltsa_assembly_memory_estimates_cpp,   7},
     {"_flotsam_spm_times_scalar",                     (DL_FUNC) &_flotsam_spm_times_scalar,                     3},
     {NULL, NULL, 0}
 };

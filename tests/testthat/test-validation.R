@@ -162,6 +162,26 @@ test_that("dimension and neighborhood arguments are validated", {
     ltsa(iris[1:10, ], copy_max_mib = c(128, 256)),
     "copy_max_mib"
   )
+  expect_error(
+    ltsa(iris[1:10, ], assembly_max_mib = -1),
+    "assembly_max_mib"
+  )
+  expect_error(
+    ltsa(iris[1:10, ], assembly_max_mib = NA_real_),
+    "assembly_max_mib"
+  )
+  expect_error(
+    ltsa(iris[1:10, ], assembly_max_mib = Inf),
+    "assembly_max_mib"
+  )
+  expect_error(
+    ltsa(iris[1:10, ], assembly_max_mib = .Machine$double.xmax),
+    "assembly_max_mib is too large"
+  )
+  expect_error(
+    ltsa(iris[1:10, ], assembly_max_mib = c(2048, 4096)),
+    "assembly_max_mib"
+  )
 })
 
 make_c1_precomputed_neighbors <- function(n, include_self, n_neighbors) {

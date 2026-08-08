@@ -100,10 +100,14 @@ int select_local_basis_columns(const std::vector<double>& values, int n_values,
 int query_dsyev_workspace(int n, std::vector<double>& gram,
                           std::vector<double>& values);
 
+int query_dsyev_workspace_size(int n);
+
 int query_dgesdd_workspace(int n_nbrs, int n_dim, int min_dim,
                            std::vector<double>& a, std::vector<double>& d,
                            std::vector<double>& u, std::vector<double>& vt,
                            std::vector<int>& iwork);
+
+int query_dgesdd_workspace_size(int n_nbrs, int n_dim, int min_dim);
 
 bool row_major_copy_within_limit(std::size_t n_obs, std::size_t n_dim,
                                  std::size_t max_bytes);

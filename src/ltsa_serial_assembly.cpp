@@ -86,17 +86,22 @@
 
   SparseComponents components = builder.finalize_components();
   const std::size_t raw_entries = builder.raw_entries_estimate();
-  const std::size_t raw_bytes = checked_raw_staging_bytes(raw_entries);
   const std::string fallback_reason = row_major_fallback_reason(
       use_gram_workspace, use_row_major_gram, row_major_within_limit);
 
+  // Convert through const references before named_arg's by-value assignment so
+  // the R payloads do not overlap temporary copies of the C++ vectors.
+  cpp11::sexp r_i(cpp11::as_sexp(components.i));
+  cpp11::sexp r_p(cpp11::as_sexp(components.p));
+  cpp11::sexp r_x(cpp11::as_sexp(components.x));
+  cpp11::sexp r_local_ranks(cpp11::as_sexp(local_ranks));
+
   return cpp11::writable::list(
-      {cpp11::named_arg("i") = components.i,
-       cpp11::named_arg("p") = components.p,
-       cpp11::named_arg("x") = components.x,
+      {cpp11::named_arg("i") = r_i, cpp11::named_arg("p") = r_p,
+       cpp11::named_arg("x") = r_x,
        cpp11::named_arg("rank_deficient_count") = rank_deficient_count,
        cpp11::named_arg("min_local_rank") = min_local_rank,
-       cpp11::named_arg("local_ranks") = local_ranks,
+       cpp11::named_arg("local_ranks") = r_local_ranks,
        cpp11::named_arg("local_solver_route") =
            use_gram_workspace ? "gram" : "svd",
        cpp11::named_arg("assembly_route") = "serial_triangular",
@@ -104,7 +109,6 @@
        cpp11::named_arg("effective_assembly_threads") = 1,
        cpp11::named_arg("raw_entries_estimate") =
            static_cast<double>(raw_entries),
-       cpp11::named_arg("raw_bytes_estimate") = static_cast<double>(raw_bytes),
        cpp11::named_arg("row_major_used") = use_row_major_gram,
        cpp11::named_arg("row_major_fallback_reason") = fallback_reason,
        cpp11::named_arg("parallel_fallback_reason") = "not_requested"});

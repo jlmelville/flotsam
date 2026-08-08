@@ -1,5 +1,7 @@
 #include "ltsa_internal.h"
 
+#include <initializer_list>
+
 namespace {
 
 struct ParallelLocalWeightsWorkspace {
@@ -82,6 +84,268 @@ struct ReduceWorkspace {
   std::vector<int> row_seen;
   std::vector<int> touched_rows;
 };
+
+struct AssemblyRouteMemoryEstimate {
+  std::size_t effective_workers = 1;
+  std::size_t raw_entries = 0;
+  std::size_t full_compact_slots_bound = 0;
+  std::size_t final_sparse_slots_bound = 0;
+  bool row_major_copy_included = false;
+  std::size_t neighborhood_index_staging_bytes = 0;
+  std::size_t sparse_slot_offsets_bytes = 0;
+  std::size_t raw_row_staging_bytes = 0;
+  std::size_t raw_value_staging_bytes = 0;
+  std::size_t column_counters_bytes = 0;
+  std::size_t column_starts_bytes = 0;
+  std::size_t local_rank_staging_bytes = 0;
+  std::size_t worker_workspace_bytes_each = 0;
+  std::size_t worker_workspaces_bytes = 0;
+  std::size_t reduction_workspaces_bytes_bound = 0;
+  std::size_t column_containers_bytes = 0;
+  std::size_t canonical_compact_staging_bytes_bound = 0;
+  std::size_t full_compact_staging_bytes_bound = 0;
+  std::size_t row_major_copy_bytes = 0;
+  std::size_t final_sparse_output_bytes_bound = 0;
+  std::size_t cpp_to_r_output_copy_bytes_bound = 0;
+  std::size_t cpp_to_r_local_rank_copy_bytes = 0;
+  std::size_t accepted_rank_diagnostics_bytes_bound = 0;
+  std::size_t rank_diagnostics_workspaces_bytes_bound = 0;
+  std::size_t accepted_component_diagnostics_bytes_bound = 0;
+  std::size_t component_discovery_workspaces_bytes_bound = 0;
+  std::size_t sparse_validation_staging_bytes_bound = 0;
+  std::size_t reverse_occurrence_bytes = 0;
+  std::size_t control_objects_bytes = 0;
+  std::size_t fill_phase_bytes_bound = 0;
+  std::size_t reduction_phase_bytes_bound = 0;
+  std::size_t expansion_phase_bytes_bound = 0;
+  std::size_t finalization_phase_bytes_bound = 0;
+  std::size_t return_phase_bytes_bound = 0;
+  std::size_t r_rank_diagnostics_phase_bytes_bound = 0;
+  std::size_t r_component_diagnostics_phase_bytes_bound = 0;
+  std::size_t r_sparse_validation_phase_bytes_bound = 0;
+  std::size_t r_return_phase_bytes_bound = 0;
+  std::size_t modeled_peak_bytes_bound = 0;
+};
+
+std::size_t memory_bytes(std::size_t count, std::size_t element_size) {
+  return checked_size_mul(count, element_size,
+                          "LTSA assembly memory estimate overflowed");
+}
+
+std::size_t memory_sum(std::initializer_list<std::size_t> values) {
+  std::size_t total = 0;
+  for (const std::size_t value : values) {
+    total = checked_size_add(total, value,
+                             "LTSA assembly memory estimate overflowed");
+  }
+  return total;
+}
+
+std::size_t serial_workspace_bytes(std::size_t n_nbrs, std::size_t n_dim,
+                                   int ndim, bool use_svd, bool use_row_major) {
+  const std::size_t min_dim = std::min(n_nbrs, n_dim);
+  const std::size_t requested =
+      std::min(static_cast<std::size_t>(ndim), min_dim);
+  const std::size_t nbr_dim = checked_size_mul(
+      n_nbrs, n_dim, "LTSA assembly memory estimate overflowed");
+  const std::size_t nbr_squared = checked_size_mul(
+      n_nbrs, n_nbrs, "LTSA assembly memory estimate overflowed");
+
+  if (!use_svd) {
+    const std::size_t fixed_bytes = memory_sum(
+        {sizeof(GramLocalWeightsWorkspace), memory_bytes(n_nbrs, sizeof(int)),
+         memory_bytes(requested, sizeof(int)),
+         memory_bytes(nbr_dim, sizeof(double)),
+         memory_bytes(nbr_squared, sizeof(double)),
+         memory_bytes(n_nbrs, sizeof(double)),
+         memory_bytes(nbr_squared, sizeof(double)),
+         use_row_major ? memory_bytes(nbr_dim, sizeof(double)) : 0,
+         use_row_major ? memory_bytes(n_dim, sizeof(double)) : 0});
+    const int n_nbrs_int = checked_lapack_dim(n_nbrs, "n_neighbors");
+    const std::size_t work =
+        static_cast<std::size_t>(query_dsyev_workspace_size(n_nbrs_int));
+    return memory_sum({fixed_bytes, memory_bytes(work, sizeof(double))});
+  }
+
+  const std::size_t vector_objects = memory_sum(
+      {sizeof(LocalWeights), memory_bytes(6, sizeof(std::vector<double>)),
+       memory_bytes(3, sizeof(std::vector<int>))});
+  const std::size_t fixed_bytes = memory_sum(
+      {vector_objects, memory_bytes(n_nbrs, sizeof(int)),
+       memory_bytes(nbr_dim, sizeof(double)),
+       memory_bytes(nbr_dim, sizeof(double)),
+       memory_bytes(min_dim, sizeof(double)),
+       memory_bytes(
+           checked_size_mul(n_nbrs, min_dim,
+                            "LTSA assembly memory estimate overflowed"),
+           sizeof(double)),
+       memory_bytes(
+           checked_size_mul(min_dim, n_dim,
+                            "LTSA assembly memory estimate overflowed"),
+           sizeof(double)),
+       memory_bytes(checked_size_mul(
+                        8, min_dim, "LTSA assembly memory estimate overflowed"),
+                    sizeof(int)),
+       memory_bytes(requested, sizeof(int)),
+       memory_bytes(nbr_squared, sizeof(double))});
+  const int n_nbrs_int = checked_lapack_dim(n_nbrs, "n_neighbors");
+  const int n_dim_int = checked_lapack_dim(n_dim, "ncol(X)");
+  const int min_dim_int = checked_lapack_dim(min_dim, "local matrix rank");
+  const std::size_t work = static_cast<std::size_t>(
+      query_dgesdd_workspace_size(n_nbrs_int, n_dim_int, min_dim_int));
+  return memory_sum({fixed_bytes, memory_bytes(work, sizeof(double))});
+}
+
+std::size_t parallel_workspace_bytes(std::size_t n_nbrs, std::size_t n_dim,
+                                     int ndim, bool use_svd,
+                                     bool use_row_major) {
+  const std::size_t min_dim = std::min(n_nbrs, n_dim);
+  const std::size_t requested =
+      std::min(static_cast<std::size_t>(ndim), min_dim);
+  const std::size_t nbr_dim = checked_size_mul(
+      n_nbrs, n_dim, "LTSA assembly memory estimate overflowed");
+  const std::size_t nbr_squared = checked_size_mul(
+      n_nbrs, n_nbrs, "LTSA assembly memory estimate overflowed");
+  std::size_t bytes = memory_sum({sizeof(ParallelLocalWeightsWorkspace),
+                                  memory_bytes(n_nbrs, sizeof(int)),
+                                  memory_bytes(requested, sizeof(int)),
+                                  memory_bytes(nbr_dim, sizeof(double)),
+                                  memory_bytes(nbr_squared, sizeof(double))});
+
+  if (use_svd) {
+    bytes = memory_sum(
+        {bytes, memory_bytes(nbr_dim, sizeof(double)),
+         memory_bytes(min_dim, sizeof(double)),
+         memory_bytes(
+             checked_size_mul(n_nbrs, min_dim,
+                              "LTSA assembly memory estimate overflowed"),
+             sizeof(double)),
+         memory_bytes(
+             checked_size_mul(min_dim, n_dim,
+                              "LTSA assembly memory estimate overflowed"),
+             sizeof(double)),
+         memory_bytes(
+             checked_size_mul(8, min_dim,
+                              "LTSA assembly memory estimate overflowed"),
+             sizeof(int))});
+    const int n_nbrs_int = checked_lapack_dim(n_nbrs, "n_neighbors");
+    const int n_dim_int = checked_lapack_dim(n_dim, "ncol(X)");
+    const int min_dim_int = checked_lapack_dim(min_dim, "local matrix rank");
+    const std::size_t work = static_cast<std::size_t>(
+        query_dgesdd_workspace_size(n_nbrs_int, n_dim_int, min_dim_int));
+    return memory_sum({bytes, memory_bytes(work, sizeof(double))});
+  }
+
+  bytes = memory_sum({bytes, memory_bytes(nbr_squared, sizeof(double)),
+                      memory_bytes(n_nbrs, sizeof(double)),
+                      use_row_major ? memory_bytes(nbr_dim, sizeof(double)) : 0,
+                      use_row_major ? memory_bytes(n_dim, sizeof(double)) : 0});
+  const int n_nbrs_int = checked_lapack_dim(n_nbrs, "n_neighbors");
+  const std::size_t work =
+      static_cast<std::size_t>(query_dsyev_workspace_size(n_nbrs_int));
+  return memory_sum({bytes, memory_bytes(work, sizeof(double))});
+}
+
+std::size_t reduction_workspace_bytes(std::size_t n_obs) {
+  const std::size_t touched_capacity =
+      std::max(n_obs, static_cast<std::size_t>(1024));
+  return memory_sum({sizeof(ReduceWorkspace),
+                     memory_bytes(n_obs, sizeof(double)),
+                     memory_bytes(n_obs, sizeof(int)),
+                     memory_bytes(touched_capacity, sizeof(int))});
+}
+
+cpp11::writable::list
+route_memory_estimate_list(const AssemblyRouteMemoryEstimate& estimate) {
+  return cpp11::writable::list(
+      {cpp11::named_arg("estimate_kind") = "modeled_storage_bound",
+       cpp11::named_arg("effective_worker_count") =
+           static_cast<double>(estimate.effective_workers),
+       cpp11::named_arg("raw_entries") =
+           static_cast<double>(estimate.raw_entries),
+       cpp11::named_arg("full_compact_slots_bound") =
+           static_cast<double>(estimate.full_compact_slots_bound),
+       cpp11::named_arg("final_sparse_slots_bound") =
+           static_cast<double>(estimate.final_sparse_slots_bound),
+       cpp11::named_arg("row_major_copy_included") =
+           estimate.row_major_copy_included,
+       cpp11::named_arg("components_bytes") = cpp11::writable::list(
+           {cpp11::named_arg("neighborhood_index_staging") =
+                static_cast<double>(estimate.neighborhood_index_staging_bytes),
+            cpp11::named_arg("sparse_slot_offsets") =
+                static_cast<double>(estimate.sparse_slot_offsets_bytes),
+            cpp11::named_arg("raw_row_staging") =
+                static_cast<double>(estimate.raw_row_staging_bytes),
+            cpp11::named_arg("raw_value_staging") =
+                static_cast<double>(estimate.raw_value_staging_bytes),
+            cpp11::named_arg("column_counters") =
+                static_cast<double>(estimate.column_counters_bytes),
+            cpp11::named_arg("column_starts") =
+                static_cast<double>(estimate.column_starts_bytes),
+            cpp11::named_arg("local_rank_staging") =
+                static_cast<double>(estimate.local_rank_staging_bytes),
+            cpp11::named_arg("worker_workspace_each_bound") =
+                static_cast<double>(estimate.worker_workspace_bytes_each),
+            cpp11::named_arg("worker_workspaces") =
+                static_cast<double>(estimate.worker_workspaces_bytes),
+            cpp11::named_arg("reduction_workspaces_bound") =
+                static_cast<double>(estimate.reduction_workspaces_bytes_bound),
+            cpp11::named_arg("compact_column_containers") =
+                static_cast<double>(estimate.column_containers_bytes),
+            cpp11::named_arg("canonical_compact_staging_bound") =
+                static_cast<double>(
+                    estimate.canonical_compact_staging_bytes_bound),
+            cpp11::named_arg("full_compact_staging_bound") =
+                static_cast<double>(estimate.full_compact_staging_bytes_bound),
+            cpp11::named_arg("optional_row_major_copy") =
+                static_cast<double>(estimate.row_major_copy_bytes),
+            cpp11::named_arg("final_sparse_output_bound") =
+                static_cast<double>(estimate.final_sparse_output_bytes_bound),
+            cpp11::named_arg("cpp_to_r_output_copy_bound") =
+                static_cast<double>(estimate.cpp_to_r_output_copy_bytes_bound),
+            cpp11::named_arg("cpp_to_r_local_rank_copy") =
+                static_cast<double>(estimate.cpp_to_r_local_rank_copy_bytes),
+            cpp11::named_arg("accepted_rank_diagnostics_bound") =
+                static_cast<double>(
+                    estimate.accepted_rank_diagnostics_bytes_bound),
+            cpp11::named_arg("rank_diagnostics_workspaces_bound") =
+                static_cast<double>(
+                    estimate.rank_diagnostics_workspaces_bytes_bound),
+            cpp11::named_arg("accepted_component_diagnostics_bound") =
+                static_cast<double>(
+                    estimate.accepted_component_diagnostics_bytes_bound),
+            cpp11::named_arg("component_discovery_workspaces_bound") =
+                static_cast<double>(
+                    estimate.component_discovery_workspaces_bytes_bound),
+            cpp11::named_arg("sparse_validation_staging_bound") =
+                static_cast<double>(
+                    estimate.sparse_validation_staging_bytes_bound),
+            cpp11::named_arg("reverse_occurrence") =
+                static_cast<double>(estimate.reverse_occurrence_bytes),
+            cpp11::named_arg("control_objects") =
+                static_cast<double>(estimate.control_objects_bytes)}),
+       cpp11::named_arg("phase_bytes_bound") = cpp11::writable::list(
+           {cpp11::named_arg("fill") =
+                static_cast<double>(estimate.fill_phase_bytes_bound),
+            cpp11::named_arg("reduction") =
+                static_cast<double>(estimate.reduction_phase_bytes_bound),
+            cpp11::named_arg("expansion") =
+                static_cast<double>(estimate.expansion_phase_bytes_bound),
+            cpp11::named_arg("finalization") =
+                static_cast<double>(estimate.finalization_phase_bytes_bound),
+            cpp11::named_arg("return_copy") =
+                static_cast<double>(estimate.return_phase_bytes_bound),
+            cpp11::named_arg("r_rank_diagnostics") = static_cast<double>(
+                estimate.r_rank_diagnostics_phase_bytes_bound),
+            cpp11::named_arg("r_component_diagnostics") = static_cast<double>(
+                estimate.r_component_diagnostics_phase_bytes_bound),
+            cpp11::named_arg("r_sparse_validation") = static_cast<double>(
+                estimate.r_sparse_validation_phase_bytes_bound),
+            cpp11::named_arg("r_return") =
+                static_cast<double>(estimate.r_return_phase_bytes_bound)}),
+       cpp11::named_arg("modeled_peak_bytes_bound") =
+           static_cast<double>(estimate.modeled_peak_bytes_bound)});
+}
 
 void fill_flat_neighbors_zero_based_ptr(const int* value_ptr,
                                         std::size_t offset, std::size_t n_nbrs,
@@ -467,6 +731,310 @@ void stop_on_parallel_worker_failure(
 
 } // namespace
 
+[[cpp11::register]] cpp11::list ltsa_assembly_memory_estimates_cpp(
+    std::size_t n_obs, std::size_t n_nbrs, std::size_t n_dim, int ndim,
+    int requested_threads, bool include_self, double row_major_copy_max_bytes) {
+  checked_ndim(ndim);
+  if (n_obs == 0 || n_nbrs == 0 || n_dim == 0) {
+    cpp11::stop("LTSA assembly dimensions must be positive");
+  }
+  if (requested_threads < 1) {
+    cpp11::stop("n_assembly_threads must be positive");
+  }
+  const std::size_t max_int =
+      static_cast<std::size_t>(std::numeric_limits<int>::max());
+  if (n_obs >= max_int) {
+    cpp11::stop("Too many observations for a dgCMatrix");
+  }
+  checked_lapack_dim(n_nbrs, "n_neighbors");
+  checked_lapack_dim(n_dim, "ncol(X)");
+  checked_triplet_count(n_obs, n_nbrs, "value_n_nbrs");
+
+  const std::size_t row_major_copy_max =
+      checked_row_major_copy_max_bytes(row_major_copy_max_bytes);
+  const bool use_svd = n_dim <= n_nbrs;
+  const bool row_major_copy_included =
+      !use_svd && row_major_copy_within_limit(n_obs, n_dim, row_major_copy_max);
+  const std::size_t row_major_copy_bytes =
+      row_major_copy_included
+          ? memory_bytes(
+                checked_size_mul(n_obs, n_dim,
+                                 "LTSA assembly memory estimate overflowed"),
+                sizeof(double))
+          : 0;
+
+  const std::size_t neighbor_entries = checked_size_mul(
+      n_obs, n_nbrs, "LTSA assembly memory estimate overflowed");
+  const std::size_t neighborhood_index_staging_bytes =
+      memory_bytes(checked_size_mul(neighbor_entries, include_self ? 1 : 2,
+                                    "LTSA assembly memory estimate overflowed"),
+                   sizeof(int));
+  const std::size_t triangular_count = triangular_pair_count(n_nbrs);
+  const std::size_t raw_entries = checked_size_mul(
+      n_obs, triangular_count, "LTSA assembly memory estimate overflowed");
+  const std::size_t doubled_raw_entries = checked_size_mul(
+      raw_entries, 2, "LTSA assembly memory estimate overflowed");
+  const std::size_t dense_slots = checked_size_mul(
+      n_obs, n_obs, "LTSA assembly memory estimate overflowed");
+  const std::size_t full_compact_slots_bound =
+      std::min(doubled_raw_entries, dense_slots);
+  const std::size_t final_sparse_slots_bound =
+      std::min(full_compact_slots_bound, max_int);
+  const std::size_t final_sparse_output_bytes_bound = memory_sum(
+      {memory_bytes(checked_size_add(
+                        n_obs, 1, "LTSA assembly memory estimate overflowed"),
+                    sizeof(int)),
+       memory_bytes(final_sparse_slots_bound, sizeof(int)),
+       memory_bytes(final_sparse_slots_bound, sizeof(double))});
+  const std::size_t local_rank_staging_bytes = memory_bytes(n_obs, sizeof(int));
+  const std::size_t column_containers_bytes = memory_bytes(
+      checked_size_mul(n_obs, 2, "LTSA assembly memory estimate overflowed"),
+      sizeof(std::vector<CompactEntry>));
+  const std::size_t canonical_compact_staging_bytes_bound =
+      memory_bytes(raw_entries, sizeof(CompactEntry));
+  const std::size_t full_compact_staging_bytes_bound =
+      memory_bytes(full_compact_slots_bound, sizeof(CompactEntry));
+  const std::size_t one_reduction_workspace = reduction_workspace_bytes(n_obs);
+  const std::size_t max_local_rank = std::min(n_nbrs, n_dim);
+  const std::size_t rank_histogram_entries = checked_size_add(
+      max_local_rank, 1, "LTSA assembly memory estimate overflowed");
+  const std::size_t accepted_rank_diagnostics_bytes_bound =
+      memory_sum({memory_bytes(n_obs, sizeof(int)),
+                  memory_bytes(rank_histogram_entries, sizeof(int)),
+                  memory_bytes(rank_histogram_entries, sizeof(SEXP))});
+  const std::size_t rank_diagnostics_workspaces_bytes_bound = memory_bytes(
+      checked_size_mul(n_obs, 3, "LTSA assembly memory estimate overflowed"),
+      sizeof(int));
+  const std::size_t accepted_component_diagnostics_bytes_bound = memory_sum(
+      {memory_bytes(checked_size_mul(
+                        n_obs, 2, "LTSA assembly memory estimate overflowed"),
+                    sizeof(int)),
+       sizeof(int)});
+  const std::size_t component_discovery_workspaces_bytes_bound = memory_bytes(
+      checked_size_mul(n_obs, 4, "LTSA assembly memory estimate overflowed"),
+      sizeof(int));
+  const std::size_t sparse_validation_staging_bytes_bound = std::max(
+      memory_bytes(checked_size_mul(n_obs, 2,
+                                    "LTSA assembly memory estimate overflowed"),
+                   sizeof(int)),
+      memory_bytes(final_sparse_slots_bound, sizeof(int)));
+  const std::size_t reverse_occurrence_bytes = memory_bytes(n_obs, sizeof(int));
+
+  AssemblyRouteMemoryEstimate serial;
+  serial.raw_entries = raw_entries;
+  serial.full_compact_slots_bound = full_compact_slots_bound;
+  serial.final_sparse_slots_bound = final_sparse_slots_bound;
+  serial.row_major_copy_included = row_major_copy_included;
+  serial.neighborhood_index_staging_bytes = neighborhood_index_staging_bytes;
+  serial.column_counters_bytes = memory_bytes(n_obs, sizeof(std::size_t));
+  serial.local_rank_staging_bytes = local_rank_staging_bytes;
+  serial.worker_workspace_bytes_each = serial_workspace_bytes(
+      n_nbrs, n_dim, ndim, use_svd, row_major_copy_included);
+  serial.worker_workspaces_bytes = serial.worker_workspace_bytes_each;
+  serial.reduction_workspaces_bytes_bound = one_reduction_workspace;
+  serial.column_containers_bytes = column_containers_bytes;
+  serial.canonical_compact_staging_bytes_bound =
+      canonical_compact_staging_bytes_bound;
+  serial.full_compact_staging_bytes_bound = full_compact_staging_bytes_bound;
+  serial.row_major_copy_bytes = row_major_copy_bytes;
+  serial.final_sparse_output_bytes_bound = final_sparse_output_bytes_bound;
+  serial.cpp_to_r_output_copy_bytes_bound = final_sparse_output_bytes_bound;
+  serial.cpp_to_r_local_rank_copy_bytes = local_rank_staging_bytes;
+  serial.accepted_rank_diagnostics_bytes_bound =
+      accepted_rank_diagnostics_bytes_bound;
+  serial.rank_diagnostics_workspaces_bytes_bound =
+      rank_diagnostics_workspaces_bytes_bound;
+  serial.accepted_component_diagnostics_bytes_bound =
+      accepted_component_diagnostics_bytes_bound;
+  serial.component_discovery_workspaces_bytes_bound =
+      component_discovery_workspaces_bytes_bound;
+  serial.sparse_validation_staging_bytes_bound =
+      sparse_validation_staging_bytes_bound;
+  serial.reverse_occurrence_bytes = reverse_occurrence_bytes;
+  serial.control_objects_bytes = memory_sum(
+      {sizeof(LtsaTripletAssemblyBuilder), sizeof(SparseComponents)});
+  const std::size_t serial_base = memory_sum(
+      {serial.neighborhood_index_staging_bytes, serial.local_rank_staging_bytes,
+       serial.worker_workspaces_bytes, serial.column_containers_bytes,
+       serial.row_major_copy_bytes, serial.control_objects_bytes});
+  serial.fill_phase_bytes_bound =
+      memory_sum({serial_base, serial.column_counters_bytes,
+                  serial.canonical_compact_staging_bytes_bound});
+  serial.reduction_phase_bytes_bound =
+      memory_sum({serial_base, serial.canonical_compact_staging_bytes_bound,
+                  serial.full_compact_staging_bytes_bound,
+                  serial.reduction_workspaces_bytes_bound});
+  serial.expansion_phase_bytes_bound = serial.reduction_phase_bytes_bound;
+  serial.finalization_phase_bytes_bound =
+      memory_sum({serial_base, serial.full_compact_staging_bytes_bound,
+                  serial.reduction_workspaces_bytes_bound,
+                  serial.final_sparse_output_bytes_bound});
+  serial.return_phase_bytes_bound =
+      memory_sum({serial_base, serial.final_sparse_output_bytes_bound,
+                  serial.cpp_to_r_output_copy_bytes_bound,
+                  serial.cpp_to_r_local_rank_copy_bytes});
+  const std::size_t serial_r_base = memory_sum(
+      {serial.neighborhood_index_staging_bytes, serial.local_rank_staging_bytes,
+       serial.final_sparse_output_bytes_bound});
+  serial.r_rank_diagnostics_phase_bytes_bound =
+      memory_sum({serial_r_base, serial.accepted_rank_diagnostics_bytes_bound,
+                  serial.rank_diagnostics_workspaces_bytes_bound});
+  serial.r_component_diagnostics_phase_bytes_bound =
+      memory_sum({serial_r_base, serial.accepted_rank_diagnostics_bytes_bound,
+                  serial.accepted_component_diagnostics_bytes_bound,
+                  serial.component_discovery_workspaces_bytes_bound});
+  serial.r_sparse_validation_phase_bytes_bound =
+      memory_sum({serial_r_base, serial.accepted_rank_diagnostics_bytes_bound,
+                  serial.accepted_component_diagnostics_bytes_bound,
+                  serial.sparse_validation_staging_bytes_bound});
+  serial.r_return_phase_bytes_bound =
+      memory_sum({serial_r_base, serial.accepted_rank_diagnostics_bytes_bound,
+                  serial.accepted_component_diagnostics_bytes_bound,
+                  serial.reverse_occurrence_bytes});
+  serial.modeled_peak_bytes_bound = std::max(
+      {serial.fill_phase_bytes_bound, serial.reduction_phase_bytes_bound,
+       serial.expansion_phase_bytes_bound,
+       serial.finalization_phase_bytes_bound, serial.return_phase_bytes_bound,
+       serial.r_rank_diagnostics_phase_bytes_bound,
+       serial.r_component_diagnostics_phase_bytes_bound,
+       serial.r_sparse_validation_phase_bytes_bound,
+       serial.r_return_phase_bytes_bound});
+
+  AssemblyRouteMemoryEstimate parallel;
+  parallel.effective_workers =
+      std::min(n_obs, static_cast<std::size_t>(requested_threads));
+  parallel.raw_entries = raw_entries;
+  parallel.full_compact_slots_bound = full_compact_slots_bound;
+  parallel.final_sparse_slots_bound = final_sparse_slots_bound;
+  parallel.row_major_copy_included = row_major_copy_included;
+  parallel.neighborhood_index_staging_bytes = neighborhood_index_staging_bytes;
+  parallel.sparse_slot_offsets_bytes =
+      memory_bytes(raw_entries, sizeof(std::size_t));
+  parallel.raw_row_staging_bytes = memory_bytes(raw_entries, sizeof(int));
+  parallel.raw_value_staging_bytes = memory_bytes(raw_entries, sizeof(double));
+  parallel.column_counters_bytes = memory_bytes(n_obs, sizeof(std::size_t));
+  parallel.column_starts_bytes = memory_bytes(
+      checked_size_add(n_obs, 1, "LTSA assembly memory estimate overflowed"),
+      sizeof(std::size_t));
+  parallel.local_rank_staging_bytes = local_rank_staging_bytes;
+  parallel.worker_workspace_bytes_each = parallel_workspace_bytes(
+      n_nbrs, n_dim, ndim, use_svd, row_major_copy_included);
+  parallel.worker_workspaces_bytes = checked_size_mul(
+      parallel.worker_workspace_bytes_each, parallel.effective_workers,
+      "LTSA assembly memory estimate overflowed");
+  parallel.reduction_workspaces_bytes_bound =
+      checked_size_mul(one_reduction_workspace, parallel.effective_workers,
+                       "LTSA assembly memory estimate overflowed");
+  parallel.column_containers_bytes = column_containers_bytes;
+  parallel.canonical_compact_staging_bytes_bound =
+      canonical_compact_staging_bytes_bound;
+  parallel.full_compact_staging_bytes_bound = full_compact_staging_bytes_bound;
+  parallel.row_major_copy_bytes = row_major_copy_bytes;
+  parallel.final_sparse_output_bytes_bound = final_sparse_output_bytes_bound;
+  parallel.cpp_to_r_output_copy_bytes_bound = final_sparse_output_bytes_bound;
+  parallel.cpp_to_r_local_rank_copy_bytes = local_rank_staging_bytes;
+  parallel.accepted_rank_diagnostics_bytes_bound =
+      accepted_rank_diagnostics_bytes_bound;
+  parallel.rank_diagnostics_workspaces_bytes_bound =
+      rank_diagnostics_workspaces_bytes_bound;
+  parallel.accepted_component_diagnostics_bytes_bound =
+      accepted_component_diagnostics_bytes_bound;
+  parallel.component_discovery_workspaces_bytes_bound =
+      component_discovery_workspaces_bytes_bound;
+  parallel.sparse_validation_staging_bytes_bound =
+      sparse_validation_staging_bytes_bound;
+  parallel.reverse_occurrence_bytes = reverse_occurrence_bytes;
+  parallel.control_objects_bytes = memory_sum(
+      {sizeof(TriangularSlotPlan), sizeof(SparseComponents),
+       memory_bytes(parallel.effective_workers,
+                    sizeof(ParallelWorkerDiagnostics)),
+       memory_bytes(
+           checked_size_mul(parallel.effective_workers, 3,
+                            "LTSA assembly memory estimate overflowed"),
+           sizeof(pforr::IndexRange)),
+       memory_bytes(parallel.effective_workers, sizeof(std::thread))});
+  const std::size_t parallel_base = memory_sum(
+      {parallel.neighborhood_index_staging_bytes,
+       parallel.sparse_slot_offsets_bytes, parallel.column_counters_bytes,
+       parallel.column_starts_bytes, parallel.local_rank_staging_bytes,
+       parallel.worker_workspaces_bytes, parallel.row_major_copy_bytes,
+       parallel.control_objects_bytes});
+  const std::size_t parallel_raw_staging = memory_sum(
+      {parallel.raw_row_staging_bytes, parallel.raw_value_staging_bytes});
+  parallel.fill_phase_bytes_bound =
+      memory_sum({parallel_base, parallel_raw_staging});
+  parallel.reduction_phase_bytes_bound =
+      memory_sum({parallel_base, parallel_raw_staging,
+                  parallel.reduction_workspaces_bytes_bound,
+                  parallel.column_containers_bytes,
+                  parallel.canonical_compact_staging_bytes_bound});
+  parallel.expansion_phase_bytes_bound = memory_sum(
+      {parallel_base, parallel_raw_staging, parallel.column_containers_bytes,
+       parallel.canonical_compact_staging_bytes_bound,
+       parallel.full_compact_staging_bytes_bound});
+  parallel.finalization_phase_bytes_bound = memory_sum(
+      {parallel_base, parallel_raw_staging, parallel.column_containers_bytes,
+       parallel.canonical_compact_staging_bytes_bound,
+       parallel.full_compact_staging_bytes_bound, one_reduction_workspace,
+       parallel.final_sparse_output_bytes_bound});
+  parallel.return_phase_bytes_bound =
+      memory_sum({parallel_base, parallel_raw_staging,
+                  parallel.final_sparse_output_bytes_bound,
+                  parallel.cpp_to_r_output_copy_bytes_bound,
+                  parallel.cpp_to_r_local_rank_copy_bytes});
+  const std::size_t parallel_r_base =
+      memory_sum({parallel.neighborhood_index_staging_bytes,
+                  parallel.local_rank_staging_bytes,
+                  parallel.final_sparse_output_bytes_bound});
+  parallel.r_rank_diagnostics_phase_bytes_bound = memory_sum(
+      {parallel_r_base, parallel.accepted_rank_diagnostics_bytes_bound,
+       parallel.rank_diagnostics_workspaces_bytes_bound});
+  parallel.r_component_diagnostics_phase_bytes_bound = memory_sum(
+      {parallel_r_base, parallel.accepted_rank_diagnostics_bytes_bound,
+       parallel.accepted_component_diagnostics_bytes_bound,
+       parallel.component_discovery_workspaces_bytes_bound});
+  parallel.r_sparse_validation_phase_bytes_bound = memory_sum(
+      {parallel_r_base, parallel.accepted_rank_diagnostics_bytes_bound,
+       parallel.accepted_component_diagnostics_bytes_bound,
+       parallel.sparse_validation_staging_bytes_bound});
+  parallel.r_return_phase_bytes_bound = memory_sum(
+      {parallel_r_base, parallel.accepted_rank_diagnostics_bytes_bound,
+       parallel.accepted_component_diagnostics_bytes_bound,
+       parallel.reverse_occurrence_bytes});
+  parallel.modeled_peak_bytes_bound = std::max(
+      {parallel.fill_phase_bytes_bound, parallel.reduction_phase_bytes_bound,
+       parallel.expansion_phase_bytes_bound,
+       parallel.finalization_phase_bytes_bound,
+       parallel.return_phase_bytes_bound,
+       parallel.r_rank_diagnostics_phase_bytes_bound,
+       parallel.r_component_diagnostics_phase_bytes_bound,
+       parallel.r_sparse_validation_phase_bytes_bound,
+       parallel.r_return_phase_bytes_bound});
+
+  return cpp11::writable::list(
+      {cpp11::named_arg("serial") = route_memory_estimate_list(serial),
+       cpp11::named_arg("parallel") = route_memory_estimate_list(parallel),
+       cpp11::named_arg("sizeof_bytes") = cpp11::writable::list(
+           {cpp11::named_arg("int") = static_cast<double>(sizeof(int)),
+            cpp11::named_arg("double") = static_cast<double>(sizeof(double)),
+            cpp11::named_arg("size_t") =
+                static_cast<double>(sizeof(std::size_t)),
+            cpp11::named_arg("r_sexp_pointer") =
+                static_cast<double>(sizeof(SEXP)),
+            cpp11::named_arg("compact_entry") =
+                static_cast<double>(sizeof(CompactEntry)),
+            cpp11::named_arg("compact_column_container") =
+                static_cast<double>(sizeof(std::vector<CompactEntry>)),
+            cpp11::named_arg("serial_gram_workspace_object") =
+                static_cast<double>(sizeof(GramLocalWeightsWorkspace)),
+            cpp11::named_arg("parallel_workspace_object") =
+                static_cast<double>(sizeof(ParallelLocalWeightsWorkspace)),
+            cpp11::named_arg("reduction_workspace_object") =
+                static_cast<double>(sizeof(ReduceWorkspace)),
+            cpp11::named_arg("thread_object") =
+                static_cast<double>(sizeof(std::thread))})});
+}
+
 [[cpp11::register]] cpp11::list ltsa_assemble_local_weights_parallel(
     const cpp11::doubles_matrix<>& x, const cpp11::integers& value_nnt,
     std::size_t value_n_nbrs, int ndim, int requested_threads,
@@ -569,14 +1137,20 @@ void stop_on_parallel_worker_failure(
   const std::string fallback_reason = row_major_fallback_reason(
       !use_svd_route, row_major_ptr != nullptr, row_major_within_limit);
 
+  // Convert through const references before named_arg's by-value assignment so
+  // the R payloads do not overlap temporary copies of the C++ vectors.
+  cpp11::sexp r_i(cpp11::as_sexp(components.i));
+  cpp11::sexp r_p(cpp11::as_sexp(components.p));
+  cpp11::sexp r_x(cpp11::as_sexp(components.x));
+  cpp11::sexp r_local_ranks(cpp11::as_sexp(local_ranks));
+
   return cpp11::writable::list(
-      {cpp11::named_arg("i") = components.i,
-       cpp11::named_arg("p") = components.p,
-       cpp11::named_arg("x") = components.x,
+      {cpp11::named_arg("i") = r_i, cpp11::named_arg("p") = r_p,
+       cpp11::named_arg("x") = r_x,
        cpp11::named_arg("rank_deficient_count") =
            diagnostics.rank_deficient_count,
        cpp11::named_arg("min_local_rank") = diagnostics.min_local_rank,
-       cpp11::named_arg("local_ranks") = local_ranks,
+       cpp11::named_arg("local_ranks") = r_local_ranks,
        cpp11::named_arg("local_solver_route") = use_svd_route ? "svd" : "gram",
        cpp11::named_arg("assembly_route") = "parallel_triangular_two_pass",
        cpp11::named_arg("requested_assembly_threads") = requested_threads,

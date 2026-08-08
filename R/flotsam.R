@@ -97,6 +97,28 @@
 #' `copy_max_mib` limits an optional row-major dense copy of `X` used during
 #' high-dimensional local Gram assembly. Increase it only when that copy is
 #' useful and enough memory is available; set it to `0` to disable the copy.
+#' `assembly_max_mib` is a separate cap on the modeled assembly peak. The
+#' preflight includes the optional row-major copy when eligible, along with
+#' route-specific staging, workspace, reduction, C++-to-R sparse and local-rank
+#' conversion, sparse-output bounds, and post-assembly R payloads for rank and
+#' component diagnostics, sparse-slot validation, and reverse occurrence. It
+#' excludes the existing input, allocator overhead, thread stacks, library
+#' internals, R object headers and diagnostic character-string contents,
+#' workspaces internal to R primitives, and later eigensolver storage, so it is
+#' not an exact peak-RSS prediction.
+#'
+#' Sparse-output size depends on neighborhood overlap and numerical
+#' cancellation. The preflight therefore labels the full compact staging and
+#' representable final `dgCMatrix` output as separate conservative slot bounds.
+#' When requested parallel assembly exceeds `assembly_max_mib`, `ltsa()` warns
+#' and falls back to serial only if the serial bound is within the cap;
+#' otherwise it fails before assembly staging is allocated. With
+#' `output = "result"`, `assembly$memory` reports the requested and selected
+#' routes, cap, relevant `sizeof` values, and component and phase bounds in
+#' bytes.
+#' `assembly$raw_entries_estimate` remains the triangular contribution count;
+#' `assembly$raw_bytes_estimate` is present only for parallel assembly, where
+#' raw integer-row and double-value staging buffers actually exist.
 #'
 #' Local bases use a direct SVD when `ncol(X)` is no larger than the effective
 #' neighborhood size and an eigendecomposition of the centered Gram matrix
@@ -172,6 +194,11 @@
 #' @param copy_max_mib Maximum size, in MiB, of the optional row-major dense
 #'   copy of `X` used during high-dimensional local Gram assembly. Set to `0`
 #'   to disable this copy.
+#' @param assembly_max_mib Maximum modeled assembly peak, in MiB. The default
+#'   `4096` permits moderate assembly workloads while rejecting or routing
+#'   multi-gigabyte staging plans before their large allocations. This cap is
+#'   separate from `copy_max_mib` and does not cover pre-existing inputs or the
+#'   later eigensolver.
 #' @param verbose If `TRUE` log information about progress to the console.
 #' @param ... Optional eigensolver and diagnostic controls. See the
 #'   `Eigensolver controls` section.
@@ -257,7 +284,8 @@ ltsa <-
     n_assembly_threads = 1,
     copy_max_mib = 256,
     verbose = FALSE,
-    ...
+    ...,
+    assembly_max_mib = 4096
   ) {
     output <- match.arg(output)
     X <- x2m(X)
@@ -282,6 +310,7 @@ ltsa <-
       n_threads = n_threads,
       n_assembly_threads = n_assembly_threads,
       copy_max_mib = copy_max_mib,
+      assembly_max_mib = assembly_max_mib,
       verbose = verbose
     )
 
@@ -309,6 +338,7 @@ ltsa <-
       include_self = validated$include_self,
       n_assembly_threads = validated$n_assembly_threads,
       copy_max_mib = validated$copy_max_mib,
+      assembly_max_mib = validated$assembly_max_mib,
       verbose = validated$verbose
     )
     B <- assembly$B

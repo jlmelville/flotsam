@@ -65,6 +65,7 @@ validate_ltsa_args <- function(
   n_threads,
   n_assembly_threads,
   copy_max_mib,
+  assembly_max_mib,
   verbose
 ) {
   if (!all(is.finite(X))) {
@@ -91,6 +92,11 @@ validate_ltsa_args <- function(
     copy_max_mib,
     "copy_max_mib"
   )
+  assembly_max_mib <- check_nonnegative_number(
+    assembly_max_mib,
+    "assembly_max_mib"
+  )
+  ltsa_mib_to_bytes(assembly_max_mib, "assembly_max_mib")
 
   include_self <- check_scalar_logical(include_self, "include_self")
   normalize <- check_scalar_logical(normalize, "normalize")
@@ -154,6 +160,7 @@ validate_ltsa_args <- function(
     n_threads = n_threads,
     n_assembly_threads = n_assembly_threads,
     copy_max_mib = copy_max_mib,
+    assembly_max_mib = assembly_max_mib,
     verbose = verbose
   )
 }

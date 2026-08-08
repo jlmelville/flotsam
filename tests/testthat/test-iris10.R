@@ -137,7 +137,7 @@ expect_ltsa_public_result <- function(
     "requested_assembly_threads",
     "effective_assembly_threads",
     "raw_entries_estimate",
-    "raw_bytes_estimate",
+    "memory",
     "row_major_used",
     "row_major_fallback_reason",
     "parallel_fallback_reason"
