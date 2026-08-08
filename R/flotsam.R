@@ -279,6 +279,7 @@ ltsa <-
     if (validated$normalize) {
       tsmessage("Forming normalized Bsym", verbose = validated$verbose)
       normalized <- ltsa_normalize_sparse_operator(B_operator)
+      mass <- normalized$mass
       Dinvs <- normalized$Dinvs
       nullvec <- normalized$nullvec
       B_operator <- normalized$Lsym
@@ -302,7 +303,8 @@ ltsa <-
         stop("Eigenanalysis failed: ", conditionMessage(e), call. = FALSE)
       }
     )
-    embedding <- eig_res$vectors
+    symmetric_embedding <- eig_res$vectors
+    embedding <- symmetric_embedding
     if (validated$normalize) {
       embedding <- Dinvs * embedding
     }
@@ -327,22 +329,37 @@ ltsa <-
         )
     }
 
+    eigen_result <- list(
+      method = validated$eig_method,
+      normalized = isTRUE(validated$normalize),
+      eig_k = eig_res$eigen$eig_k,
+      values = eig_res$eigen$values,
+      ritz_values = eig_res$eigen$ritz_values,
+      residuals = eig_res$eigen$residuals,
+      rank = eig_res$eigen$rank,
+      lambda_max = eig_res$eigen$lambda_max,
+      status = eig_res$eigen$status,
+      messages = eig_res$eigen$messages,
+      backend = eig_res$eigen$backend,
+      diagnostics = eig_res$eigen$diagnostics
+    )
+    if (validated$normalize) {
+      eigen_result$normalized_details <- ltsa_normalized_details(
+        B = B,
+        mass = mass,
+        symmetric_embedding = symmetric_embedding,
+        embedding = embedding,
+        values = eig_res$eigen$values,
+        lambda_max = eig_res$eigen$lambda_max,
+        reverse_occurrence = assembly$reverse_occurrence,
+        component_membership = assembly_diagnostics$component_membership,
+        component_sizes = assembly_diagnostics$component_sizes
+      )
+    }
+
     result <- list(
       embedding = embedding,
-      eigen = list(
-        method = validated$eig_method,
-        normalized = isTRUE(validated$normalize),
-        eig_k = eig_res$eigen$eig_k,
-        values = eig_res$eigen$values,
-        ritz_values = eig_res$eigen$ritz_values,
-        residuals = eig_res$eigen$residuals,
-        rank = eig_res$eigen$rank,
-        lambda_max = eig_res$eigen$lambda_max,
-        status = eig_res$eigen$status,
-        messages = eig_res$eigen$messages,
-        backend = eig_res$eigen$backend,
-        diagnostics = eig_res$eigen$diagnostics
-      ),
+      eigen = eigen_result,
       assembly = lmerge(
         list(
           n_neighbors = as.integer(validated$n_neighbors),

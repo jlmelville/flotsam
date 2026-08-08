@@ -59,6 +59,7 @@ assemble_ltsa_B <- function(
     B = B,
     rank_deficient_count = components$rank_deficient_count,
     min_local_rank = components$min_local_rank,
+    reverse_occurrence = tabulate(weight_idx, nbins = n),
     diagnostics = ltsa_assembly_diagnostics(components)
   )
 }
@@ -159,8 +160,16 @@ ltsa_effective_components <- function(weight_idx, n) {
   )
 }
 
-ltsa_component_embedding_overlap <- function(embedding, membership, sizes) {
+ltsa_component_embedding_overlap <- function(
+  embedding,
+  membership,
+  sizes,
+  point_weights = NULL
+) {
   embedding <- as.matrix(embedding)
+  if (is.null(point_weights)) {
+    point_weights <- rep.int(1, nrow(embedding))
+  }
   decomposition <- qr(embedding)
   embedding_rank <- decomposition$rank
   component_contrast_rank <- max(0L, length(sizes) - 1L)
@@ -177,13 +186,18 @@ ltsa_component_embedding_overlap <- function(embedding, membership, sizes) {
     seq_len(embedding_rank),
     drop = FALSE
   ]
+  component_weights <- as.numeric(rowsum(
+    point_weights,
+    membership,
+    reorder = FALSE
+  ))
   component_projection <- rowsum(
-    embedding_basis,
+    sqrt(point_weights) * embedding_basis,
     membership,
     reorder = FALSE
   ) /
-    sqrt(sizes)
-  global_direction <- sqrt(sizes / sum(sizes))
+    sqrt(component_weights)
+  global_direction <- sqrt(component_weights / sum(component_weights))
   component_projection <- component_projection -
     tcrossprod(
       global_direction,

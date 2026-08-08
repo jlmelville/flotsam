@@ -130,23 +130,24 @@ expect_ltsa_public_result <- function(
   expect_named(result, c("embedding", "eigen", "assembly"))
   expect_true(is.matrix(result$embedding))
   expect_equal(dim(result$embedding), c(n, ndim))
-  expect_named(
-    result$eigen,
-    c(
-      "method",
-      "normalized",
-      "eig_k",
-      "values",
-      "ritz_values",
-      "residuals",
-      "rank",
-      "lambda_max",
-      "status",
-      "messages",
-      "backend",
-      "diagnostics"
-    )
+  eigen_fields <- c(
+    "method",
+    "normalized",
+    "eig_k",
+    "values",
+    "ritz_values",
+    "residuals",
+    "rank",
+    "lambda_max",
+    "status",
+    "messages",
+    "backend",
+    "diagnostics"
   )
+  if (normalized) {
+    eigen_fields <- c(eigen_fields, "normalized_details")
+  }
+  expect_named(result$eigen, eigen_fields)
   expect_identical(result$eigen$method, method)
   expect_identical(result$eigen$normalized, normalized)
   expect_identical(result$eigen$eig_k, eig_k)
@@ -300,6 +301,7 @@ test_that("normalized iterative detailed results have consistent diagnostics", {
       method = method,
       normalized = TRUE
     )
+    expect_length(result$eigen$normalized_details$generalized_residuals, 2L)
     expect_false("component_embedding_overlap" %in% names(result$assembly))
   }
 })
