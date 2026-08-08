@@ -51,9 +51,11 @@ roughly descending order of importance:
    [threading warning](numerical-diagnostics.html#threading) before combining assembly threads with
    a multithreaded BLAS.
 * `eig_method`: The method to use for finding eigenvalues.
-  * `"rspectra"`: Use `RSpectra::eigs_sym()`. This is the default.
-  * `"irlba"`: Use `irlba::irlba()` and post-hoc residual diagnostics.
-  * `"svdr"`: Use `irlba::svdr()` and post-hoc residual diagnostics.
+  * `"auto"`: Use dense `base::eigen()` when `N <= dense_n` or
+  `eig_k >= dense_fraction * N`, and otherwise use `RSpectra::eigs_sym()`. This is the default.
+  * `"rspectra"`: Always use `RSpectra::eigs_sym()`.
+  * `"irlba"`: Always use `irlba::irlba()` and post-hoc residual diagnostics.
+  * `"svdr"`: Always use `irlba::svdr()` and post-hoc residual diagnostics.
   * `"eigen"` or `"eig"`: Use `base::eigen()`. This converts `B` to a dense matrix and computes the
   full eigensystem, then retains the lowest `eig_k` candidate vectors for Rayleigh--Ritz
   postprocessing. In terms of both memory usage and CPU time this is only feasible for small
@@ -81,13 +83,18 @@ roughly descending order of importance:
    spare this will make the `B` matrix assembly stage faster, but this is rarely the speed 
    bottleneck.
 
-Requested iterative methods automatically use dense `base::eigen()` when `N <= 100` or
-`eig_k >= 0.5 * N`. The `dense_n` and `dense_fraction` controls change those thresholds. Supplying a
-backend-specific control, or `shift_eps`, forces the requested iterative backend. With
-`output = "result"`, `eigen$method` records the canonical method name: the `"eigen"` alias is
-stored as `"eig"`, while other method names are unchanged. `eigen$backend$name` records the backend
-that actually ran. The package uses `tol = 1e-6` for RSpectra, rather than RSpectra's own `1e-10`
-default.
+Under `eig_method = "auto"`, dense `base::eigen()` is selected when `N <= 100` or
+`eig_k >= 0.5 * N`; `dense_n` and `dense_fraction` change those thresholds. Otherwise automatic
+selection uses RSpectra. Explicit `"rspectra"`, `"irlba"`, and `"svdr"` requests always use the
+named backend, including for small inputs. With `output = "result"`, `eigen$method` records
+`"auto"` or the explicit canonical method (`"eigen"` is stored as `"eig"`), while
+`eigen$backend$name` records the backend that actually ran. The package uses `tol = 1e-6` for
+RSpectra, rather than RSpectra's own `1e-10` default.
+
+`dense_n` and `dense_fraction` are accepted only with `"auto"`. The curated backend controls are
+accepted only with their explicit backend, and `shift_eps` only with an explicit iterative method.
+`resid_tol` and `gap_tol` are non-routing diagnostics accepted in every mode; they are the only
+controls accepted by `"eig"`/`"eigen"`. `output = "B"` rejects all eigenanalysis controls in `...`.
 
 The detailed result also reports numerical and structural diagnostics. Near-zero counts apply only
 to the observed candidate span; `eigen$diagnostics$near_zero_block_truncated` means that individual

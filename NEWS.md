@@ -1,5 +1,14 @@
 # flotsam 0.0.0.9002
 
+* `eig_method` now defaults to `"auto"`, which retains the existing dense
+  threshold policy and otherwise uses RSpectra. Explicit `"rspectra"`,
+  `"irlba"`, and `"svdr"` requests now always use the named backend, including
+  for small inputs. Dense thresholds are accepted only with `"auto"`, backend
+  controls only with their explicit backend, and `shift_eps` only with an
+  explicit iterative method. Existing calls that tune a backend must now name
+  it explicitly. In detailed results, `eigen$method` records `"auto"` or the
+  explicit canonical method, while `eigen$backend$name` records the backend
+  that actually ran.
 * New argument: `eig_k`, controls the number of eigenvectors to return before
   the Rayleigh-Ritz processing step and final `ndim` return. Increasing the
   total number of eigenvectors to return seems to work better than other

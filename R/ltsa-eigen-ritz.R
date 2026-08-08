@@ -371,8 +371,7 @@ validate_eigen_controls <- function(args, eig_method, output) {
       list(
         provider_args = list(),
         resid_tol = 1e-5,
-        gap_tol = 1e-4,
-        force_iterative = FALSE
+        gap_tol = 1e-4
       )
     )
   }
@@ -405,17 +404,16 @@ validate_eigen_controls <- function(args, eig_method, output) {
   }
 
   diagnostic_names <- c("resid_tol", "gap_tol")
-  routing_names <- c("dense_n", "dense_fraction", "shift_eps")
-  backend_names <- list(
-    rspectra = c("tol", "maxitr", "ncv"),
-    irlba = c("tol", "maxit", "reorth"),
-    svdr = c("tol", "it", "extra"),
+  method_names <- list(
+    auto = c("dense_n", "dense_fraction"),
+    rspectra = c("tol", "maxitr", "ncv", "shift_eps"),
+    irlba = c("tol", "maxit", "reorth", "shift_eps"),
+    svdr = c("tol", "it", "extra", "shift_eps"),
     eig = character()
   )
   supported_names <- unique(c(
     diagnostic_names,
-    if (identical(eig_method, "eig")) character() else routing_names,
-    backend_names[[eig_method]]
+    method_names[[eig_method]]
   ))
   unsupported_names <- setdiff(arg_names, supported_names)
   if (length(unsupported_names) > 0L) {
@@ -451,19 +449,11 @@ validate_eigen_controls <- function(args, eig_method, output) {
   }
 
   provider_args <- args[!(arg_names %in% diagnostic_names)]
-  force_iterative <- switch(
-    eig_method,
-    rspectra = any(c("tol", "maxitr", "ncv", "shift_eps") %in% arg_names),
-    irlba = any(c("tol", "maxit", "reorth", "shift_eps") %in% arg_names),
-    svdr = any(c("tol", "it", "extra", "shift_eps") %in% arg_names),
-    eig = FALSE
-  )
 
   list(
     provider_args = provider_args,
     resid_tol = resid_tol,
-    gap_tol = gap_tol,
-    force_iterative = force_iterative
+    gap_tol = gap_tol
   )
 }
 
@@ -491,6 +481,7 @@ ltsa_run_eigenanalysis <- function(
 ) {
   provider <- switch(
     eig_method,
+    auto = ltsa_auto_candidate_provider,
     rspectra = {
       tsmessage("Calling rspectra", verbose = verbose)
       ltsa_rspectra_candidate_provider
@@ -510,9 +501,6 @@ ltsa_run_eigenanalysis <- function(
   )
 
   provider_args <- eigen_args$provider_args
-  if (eig_method %in% c("rspectra", "irlba", "svdr")) {
-    provider_args$force_iterative <- isTRUE(eigen_args$force_iterative)
-  }
 
   ltsa_ritz_eig(
     B = B,

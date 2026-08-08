@@ -61,15 +61,15 @@ solution faster. Unfortunately, there is no way to know in the case of clustered
 are actually getting all the eigenvectors back and increasing `eig_k` was the only thing that I 
 have seen that worked. In practice, I have only seen this happen with synthetic datasets.
 
-### Dense fallback and `eig_k`
+### Automatic selection and `eig_k`
 
-For a requested iterative method, `flotsam` automatically uses dense `base::eigen()` when
+With `eig_method = "auto"`, `flotsam` uses dense `base::eigen()` when
 `n <= dense_n` or `eig_k >= dense_fraction * n`; the defaults are `dense_n = 100` and
-`dense_fraction = 0.5`. Supplying a backend-specific control, or `shift_eps`, forces the requested
-iterative backend, while `resid_tol` and `gap_tol` affect diagnostics only. With
-`output = "result"`, `eigen$method` records the canonical method name: the `"eigen"` alias is
-stored as `"eig"`, while other method names are unchanged. `eigen$backend$name` records the backend
-that actually ran.
+`dense_fraction = 0.5`; otherwise it uses RSpectra. Explicit `"rspectra"`, `"irlba"`, and `"svdr"`
+requests always run the named backend. `resid_tol` and `gap_tol` affect diagnostics only. With
+`output = "result"`, `eigen$method` records `"auto"` or the explicit canonical method (the
+`"eigen"` alias is stored as `"eig"`), while `eigen$backend$name` records the backend that actually
+ran.
 
 An explicit `eig_method = "eig"` or `"eigen"` computes the full dense eigensystem, but `eig_k` is
 still validated and used: only the lowest `eig_k` candidate vectors are passed to the
@@ -127,7 +127,7 @@ see the hole (maybe the embedding is also twisted).
 Increasing the tolerance might be seen as the obvious step:
 
 ```r
-res_strict <- ltsa(sch, eig_k = 6, tol = 1e-8)
+res_strict <- ltsa(sch, eig_method = "rspectra", eig_k = 6, tol = 1e-8)
 ```
 
 But this fails to converge:
@@ -142,7 +142,7 @@ In do.call(.Call, args = dot_call_args) :
 Increasing the number of eigenvectors to 18 helps the convergence succeed:
 
 ```r
-res_strict <- ltsa(sch, eig_k = 18, tol = 1e-8)
+res_strict <- ltsa(sch, eig_method = "rspectra", eig_k = 18, tol = 1e-8)
 ```
 
 ![`eig_k = 18`, `tol = 1e-8`](figures/s-curve-hole-eig-k-18-tol-1e-8.png)
@@ -259,12 +259,12 @@ interpretations.
 
 For the requested RSpectra method, the main convergence controls are `tol`, `maxitr` and `ncv` and
 are passed directly to `ltsa`. `flotsam` defaults to `tol = 1e-6`, deliberately looser than
-RSpectra's own `1e-10` default. Supplying any of these controls also forces RSpectra instead of the
-automatic dense fallback:
+RSpectra's own `1e-10` default. Select RSpectra explicitly when supplying these controls:
 
 ``` r
 ltsa_strict <- ltsa(
   swiss_roll,
+  eig_method = "rspectra",
   eig_k = 16,
   output = "result",
   tol = 1e-8,
@@ -278,6 +278,14 @@ Backend-specific tuning is passed through `...`:
 * `eig_method = "rspectra"`: `tol`, `maxitr`, and `ncv`.
 * `eig_method = "irlba"`: `tol`, `maxit`, and `reorth`.
 * `eig_method = "svdr"`: `tol`, `it`, and `extra`.
+
+This is a curated wrapper contract rather than every argument exposed by the underlying packages.
+The listed values are passed to their selected backend unchanged; unknown controls, controls for a
+different method, and backend-owned vector/count arguments are rejected. `dense_n` and
+`dense_fraction` belong only to `"auto"`, while `shift_eps` belongs only to explicit iterative
+methods. `resid_tol` and `gap_tol` are accepted in every mode and never change the selected route.
+Dense `"eig"`/`"eigen"` accepts only those diagnostic controls. `output = "B"` accepts no
+eigenanalysis controls in `...`.
 
 In the event of a convergence failure with stricter convergence, you may also need to increase 
 `eig_k` (the number of eigenvectors returned before the Rayleigh-Ritz processing):

@@ -19,7 +19,7 @@ expect_iris10_backends_match_dense <- function(normalize, include_self) {
       ltsa,
       c(
         common_args,
-        list(eig_method = method, dense_n = 0L)
+        list(eig_method = method)
       )
     )
 
@@ -203,8 +203,7 @@ test_that("default public return remains an embedding matrix", {
     iris[1:10, ],
     nn_method = "exact",
     n_neighbors = 8,
-    include_self = FALSE,
-    eig_method = "rspectra"
+    include_self = FALSE
   )
 
   expect_true(is.matrix(iris10_ltsa))
@@ -330,7 +329,7 @@ test_that("public embedding status is actionable and result status is inspectabl
 })
 
 test_that("all solver methods support detailed public results", {
-  methods <- c("rspectra", "irlba", "svdr", "eig", "eigen")
+  methods <- c("auto", "rspectra", "irlba", "svdr", "eig", "eigen")
 
   for (method in methods) {
     set.seed(7)
@@ -364,8 +363,7 @@ test_that("normalized iterative detailed results have consistent diagnostics", {
       normalize = TRUE,
       eig_method = method,
       eig_k = 4L,
-      output = "result",
-      dense_n = 0L
+      output = "result"
     )
 
     expect_ltsa_public_result(

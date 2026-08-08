@@ -110,7 +110,7 @@ validate_ltsa_args <- function(
   )
   eig_method <- check_choice(
     eig_method,
-    c("rspectra", "irlba", "svdr", "eig", "eigen"),
+    c("auto", "rspectra", "irlba", "svdr", "eig", "eigen"),
     "eig_method"
   )
   if (eig_method == "eigen") {

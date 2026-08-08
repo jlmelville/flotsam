@@ -1,4 +1,4 @@
-test_that("default RSpectra path unfolds a swiss roll", {
+test_that("explicit RSpectra path unfolds a swiss roll", {
   set.seed(42)
   n <- 500L
   phi <- stats::runif(n, min = 1.5 * pi, max = 4.5 * pi)

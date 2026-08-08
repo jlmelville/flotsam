@@ -43,6 +43,39 @@ new_ltsa_candidates <- function(
   )
 }
 
+# Automatic selection preserves the dense threshold policy while keeping an
+# explicit RSpectra request literal.
+ltsa_auto_candidate_provider <- function(
+  B,
+  eig_k,
+  lambda_max = NULL,
+  verbose = FALSE,
+  dense_n = 100L,
+  dense_fraction = 0.5
+) {
+  n <- ncol(B)
+
+  if (
+    ltsa_use_dense_eig(
+      n,
+      eig_k,
+      dense_n = dense_n,
+      dense_fraction = dense_fraction
+    )
+  ) {
+    tsmessage("Using dense eigenvalue decomposition", verbose = verbose)
+    return(dense_ltsa_eig(B, eig_k))
+  }
+
+  tsmessage("Calling rspectra", verbose = verbose)
+  ltsa_rspectra_candidate_provider(
+    B = B,
+    eig_k = eig_k,
+    lambda_max = lambda_max,
+    verbose = verbose
+  )
+}
+
 # RSpectra uses a shifted largest-algebraic formulation and treats nconv as a
 # hard convergence gate before shared LTSA postprocessing sees the candidates.
 ltsa_rspectra_candidate_provider <- function(
@@ -51,26 +84,10 @@ ltsa_rspectra_candidate_provider <- function(
   ...,
   lambda_max = NULL,
   verbose = FALSE,
-  shift_eps = 1e-6,
-  dense_n = 100L,
-  dense_fraction = 0.5,
-  force_iterative = FALSE
+  shift_eps = 1e-6
 ) {
   varargs <- list(...)
   n <- ncol(B)
-
-  if (
-    !isTRUE(force_iterative) &&
-      ltsa_use_dense_eig(
-        n,
-        eig_k,
-        dense_n = dense_n,
-        dense_fraction = dense_fraction
-      )
-  ) {
-    tsmessage("Using dense eigenvalue decomposition", verbose = verbose)
-    return(dense_ltsa_eig(B, eig_k))
-  }
 
   lambda_probe <- NULL
   if (is.null(lambda_max)) {
@@ -295,26 +312,9 @@ ltsa_irlba_candidate_provider <- function(
   ...,
   lambda_max = NULL,
   verbose = FALSE,
-  shift_eps = 1e-6,
-  dense_n = 100L,
-  dense_fraction = 0.5,
-  force_iterative = FALSE
+  shift_eps = 1e-6
 ) {
   varargs <- list(...)
-  n <- ncol(B)
-
-  if (
-    !isTRUE(force_iterative) &&
-      ltsa_use_dense_eig(
-        n,
-        eig_k,
-        dense_n = dense_n,
-        dense_fraction = dense_fraction
-      )
-  ) {
-    tsmessage("Using dense eigenvalue decomposition", verbose = verbose)
-    return(dense_ltsa_eig(B, eig_k))
-  }
 
   lambda_probe <- NULL
   if (is.null(lambda_max)) {
@@ -369,26 +369,9 @@ ltsa_svdr_candidate_provider <- function(
   ...,
   lambda_max = NULL,
   verbose = FALSE,
-  shift_eps = 1e-6,
-  dense_n = 100L,
-  dense_fraction = 0.5,
-  force_iterative = FALSE
+  shift_eps = 1e-6
 ) {
   varargs <- list(...)
-  n <- ncol(B)
-
-  if (
-    !isTRUE(force_iterative) &&
-      ltsa_use_dense_eig(
-        n,
-        eig_k,
-        dense_n = dense_n,
-        dense_fraction = dense_fraction
-      )
-  ) {
-    tsmessage("Using dense eigenvalue decomposition", verbose = verbose)
-    return(dense_ltsa_eig(B, eig_k))
-  }
 
   lambda_probe <- NULL
   if (is.null(lambda_max)) {
@@ -432,8 +415,7 @@ ltsa_svdr_candidate_provider <- function(
   )
 }
 
-# Dense diagnostic path used for small matrices or when a requested candidate
-# count is large relative to the matrix size.
+# Dense path used by automatic selection and explicit dense requests.
 dense_ltsa_eig <- function(B, eig_k, backend = "dense_eigen") {
   dense <- as.matrix(B)
   eig <- eigen(dense, symmetric = TRUE)
@@ -480,5 +462,5 @@ ltsa_eig_candidate_provider <- function(
   lambda_max = NULL,
   verbose = FALSE
 ) {
-  dense_ltsa_eig(B, eig_k, backend = "eig")
+  dense_ltsa_eig(B, eig_k)
 }

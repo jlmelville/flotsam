@@ -472,8 +472,7 @@ test_that("public iterative LTSA honors explicit eig_k", {
       include_self = FALSE,
       eig_method = method,
       eig_k = 4L,
-      output = "result",
-      dense_n = 0L
+      output = "result"
     )
 
     expect_identical(result$eigen$method, method)
@@ -726,10 +725,10 @@ test_that("LTSA symmetrization returns a general sparse solver matrix", {
   expect_equal(as.matrix(B_sym), 0.5 * (as.matrix(B) + t(as.matrix(B))))
 })
 
-test_that("dense LTSA eigensolver fallback reports small residuals", {
+test_that("automatic dense LTSA route reports small residuals", {
   B <- flotsam:::symmetrize_ltsa_matrix(Matrix::Diagonal(x = seq(0, 11)))
 
-  res <- flotsam:::ltsa_rspectra_candidate_provider(B, eig_k = 6L)
+  res <- flotsam:::ltsa_auto_candidate_provider(B, eig_k = 6L)
 
   expect_identical(res$backend, "dense_eigen")
   expect_identical(res$eig_k, 6L)
@@ -744,7 +743,6 @@ test_that("RSpectra path uses shifted largest-algebraic solve with residual meta
   res <- flotsam:::ltsa_rspectra_candidate_provider(
     B,
     eig_k = 6L,
-    dense_n = 0L,
     tol = 1e-10,
     maxitr = 5000L
   )
@@ -764,7 +762,6 @@ test_that("RSpectra candidate provider returns candidate bundle", {
   res <- flotsam:::ltsa_rspectra_candidate_provider(
     B,
     eig_k = 6L,
-    dense_n = 0L,
     tol = 1e-10,
     maxitr = 5000L
   )
@@ -811,7 +808,6 @@ test_that("RSpectra Ritz driver returns diagnostics", {
     ndim = 2L,
     provider = flotsam:::ltsa_rspectra_candidate_provider,
     provider_args = list(
-      dense_n = 0L,
       tol = 1e-8,
       ncv = 18L,
       maxitr = 5000L
@@ -834,11 +830,11 @@ test_that("irlba and svdr candidate providers return candidate bundles", {
   providers <- list(
     irlba = list(
       provider = flotsam:::ltsa_irlba_candidate_provider,
-      args = list(dense_n = 0L, tol = 1e-10, maxit = 1000L)
+      args = list(tol = 1e-10, maxit = 1000L)
     ),
     svdr = list(
       provider = flotsam:::ltsa_svdr_candidate_provider,
-      args = list(dense_n = 0L, tol = 1e-10, it = 1000L)
+      args = list(tol = 1e-10, it = 1000L)
     )
   )
 
@@ -873,11 +869,11 @@ test_that("irlba and svdr Ritz drivers agree with dense reference subspaces", {
   backends <- list(
     irlba = list(
       provider = flotsam:::ltsa_irlba_candidate_provider,
-      args = list(dense_n = 0L, tol = 1e-10, maxit = 5000L)
+      args = list(tol = 1e-10, maxit = 5000L)
     ),
     svdr = list(
       provider = flotsam:::ltsa_svdr_candidate_provider,
-      args = list(dense_n = 0L, tol = 1e-10, it = 5000L, extra = 12L)
+      args = list(tol = 1e-10, it = 5000L, extra = 12L)
     )
   )
 
@@ -912,7 +908,6 @@ test_that("RSpectra partial convergence is a hard LTSA error", {
         B,
         eig_k = 20L,
         lambda_max = lambda_max,
-        dense_n = 0L,
         ncv = 21L,
         maxitr = 1L,
         tol = 1e-16

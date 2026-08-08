@@ -20,10 +20,10 @@
 #' Use `output = "B"` to return the assembled unnormalized LTSA matrix and skip
 #' final eigenanalysis.
 #'
-#' When `output = "result"`, `eigen$method` records the canonical method name:
-#' the `"eigen"` alias is stored as `"eig"`, while the other method names are
-#' unchanged. `eigen$backend$name` records the backend actually used. Iterative
-#' methods may use the dense fallback described under `Eigensolver controls`.
+#' When `output = "result"`, `eigen$method` records the requested policy or
+#' canonical method name: automatic selection is stored as `"auto"`, and the
+#' `"eigen"` alias is stored as `"eig"`. `eigen$backend$name` records the
+#' backend actually used.
 #'
 #' @section Eigenanalysis and structural diagnostics:
 #' Rayleigh--Ritz postprocessing removes the known constant null direction from
@@ -149,11 +149,15 @@
 #'   * A nearest-neighbor result object with an `idx` matrix.
 #' @param eig_method How to carry out the final eigendecomposition. Possible
 #'   values are:
-#'    * `"rspectra"` Use [RSpectra::eigs_sym()]. This is the default and can
+#'    * `"auto"` Use dense [base::eigen()] when `n <= dense_n` or
+#'      `eig_k >= dense_fraction * n`, and otherwise use
+#'      [RSpectra::eigs_sym()]. This is the default.
+#'    * `"rspectra"` Always use [RSpectra::eigs_sym()]. This method can
 #'      report hard backend convergence failures through RSpectra's `nconv`
 #'      metadata.
-#'    * `"irlba"` Use [irlba::irlba()] and post-hoc residual diagnostics.
-#'    * `"svdr"` Use [irlba::svdr()] and post-hoc residual diagnostics.
+#'    * `"irlba"` Always use [irlba::irlba()] and post-hoc residual
+#'      diagnostics.
+#'    * `"svdr"` Always use [irlba::svdr()] and post-hoc residual diagnostics.
 #'    * `"eig"` or `"eigen"` Use the [base::eigen()] function. This is only
 #'      feasible for small datasets and should be used for diagnostic purposes
 #'      only. Dense `"eig"` is the better diagnostic reference when algebraic
@@ -204,7 +208,13 @@
 #'   `Eigensolver controls` section.
 #'
 #' @section Eigensolver controls:
-#' Backend controls:
+#' Automatic-selection controls:
+#'
+#' * `"auto"`: `dense_n` and `dense_fraction`. Dense eigenanalysis is selected
+#'   when `n <= dense_n` or `eig_k >= dense_fraction * n`; their defaults are
+#'   `100` and `0.5`.
+#'
+#' Backend controls for explicit iterative methods:
 #'
 #' * `"rspectra"`: `tol`, `maxitr`, and `ncv`. See
 #'   \link[RSpectra:eigs_sym]{RSpectra::eigs_sym()} for their meanings. The
@@ -215,18 +225,23 @@
 #' * `"svdr"`: `tol`, `it`, and `extra`. See
 #'   \link[irlba:svdr]{irlba::svdr()} for their meanings.
 #'
-#' `resid_tol` and `gap_tol` set diagnostic thresholds for candidate residuals
-#' and the Ritz boundary gap. They default to `1e-5` and `1e-4`, respectively,
-#' and do not affect backend selection.
+#' These are the backend controls exposed by `ltsa()`; other arguments accepted
+#' by the underlying packages are not automatically available. Values for the
+#' listed controls are passed to the selected backend unchanged.
 #'
-#' `dense_n` and `dense_fraction` control the automatic dense fallback. Dense
-#' eigenanalysis is selected when `n <= dense_n` or
-#' `eig_k >= dense_fraction * n`; their defaults are `100` and `0.5`.
+#' `resid_tol` and `gap_tol` set diagnostic thresholds for candidate residuals
+#' and the Ritz boundary gap. They default to `1e-5` and `1e-4`, respectively.
+#' They are accepted for every eigensolver mode and do not affect backend
+#' selection.
+#' Dense `"eig"`/`"eigen"` accepts only these diagnostic controls.
+#'
 #' `shift_eps` controls the positive shift margin used by iterative methods and
-#' defaults to `1e-6`. Backend controls and `shift_eps` use the requested
-#' iterative backend instead of the automatic dense fallback. The canonical
-#' method name is stored in `eigen$method` (`"eigen"` becomes `"eig"`), while
-#' `eigen$backend$name` identifies the backend actually used.
+#' defaults to `1e-6`. It is accepted only with an explicit iterative method.
+#' Backend controls are accepted only with their explicit backend. The
+#' requested policy or canonical method is stored in `eigen$method`
+#' (`"eigen"` becomes `"eig"`), while `eigen$backend$name` identifies the
+#' backend actually used (`"dense_eigen"`, `"rspectra"`, `"irlba"`, or
+#' `"svdr"`). `output = "B"` does not accept eigenanalysis controls in `...`.
 #'
 #' @references
 #' Zhang, Z., & Zha, H. (2004).
@@ -258,6 +273,8 @@
 #' )
 #' iris_result$eigen$status
 #' iris_result$eigen$messages
+#' iris_result$eigen$method
+#' iris_result$eigen$backend$name
 #'
 #' # Return the assembled unnormalized LTSA matrix.
 #' iris_B <- ltsa(
@@ -274,7 +291,7 @@ ltsa <-
     n_neighbors = NULL,
     ndim = 2,
     nn_method = "nnd",
-    eig_method = "rspectra",
+    eig_method = "auto",
     eig_k = NULL,
     output = c("embedding", "result", "B"),
     include_B = FALSE,
