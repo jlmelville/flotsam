@@ -12,6 +12,6 @@ ltsa_assemble_local_weights <- function(x, value_nnt, value_n_nbrs, ndim, row_ma
   .Call(`_flotsam_ltsa_assemble_local_weights`, x, value_nnt, value_n_nbrs, ndim, row_major_copy_max_bytes)
 }
 
-spm_times_scalar <- function(ps, xs, ds) {
-  .Call(`_flotsam_spm_times_scalar`, ps, xs, ds)
+scale_csc_columns <- function(ps, xs, ds) {
+  .Call(`_flotsam_scale_csc_columns`, ps, xs, ds)
 }

@@ -5,7 +5,7 @@ test_that("sparse normalization implements Jacobi scaling", {
     j = c(1L, 1L, 2L, 2L, 3L, 2L, 3L),
     x = c(4, 2, 2, 9, 3, 3, 16),
     dims = c(3L, 3L),
-    giveCsparse = TRUE
+    repr = "C"
   )
 
   normalized <- flotsam:::ltsa_normalize_sparse_operator(L)

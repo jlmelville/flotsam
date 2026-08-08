@@ -11,7 +11,7 @@ ltsa_normalize_sparse_operator <- function(L) {
 
   Dinvs <- sqrt(1 / diagonal)
   L_scaled <- L
-  L_scaled@x <- spm_times_scalar(L_scaled@p, L_scaled@x, Dinvs)
+  L_scaled@x <- scale_csc_columns(L_scaled@p, L_scaled@x, Dinvs)
   list(
     Lsym = Dinvs * L_scaled,
     mass = diagonal,

@@ -15,11 +15,10 @@ Roxygen: list(markdown = TRUE)
 URL: https://jlmelville.github.io/flotsam/,
     https://github.com/jlmelville/flotsam
 BugReports: https://github.com/jlmelville/flotsam/issues
-Depends:
-    Matrix
 LinkingTo: 
     cpp11
 Imports: 
+    Matrix,
     rnndescent (>= 0.0.10),
     irlba,
     RSpectra,

@@ -162,7 +162,7 @@ assemble_ltsa_B_r_triplet_reference <- function(X, nn_idx, ndim, include_self) {
       j = cols,
       x = vals,
       dims = c(n, n),
-      giveCsparse = TRUE
+      repr = "C"
     ),
     rank_deficient_count = rank_deficient_count,
     min_local_rank = min_local_rank
