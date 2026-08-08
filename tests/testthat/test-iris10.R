@@ -52,11 +52,21 @@ expect_ltsa_public_result <- function(
   normalized = FALSE,
   n = 10L,
   ndim = 2L,
-  eig_k = 4L
+  eig_k = 4L,
+  row_names = as.character(seq_len(n))
 ) {
-  expect_named(result, c("embedding", "eigen", "assembly"))
+  expect_named(
+    result,
+    c("embedding", "eigen", "assembly"),
+    ignore.order = TRUE
+  )
   expect_true(is.matrix(result$embedding))
   expect_equal(dim(result$embedding), c(n, ndim))
+  coordinate_dimnames <- list(
+    row_names,
+    paste0("LTSA", seq_len(ndim))
+  )
+  expect_identical(dimnames(result$embedding), coordinate_dimnames)
   eigen_fields <- c(
     "method",
     "normalized",
@@ -74,7 +84,7 @@ expect_ltsa_public_result <- function(
   if (normalized) {
     eigen_fields <- c(eigen_fields, "normalized_details")
   }
-  expect_named(result$eigen, eigen_fields)
+  expect_named(result$eigen, eigen_fields, ignore.order = TRUE)
   expect_identical(result$eigen$method, method)
   expect_identical(result$eigen$normalized, normalized)
   expect_identical(result$eigen$eig_k, eig_k)
@@ -100,7 +110,8 @@ expect_ltsa_public_result <- function(
       "near_zero_boundary_observed",
       "near_zero_boundaries_observed",
       "near_zero_block_truncated"
-    )
+    ),
+    ignore.order = TRUE
   )
   expect_type(
     result$eigen$diagnostics$near_zero_nonconstant_count,
@@ -109,12 +120,82 @@ expect_ltsa_public_result <- function(
   expect_type(result$eigen$diagnostics$near_zero_threshold, "double")
   expect_type(result$eigen$diagnostics$near_zero_block_truncated, "logical")
   expect_false("B" %in% names(result))
+  assembly_fields <- c(
+    "n_neighbors",
+    "include_self",
+    "neighbor_source",
+    "neighbor_elapsed",
+    "rank_deficient_count",
+    "min_local_rank",
+    "assembly_route",
+    "local_solver_route",
+    "local_rank_histogram",
+    "rank_deficient_neighborhood_indices",
+    "component_count",
+    "component_sizes",
+    "component_membership",
+    "requested_assembly_threads",
+    "effective_assembly_threads",
+    "raw_entries_estimate",
+    "raw_bytes_estimate",
+    "row_major_used",
+    "row_major_fallback_reason",
+    "parallel_fallback_reason"
+  )
+  if (!normalized) {
+    assembly_fields <- c(assembly_fields, "component_embedding_overlap")
+  }
+  expect_named(result$assembly, assembly_fields, ignore.order = TRUE)
   expect_identical(result$assembly$n_neighbors, 8L)
   expect_identical(result$assembly$neighbor_source, "exact")
   expect_type(result$assembly$neighbor_elapsed, "double")
   expect_length(result$assembly$neighbor_elapsed, 1L)
   expect_true(is.finite(result$assembly$neighbor_elapsed))
   expect_gte(result$assembly$neighbor_elapsed, 0)
+
+  if (normalized) {
+    details <- result$eigen$normalized_details
+    expect_named(
+      details,
+      c(
+        "mass",
+        "mass_summary",
+        "symmetric_embedding",
+        "generalized_absolute_residuals",
+        "generalized_residual_scale",
+        "generalized_residuals",
+        "weighted_orthogonality_error",
+        "weighted_centering_error",
+        "map_back_error",
+        "reverse_occurrence",
+        "component_embedding_overlap"
+      ),
+      ignore.order = TRUE
+    )
+    expect_length(details$mass, n)
+    expect_equal(dim(details$symmetric_embedding), c(n, ndim))
+    expect_identical(
+      dimnames(details$symmetric_embedding),
+      coordinate_dimnames
+    )
+    expect_length(details$generalized_absolute_residuals, ndim)
+    expect_length(details$generalized_residuals, ndim)
+    expect_named(
+      details$reverse_occurrence,
+      c("counts", "quantiles", "correlation_with_mass"),
+      ignore.order = TRUE
+    )
+    expect_named(
+      details$component_embedding_overlap,
+      c(
+        "principal_angle_cosines",
+        "projection_energy",
+        "embedding_rank",
+        "component_contrast_rank"
+      ),
+      ignore.order = TRUE
+    )
+  }
 }
 
 test_that("default public return remains an embedding matrix", {
