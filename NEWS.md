@@ -8,6 +8,10 @@
 * New argument: `output`. `output = "result"` returns compact
   eigenanalysis and assembly diagnostics. `output = "B"` replaces the older
   `ret_B = TRUE` argument.
+* Removed the automatic adaptive rescue/refinement introduced in 0.0.0.9001.
+  Eigenanalysis now makes one fixed-width candidate request controlled by
+  `eig_k`, followed by Rayleigh-Ritz processing and diagnostics; request a
+  larger `eig_k` explicitly when a wider candidate span is needed.
 
 # flotsam 0.0.0.9001
 
