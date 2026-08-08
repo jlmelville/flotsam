@@ -64,7 +64,9 @@ eigenvalue ordering matters.
 eigensolver. If \code{NULL}, the default is
 \code{min(n - 1L, max(12L, ndim + 2L))}, where \code{n} is the number of
 observations. Must satisfy \verb{ndim + 1 <= eig_k < n}. Larger values give
-the Rayleigh-Ritz postprocessing a wider candidate span.}
+the Rayleigh-Ritz postprocessing a wider candidate span. Dense
+eigenanalysis computes the full eigensystem, then retains the lowest
+\code{eig_k} candidate vectors for that postprocessing.}
 
 \item{output}{What to return:
 \itemize{
@@ -96,7 +98,9 @@ neighbor calculation.}
 alignment matrix \code{B} after nearest neighbors are computed. The default
 \code{1} preserves the serial assembly path. Values greater than \code{1} opt into
 parallel construction of \code{B}, which can be faster but may increase peak
-memory use.}
+memory use. See the
+\href{https://jlmelville.github.io/flotsam/articles/numerical-diagnostics.html#threading}{threading note}
+about avoiding oversubscription when BLAS is also multithreaded.}
 
 \item{copy_max_mib}{Maximum size, in MiB, of the optional row-major dense
 copy of \code{X} used during high-dimensional local Gram assembly. Set to \code{0}
@@ -112,24 +116,49 @@ Apply the Local Tangent Space Alignment (LTSA) method (Zhang and Zha, 2004)
 for dimensionality reduction.
 }
 \details{
-\code{ltsa()} builds an LTSA alignment matrix from local neighborhoods and
-returns the lowest nonconstant embedding vectors. The default
+\code{ltsa()} builds a symmetric positive-semidefinite LTSA alignment operator
+\code{B} from local neighborhoods and returns its lowest nonconstant embedding
+vectors. The constant vector is a known null direction of \code{B}, but the
+nullspace can contain other directions. The default
 \code{output = "embedding"} returns only the embedding matrix.
 
 Use \code{output = "result"} to inspect compact diagnostics when convergence or
 eigenspace ambiguity matters. The result contains the embedding,
 eigenanalysis diagnostics, assembly diagnostics, and, when
-\code{include_B = TRUE}, the assembled unnormalized matrix \code{B}. The diagnostic
-\code{status} and \code{messages} fields summarize the requested solve; inspect those
-condition-specific messages when the status is not \code{"ok"}.
+\code{include_B = TRUE}, the assembled unnormalized matrix \code{B}.
+\code{eigen$status} and \code{eigen$messages} summarize the solve; inspect those
+condition-specific messages when \code{eigen$status} is not \code{"ok"}.
 
 Use \code{output = "B"} to return the assembled unnormalized LTSA matrix and skip
 final eigenanalysis.
 
-When \code{output = "result"}, \code{eigen$method} records the requested method and
-\code{eigen$backend$name} records the backend actually used. Iterative methods
-may use the dense fallback described under \verb{Eigensolver controls}.
+When \code{output = "result"}, \code{eigen$method} records the canonical method name:
+the \code{"eigen"} alias is stored as \code{"eig"}, while the other method names are
+unchanged. \code{eigen$backend$name} records the backend actually used. Iterative
+methods may use the dense fallback described under \verb{Eigensolver controls}.
 }
+\section{Eigenanalysis and structural diagnostics}{
+
+Rayleigh--Ritz postprocessing removes the known constant null direction from
+the candidate span before selecting \code{ndim} coordinates. A larger observed
+near-zero nonconstant eigenspace can make the individual coordinates
+non-identifiable: \code{eigen$diagnostics$near_zero_block_truncated} is \code{TRUE}
+when the requested embedding cuts through that observed block. The related
+counts and boundaries describe only the returned candidate span; they do not
+establish the full nullity of \code{B} or diagnose clusters.
+
+\code{assembly$component_count}, \code{assembly$component_sizes}, and
+\code{assembly$component_membership} describe connected components of the
+co-membership graph induced by the effective neighborhoods used to assemble
+\code{B}. Disconnected components imply componentwise constant null directions. A
+connected graph does not rule out other weak or low-energy structure.
+\code{assembly$component_embedding_overlap} reports how the standard LTSA
+embedding subspace overlaps the nonconstant component-indicator contrast
+subspace; it is not a graph-cut or clustering score. For normalized LTSA,
+the corresponding field is
+\code{eigen$normalized_details$component_embedding_overlap}.
+}
+
 \section{Normalized LTSA}{
 
 \code{normalize = TRUE} applies symmetric Jacobi scaling to the assembled LTSA
@@ -138,22 +167,39 @@ alignment matrix \code{B}. Let \code{D = diag(B)}. The eigensolve is performed o
 \code{D^(-1/2)}. Equivalently, this solves the generalized eigenproblem
 \verb{B v = lambda D v}.
 
-This keeps the same LTSA alignment energy but changes the pointwise mass
-used by the final eigenproblem, so it can produce a different embedding from
-the standard formulation. The diagonal \code{diag(B)} measures pointwise
-participation in the LTSA alignment energy. Reverse-neighborhood
-participation often contributes strongly, so the scaling can reduce the
-influence of points that appear in many neighborhoods (i.e. hubness) and can
-improve eigensolver convergence.
+This is a different generalized problem, not merely a better-conditioned
+route to the standard LTSA eigenvectors. It keeps the alignment energy but
+changes the orthogonality and centering constraints from the ordinary inner
+product to the \code{D}-weighted inner product.
 
-However, other effects, such as boundary behavior, curvature, and local
-scale, also contribute to \code{diag(B)} and it's hard to know a priori which
-will dominate. Additionally, points with small diagonal mass are
-relatively amplified by the \code{D^(-1/2)} scaling so the scaling may not always
-be beneficial. Empirically, in testing across a variety of datasets, when
-the assumption of a single-smooth manifold is violated, the normalized
-embeddings often show more local structure and converge faster, compared to
-the standard formulation.
+The mass \code{diag(B)} is residual leverage, not ordinary graph degree. Each
+occurrence of a point in a neighborhood contributes the corresponding
+diagonal of that neighborhood's residual projector, so the mass combines
+reverse-neighborhood participation with local tangent leverage. Boundaries,
+curvature, rank deficiency, and unusual local geometry can therefore affect
+it. Mapping back from symmetric coordinates also amplifies points with small
+mass.
+
+With \code{output = "result"}, \code{eigen$normalized_details} contains \code{mass} and
+\code{mass_summary}; the latter contains \code{quantiles}, \code{max_to_min_ratio},
+\code{min_to_median_ratio}, \code{log10_max_to_min_ratio},
+\code{log10_min_to_median_ratio}, \code{index_limit}, \code{smallest_mass_indices}, and
+\code{largest_mass_indices}. The symmetric coordinates are stored in
+\code{symmetric_embedding}, while the top-level \code{embedding} contains the mapped
+generalized coordinates.
+
+\code{generalized_absolute_residuals} contains the columnwise Euclidean norms of
+\verb{B v - lambda D v}. \code{generalized_residual_scale} is
+\code{sqrt(max(mass)) * max(eigen$lambda_max, 1)}, and \code{generalized_residuals} is
+the absolute vector divided by that scale. \code{weighted_orthogonality_error},
+\code{weighted_centering_error}, and \code{map_back_error} are the maximum absolute
+entries of \verb{V' D V - I}, \verb{V' D 1}, and \verb{u - sqrt(D) v}, respectively.
+\code{reverse_occurrence} contains \code{counts}, \code{quantiles}, and
+\code{correlation_with_mass}; \code{component_embedding_overlap} contains the
+normalized component-subspace comparison described above. Comparing
+\code{embedding} with \code{symmetric_embedding} separates changes in the scaled
+operator's eigenspace from pointwise map-back scaling. These fields do not
+have ordinary normalized-graph-Laplacian or graph-cut interpretations.
 }
 
 \section{Precomputed neighbor input}{
@@ -170,6 +216,16 @@ assembly, so the matrix must have \code{n_neighbors + 1} columns.
 \code{copy_max_mib} limits an optional row-major dense copy of \code{X} used during
 high-dimensional local Gram assembly. Increase it only when that copy is
 useful and enough memory is available; set it to \code{0} to disable the copy.
+
+Local bases use a direct SVD when \code{ncol(X)} is no larger than the effective
+neighborhood size and an eigendecomposition of the centered Gram matrix
+otherwise. The Gram route applies a more conservative effective
+singular-value threshold because forming the Gram matrix squares the
+condition number. This stability tradeoff can produce different numerical
+ranks near the threshold. With \code{output = "result"}, inspect
+\code{assembly$local_solver_route}, \code{assembly$local_rank_histogram}, and
+\code{assembly$rank_deficient_neighborhood_indices} for the route and its
+observed ranks.
 }
 
 \section{Eigensolver controls}{
@@ -178,7 +234,8 @@ Backend controls:
 \itemize{
 \item \code{"rspectra"}: \code{tol}, \code{maxitr}, and \code{ncv}. See
 \link[RSpectra:eigs_sym]{RSpectra::eigs_sym()} for their meanings. The
-package default for \code{tol} is \code{1e-6}.
+package default for \code{tol} is \code{1e-6}, deliberately looser than RSpectra's
+own \code{1e-10} default; specify \code{tol} for a like-for-like comparison.
 \item \code{"irlba"}: \code{tol}, \code{maxit}, and \code{reorth}.
 See \link[irlba:irlba]{irlba::irlba()} for their meanings.
 \item \code{"svdr"}: \code{tol}, \code{it}, and \code{extra}. See
@@ -194,9 +251,9 @@ eigenanalysis is selected when \code{n <= dense_n} or
 \code{eig_k >= dense_fraction * n}; their defaults are \code{100} and \code{0.5}.
 \code{shift_eps} controls the positive shift margin used by iterative methods and
 defaults to \code{1e-6}. Backend controls and \code{shift_eps} use the requested
-iterative backend instead of the automatic dense fallback. The requested
-method remains in \code{eigen$method}, while \code{eigen$backend$name} identifies the
-backend actually used.
+iterative backend instead of the automatic dense fallback. The canonical
+method name is stored in \code{eigen$method} (\code{"eigen"} becomes \code{"eig"}), while
+\code{eigen$backend$name} identifies the backend actually used.
 }
 
 \examples{

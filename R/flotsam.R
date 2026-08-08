@@ -4,23 +4,46 @@
 #' for dimensionality reduction.
 #'
 #' @details
-#' `ltsa()` builds an LTSA alignment matrix from local neighborhoods and
-#' returns the lowest nonconstant embedding vectors. The default
+#' `ltsa()` builds a symmetric positive-semidefinite LTSA alignment operator
+#' `B` from local neighborhoods and returns its lowest nonconstant embedding
+#' vectors. The constant vector is a known null direction of `B`, but the
+#' nullspace can contain other directions. The default
 #' `output = "embedding"` returns only the embedding matrix.
 #'
 #' Use `output = "result"` to inspect compact diagnostics when convergence or
 #' eigenspace ambiguity matters. The result contains the embedding,
 #' eigenanalysis diagnostics, assembly diagnostics, and, when
-#' `include_B = TRUE`, the assembled unnormalized matrix `B`. The diagnostic
-#' `status` and `messages` fields summarize the requested solve; inspect those
-#' condition-specific messages when the status is not `"ok"`.
+#' `include_B = TRUE`, the assembled unnormalized matrix `B`.
+#' `eigen$status` and `eigen$messages` summarize the solve; inspect those
+#' condition-specific messages when `eigen$status` is not `"ok"`.
 #'
 #' Use `output = "B"` to return the assembled unnormalized LTSA matrix and skip
 #' final eigenanalysis.
 #'
-#' When `output = "result"`, `eigen$method` records the requested method and
-#' `eigen$backend$name` records the backend actually used. Iterative methods
-#' may use the dense fallback described under `Eigensolver controls`.
+#' When `output = "result"`, `eigen$method` records the canonical method name:
+#' the `"eigen"` alias is stored as `"eig"`, while the other method names are
+#' unchanged. `eigen$backend$name` records the backend actually used. Iterative
+#' methods may use the dense fallback described under `Eigensolver controls`.
+#'
+#' @section Eigenanalysis and structural diagnostics:
+#' Rayleigh--Ritz postprocessing removes the known constant null direction from
+#' the candidate span before selecting `ndim` coordinates. A larger observed
+#' near-zero nonconstant eigenspace can make the individual coordinates
+#' non-identifiable: `eigen$diagnostics$near_zero_block_truncated` is `TRUE`
+#' when the requested embedding cuts through that observed block. The related
+#' counts and boundaries describe only the returned candidate span; they do not
+#' establish the full nullity of `B` or diagnose clusters.
+#'
+#' `assembly$component_count`, `assembly$component_sizes`, and
+#' `assembly$component_membership` describe connected components of the
+#' co-membership graph induced by the effective neighborhoods used to assemble
+#' `B`. Disconnected components imply componentwise constant null directions. A
+#' connected graph does not rule out other weak or low-energy structure.
+#' `assembly$component_embedding_overlap` reports how the standard LTSA
+#' embedding subspace overlaps the nonconstant component-indicator contrast
+#' subspace; it is not a graph-cut or clustering score. For normalized LTSA,
+#' the corresponding field is
+#' `eigen$normalized_details$component_embedding_overlap`.
 #'
 #' @section Normalized LTSA:
 #' `normalize = TRUE` applies symmetric Jacobi scaling to the assembled LTSA
@@ -29,22 +52,39 @@
 #' `D^(-1/2)`. Equivalently, this solves the generalized eigenproblem
 #' `B v = lambda D v`.
 #'
-#' This keeps the same LTSA alignment energy but changes the pointwise mass
-#' used by the final eigenproblem, so it can produce a different embedding from
-#' the standard formulation. The diagonal `diag(B)` measures pointwise
-#' participation in the LTSA alignment energy. Reverse-neighborhood
-#' participation often contributes strongly, so the scaling can reduce the
-#' influence of points that appear in many neighborhoods (i.e. hubness) and can
-#' improve eigensolver convergence.
+#' This is a different generalized problem, not merely a better-conditioned
+#' route to the standard LTSA eigenvectors. It keeps the alignment energy but
+#' changes the orthogonality and centering constraints from the ordinary inner
+#' product to the `D`-weighted inner product.
 #'
-#' However, other effects, such as boundary behavior, curvature, and local
-#' scale, also contribute to `diag(B)` and it's hard to know a priori which
-#' will dominate. Additionally, points with small diagonal mass are
-#' relatively amplified by the `D^(-1/2)` scaling so the scaling may not always
-#' be beneficial. Empirically, in testing across a variety of datasets, when
-#' the assumption of a single-smooth manifold is violated, the normalized
-#' embeddings often show more local structure and converge faster, compared to
-#' the standard formulation.
+#' The mass `diag(B)` is residual leverage, not ordinary graph degree. Each
+#' occurrence of a point in a neighborhood contributes the corresponding
+#' diagonal of that neighborhood's residual projector, so the mass combines
+#' reverse-neighborhood participation with local tangent leverage. Boundaries,
+#' curvature, rank deficiency, and unusual local geometry can therefore affect
+#' it. Mapping back from symmetric coordinates also amplifies points with small
+#' mass.
+#'
+#' With `output = "result"`, `eigen$normalized_details` contains `mass` and
+#' `mass_summary`; the latter contains `quantiles`, `max_to_min_ratio`,
+#' `min_to_median_ratio`, `log10_max_to_min_ratio`,
+#' `log10_min_to_median_ratio`, `index_limit`, `smallest_mass_indices`, and
+#' `largest_mass_indices`. The symmetric coordinates are stored in
+#' `symmetric_embedding`, while the top-level `embedding` contains the mapped
+#' generalized coordinates.
+#'
+#' `generalized_absolute_residuals` contains the columnwise Euclidean norms of
+#' `B v - lambda D v`. `generalized_residual_scale` is
+#' `sqrt(max(mass)) * max(eigen$lambda_max, 1)`, and `generalized_residuals` is
+#' the absolute vector divided by that scale. `weighted_orthogonality_error`,
+#' `weighted_centering_error`, and `map_back_error` are the maximum absolute
+#' entries of `V' D V - I`, `V' D 1`, and `u - sqrt(D) v`, respectively.
+#' `reverse_occurrence` contains `counts`, `quantiles`, and
+#' `correlation_with_mass`; `component_embedding_overlap` contains the
+#' normalized component-subspace comparison described above. Comparing
+#' `embedding` with `symmetric_embedding` separates changes in the scaled
+#' operator's eigenspace from pointwise map-back scaling. These fields do not
+#' have ordinary normalized-graph-Laplacian or graph-cut interpretations.
 #'
 #' @section Precomputed neighbor input:
 #' `nn_method` may be a precomputed 1-based neighbor index matrix or an object
@@ -57,6 +97,16 @@
 #' `copy_max_mib` limits an optional row-major dense copy of `X` used during
 #' high-dimensional local Gram assembly. Increase it only when that copy is
 #' useful and enough memory is available; set it to `0` to disable the copy.
+#'
+#' Local bases use a direct SVD when `ncol(X)` is no larger than the effective
+#' neighborhood size and an eigendecomposition of the centered Gram matrix
+#' otherwise. The Gram route applies a more conservative effective
+#' singular-value threshold because forming the Gram matrix squares the
+#' condition number. This stability tradeoff can produce different numerical
+#' ranks near the threshold. With `output = "result"`, inspect
+#' `assembly$local_solver_route`, `assembly$local_rank_histogram`, and
+#' `assembly$rank_deficient_neighborhood_indices` for the route and its
+#' observed ranks.
 #'
 #' @param X The input data matrix or data frame with one observation per row. If
 #'   a data frame is supplied, non-numeric columns are ignored. At least one
@@ -90,7 +140,9 @@
 #'   eigensolver. If `NULL`, the default is
 #'   `min(n - 1L, max(12L, ndim + 2L))`, where `n` is the number of
 #'   observations. Must satisfy `ndim + 1 <= eig_k < n`. Larger values give
-#'   the Rayleigh-Ritz postprocessing a wider candidate span.
+#'   the Rayleigh-Ritz postprocessing a wider candidate span. Dense
+#'   eigenanalysis computes the full eigensystem, then retains the lowest
+#'   `eig_k` candidate vectors for that postprocessing.
 #' @param output What to return:
 #'   * `"embedding"` Return the embedding matrix. This is the default.
 #'   * `"result"` Return a list containing the embedding, compact eigenanalysis
@@ -114,7 +166,9 @@
 #'   alignment matrix `B` after nearest neighbors are computed. The default
 #'   `1` preserves the serial assembly path. Values greater than `1` opt into
 #'   parallel construction of `B`, which can be faster but may increase peak
-#'   memory use.
+#'   memory use. See the
+#'   [threading note](https://jlmelville.github.io/flotsam/articles/numerical-diagnostics.html#threading)
+#'   about avoiding oversubscription when BLAS is also multithreaded.
 #' @param copy_max_mib Maximum size, in MiB, of the optional row-major dense
 #'   copy of `X` used during high-dimensional local Gram assembly. Set to `0`
 #'   to disable this copy.
@@ -127,7 +181,8 @@
 #'
 #' * `"rspectra"`: `tol`, `maxitr`, and `ncv`. See
 #'   \link[RSpectra:eigs_sym]{RSpectra::eigs_sym()} for their meanings. The
-#'   package default for `tol` is `1e-6`.
+#'   package default for `tol` is `1e-6`, deliberately looser than RSpectra's
+#'   own `1e-10` default; specify `tol` for a like-for-like comparison.
 #' * `"irlba"`: `tol`, `maxit`, and `reorth`.
 #'   See \link[irlba:irlba]{irlba::irlba()} for their meanings.
 #' * `"svdr"`: `tol`, `it`, and `extra`. See
@@ -142,9 +197,9 @@
 #' `eig_k >= dense_fraction * n`; their defaults are `100` and `0.5`.
 #' `shift_eps` controls the positive shift margin used by iterative methods and
 #' defaults to `1e-6`. Backend controls and `shift_eps` use the requested
-#' iterative backend instead of the automatic dense fallback. The requested
-#' method remains in `eigen$method`, while `eigen$backend$name` identifies the
-#' backend actually used.
+#' iterative backend instead of the automatic dense fallback. The canonical
+#' method name is stored in `eigen$method` (`"eigen"` becomes `"eig"`), while
+#' `eigen$backend$name` identifies the backend actually used.
 #'
 #' @references
 #' Zhang, Z., & Zha, H. (2004).
