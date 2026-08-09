@@ -72,21 +72,23 @@ would like to reduce to <code>d</code> dimensions.</li>
 with zeros).</li>
 <li>For each item in the dataset, define a neighborhood, i.e. the
 <code>k</code>-nearest neighbors.</li>
-<li>Calculate the SVD for just that neighborhood.</li>
-<li>Create the <code>k</code> x <code>k</code> matrix
-<code>W = I - V.V'</code> where <code>V</code> is the right singular
-vectors of the SVD (with some centering).</li>
+<li>Center the <code>k</code> x <code>p</code> neighborhood matrix and
+calculate its SVD.</li>
+<li>Let <code>U</code> contain the retained <strong>left</strong>
+singular vectors, which give tangent coordinates for the <code>k</code>
+observations. Create the local residual projector
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>W</mi><mo>=</mo><mi>I</mi><mo>−</mo><mn>𝟏</mn><msup><mn>𝟏</mn><mi>𝖳</mi></msup><mi>/</mi><mi>k</mi><mo>−</mo><mi>U</mi><msup><mi>U</mi><mi>𝖳</mi></msup></mrow><annotation encoding="application/x-tex">W = I - \mathbf{1}\mathbf{1}^{\mathsf T}/k - UU^{\mathsf T}</annotation></semantics></math>.</li>
 <li>Update the elements of the <code>N</code> x <code>N</code> matrix
 <code>B</code> with the values of <code>W</code> by adding the elements
 of <code>W</code> to the entries in <code>B</code> that correspond to
 the items in the neighborhood.</li>
 <li>Repeat for all items in the dataset.</li>
 <li>
-<code>B</code> is now an un-normalized graph Laplacian matrix.
-Discard the smallest eigenvector, and the next <code>d</code>
-eigenvectors are the coordinates of the reduced dimension. This step is
-carried out like any other related spectral method, like Laplacian
-eigenmaps or diffusion maps.</li>
+<code>B</code> is now a symmetric positive-semidefinite LTSA
+alignment operator with the constant vector as a known null direction.
+Remove that direction and select the lowest <code>d</code> nonconstant
+directions for the embedding. The nullspace need not be one-dimensional,
+so there is not necessarily a unique smallest eigenvector.</li>
 </ol>
 <div class="section level3">
 <h3 id="parameters">Parameters<a class="anchor" aria-label="anchor" href="#parameters"></a>
@@ -101,9 +103,9 @@ for visualization.</li>
 <li>
 <code>n_neighbors</code>: The number of neighbors to use for the
 local neighborhood. Default is <code>15</code>. Usually this is the
-performance bottleneck, but if you set <code>n_neighbors</code> too low,
-you risk a disconnected (or close to disconnected) graph which can make
-the eigensolver slow or even fail to converge.</li>
+performance bottleneck, but a value that is too low can leave
+disconnected effective-neighborhood components or poorly separated
+low-energy directions.</li>
 <li>
 <code>nn_method</code>: The method to use for finding nearest
 neighbors:
@@ -115,10 +117,13 @@ datasets.</li>
 <li>
 <code>"exact"</code>: Use exact nearest neighbors by exhaustively
 comparing all items. Slow for large datasets.</li>
-<li>A precomputed nearest-neighbor index matrix of size <code>N</code> x
-<code>n_neighbors</code>.</li>
-<li>A nearest-neighbor result object with an <code>idx</code> matrix of
-size <code>N</code> x <code>n_neighbors</code>.</li>
+<li>A precomputed nearest-neighbor index matrix, or a nearest-neighbor
+result object with an <code>idx</code> matrix. With
+<code>include_self = TRUE</code>, the shape is <code>N</code> x
+<code>n_neighbors</code> and every row contains its own index. With
+<code>include_self = FALSE</code>, the shape is <code>N</code> x
+(<code>n_neighbors + 1</code>), self must be in the first column, and
+that column is removed before assembly.</li>
 </ul>
 </li>
 <li>
@@ -133,28 +138,35 @@ setting this to <code>FALSE</code> may allow emulating HLLE. Default is
 neighbor calculation. Default is <code>1</code>.</li>
 <li>
 <code>n_assembly_threads</code>: The number of threads to use when
-constructing the LTSA matrix <code>B</code>. Default is <code>1</code>
-which means to be single-threaded. Values greater than <code>1</code>
-opt into parallel construction of <code>B</code>, which can be faster
-but may increase peak memory use.</li>
+constructing the LTSA matrix <code>B</code>. Default is <code>1</code>,
+which requests serial assembly and generally uses less temporary
+storage. Values greater than <code>1</code> request parallel
+construction of <code>B</code>, which trades additional storage for
+speed and may compound threaded-BLAS oversubscription. See the <a href="numerical-diagnostics.html#threading">threading warning</a>.</li>
 <li>
 <code>eig_method</code>: The method to use for finding eigenvalues.
 <ul>
 <li>
-<code>"rspectra"</code>: Use <code><a href="https://rdrr.io/pkg/RSpectra/man/eigs.html" class="external-link">RSpectra::eigs_sym()</a></code>. This
-is the default.</li>
+<code>"auto"</code>: Use dense <code><a href="https://rdrr.io/r/base/eigen.html" class="external-link">base::eigen()</a></code> when
+<code>N &lt;= dense_n</code> or
+<code>eig_k &gt;= dense_fraction * N</code>, and otherwise use
+<code><a href="https://rdrr.io/pkg/RSpectra/man/eigs.html" class="external-link">RSpectra::eigs_sym()</a></code>. This is the default.</li>
 <li>
-<code>"irlba"</code>: Use <code><a href="https://rdrr.io/pkg/irlba/man/irlba.html" class="external-link">irlba::irlba()</a></code> and post-hoc
-residual diagnostics.</li>
+<code>"rspectra"</code>: Always use
+<code><a href="https://rdrr.io/pkg/RSpectra/man/eigs.html" class="external-link">RSpectra::eigs_sym()</a></code>.</li>
 <li>
-<code>"svdr"</code>: Use <code><a href="https://rdrr.io/pkg/irlba/man/svdr.html" class="external-link">irlba::svdr()</a></code> and post-hoc
-residual diagnostics.</li>
+<code>"irlba"</code>: Always use <code><a href="https://rdrr.io/pkg/irlba/man/irlba.html" class="external-link">irlba::irlba()</a></code> and
+post-hoc residual diagnostics.</li>
 <li>
-<code>"eigen"</code>: Use <code><a href="https://rdrr.io/r/base/eigen.html" class="external-link">base::eigen()</a></code>. This will
-convert the sparse matrix <code>B</code> to a dense matrix and also
-calculates all eigenvectors (<code>eig_k</code> is ignored). In terms of
-both memory usage and CPU time this is only feasible for small datasets,
-but will give very reliable results.</li>
+<code>"svdr"</code>: Always use <code><a href="https://rdrr.io/pkg/irlba/man/svdr.html" class="external-link">irlba::svdr()</a></code> and
+post-hoc residual diagnostics.</li>
+<li>
+<code>"eigen"</code> or <code>"eig"</code>: Use
+<code><a href="https://rdrr.io/r/base/eigen.html" class="external-link">base::eigen()</a></code>. This converts <code>B</code> to a dense
+matrix and computes the full eigensystem, then retains the lowest
+<code>eig_k</code> candidate vectors for Rayleigh–Ritz postprocessing.
+In terms of both memory usage and CPU time this is only feasible for
+small datasets, but it is useful as a diagnostic reference.</li>
 </ul>
 </li>
 <li>
@@ -166,12 +178,19 @@ post-processing step and final <code>ndim</code> return. If
 than necessary seems to improve the reliability of the final result:
 RSpectra may otherwise miss eigenvectors that are close to zero, or fail
 to converge if the tolerance is tightened. The default seems
-sufficiently generous for most cases. The “Numerical Diagnostics”
-article has more details.</li>
+sufficiently generous for most cases. Dense eigenanalysis still uses
+<code>eig_k</code> to limit the candidate span passed to the
+postprocessing step. The “Numerical Diagnostics” article has more
+details.</li>
 <li>
-<code>normalize</code>: Whether to normalize the LTSA matrix, in the
-style of a normalized graph Laplacian. Can converge much faster, but may
-not be as faithful to the original manifold.</li>
+<code>normalize</code>: Whether to solve the generalized problem
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>B</mi><mi>v</mi><mo>=</mo><mi>λ</mi><mi>D</mi><mi>v</mi></mrow><annotation encoding="application/x-tex">Bv = \lambda Dv</annotation></semantics></math>,
+where
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>D</mi><mo>=</mo><mrow><mi mathvariant="normal">diag</mi><mo>⁡</mo></mrow><mo stretchy="false" form="prefix">(</mo><mi>B</mi><mo stretchy="false" form="postfix">)</mo></mrow><annotation encoding="application/x-tex">D = \operatorname{diag}(B)</annotation></semantics></math>.
+This is a different problem from standard LTSA, with
+<code>D</code>-weighted orthogonality and centering constraints, rather
+than merely a numerically conditioned route to the same
+coordinates.</li>
 <li>
 <code>output</code>: The type of output to return:
 <ul>
@@ -189,16 +208,30 @@ skip final eigenanalysis.</li>
 </li>
 <li>
 <code>include_B</code>: Whether to include the assembled
-unnormalized LTSA matrix <code>B</code> in the result.</li>
-<li>
-<code>copy_max_mib</code> is a parameter that controls whether to
-make a row-major copy of <code>X</code> when the number of columns in
-<code>X</code> is greater than <code>n_neighbors</code>. If the copy
-would take up more memory in MiB than this value, the copy is disabled.
-The default is 256 MiB. If you have the memory to spare this will make
-the <code>B</code> matrix assembly stage faster, but this is rarely the
-speed bottleneck.</li>
+unnormalized LTSA matrix <code>B</code> in the result. Under
+<code>eig_method = "auto"</code>, dense <code><a href="https://rdrr.io/r/base/eigen.html" class="external-link">base::eigen()</a></code> is
+selected when <code>N &lt;= 100</code> or
+<code>eig_k &gt;= 0.5 * N</code>; <code>dense_n</code> and
+<code>dense_fraction</code> change those thresholds. Otherwise automatic
+selection uses RSpectra. Explicit <code>"rspectra"</code>,
+<code>"irlba"</code>, and <code>"svdr"</code> requests always use the
+named backend, including for small inputs. With
+<code>output = "result"</code>, <code>eigen$method</code> records
+<code>"auto"</code> or the explicit canonical method
+(<code>"eigen"</code> is stored as <code>"eig"</code>), while
+<code>eigen$backend$name</code> records the backend that actually ran.
+The package uses <code>tol = 1e-6</code> for RSpectra, rather than
+RSpectra’s own <code>1e-10</code> default.</li>
 </ul>
+<p><code>dense_n</code> and <code>dense_fraction</code> are accepted
+only with <code>"auto"</code>. The curated backend controls are accepted
+only with their explicit backend, and <code>shift_eps</code> only with
+an explicit iterative method. <code>resid_tol</code> and
+<code>gap_tol</code> are non-routing diagnostics accepted in every mode;
+they are the only controls accepted by
+<code>"eig"</code>/<code>"eigen"</code>. <code>output = "B"</code>
+rejects all eigenanalysis controls in <code>...</code>.</p>
+<p>For practical solver and troubleshooting guidance, see the <a href="numerical-diagnostics.html">Numerical Diagnostics</a> article.</p>
 </div>
 </div>
   </main><aside class="col-md-3"><nav id="toc" aria-label="Table of contents"><h2>On this page</h2>

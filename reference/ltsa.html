@@ -48,7 +48,7 @@ for dimensionality reduction.</p>
 <span>  n_neighbors <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  ndim <span class="op">=</span> <span class="fl">2</span>,</span>
 <span>  nn_method <span class="op">=</span> <span class="st">"nnd"</span>,</span>
-<span>  eig_method <span class="op">=</span> <span class="st">"rspectra"</span>,</span>
+<span>  eig_method <span class="op">=</span> <span class="st">"auto"</span>,</span>
 <span>  eig_k <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  output <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"embedding"</span>, <span class="st">"result"</span>, <span class="st">"B"</span><span class="op">)</span>,</span>
 <span>  include_B <span class="op">=</span> <span class="cn">FALSE</span>,</span>
@@ -56,7 +56,6 @@ for dimensionality reduction.</p>
 <span>  normalize <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  n_threads <span class="op">=</span> <span class="fl">1</span>,</span>
 <span>  n_assembly_threads <span class="op">=</span> <span class="fl">1</span>,</span>
-<span>  copy_max_mib <span class="op">=</span> <span class="fl">256</span>,</span>
 <span>  verbose <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  <span class="va">...</span></span>
 <span><span class="op">)</span></span></code></pre></div>
@@ -76,7 +75,9 @@ numeric column is required.</p></dd>
 <dd><p>The size of local neighborhood (in terms of number of
 neighboring sample points) used for manifold approximation. If <code>NULL</code>, the
 default is <code>15</code> when neighbors are computed, or inferred when a precomputed
-graph is supplied as <code>nn_method</code>.</p></dd>
+graph is supplied as <code>nn_method</code>. It must be at least <code>ndim + 2</code> so each
+local projector has a residual direction beyond the constant and tangent
+subspaces.</p></dd>
 
 
 <dt id="arg-ndim">ndim<a class="anchor" aria-label="anchor" href="#arg-ndim"></a></dt>
@@ -95,11 +96,15 @@ Slow for large datasets.</p></li>
 
 <dt id="arg-eig-method">eig_method<a class="anchor" aria-label="anchor" href="#arg-eig-method"></a></dt>
 <dd><p>How to carry out the final eigendecomposition. Possible
-values are:</p><ul><li><p><code>"rspectra"</code> Use <code><a href="https://rdrr.io/pkg/RSpectra/man/eigs.html" class="external-link">RSpectra::eigs_sym()</a></code>. This is the default and can
+values are:</p><ul><li><p><code>"auto"</code> Use dense <code><a href="https://rdrr.io/r/base/eigen.html" class="external-link">base::eigen()</a></code> when <code>n &lt;= dense_n</code> or
+<code>eig_k &gt;= dense_fraction * n</code>, and otherwise use
+<code><a href="https://rdrr.io/pkg/RSpectra/man/eigs.html" class="external-link">RSpectra::eigs_sym()</a></code>. This is the default.</p></li>
+<li><p><code>"rspectra"</code> Always use <code><a href="https://rdrr.io/pkg/RSpectra/man/eigs.html" class="external-link">RSpectra::eigs_sym()</a></code>. This method can
 report hard backend convergence failures through RSpectra's <code>nconv</code>
 metadata.</p></li>
-<li><p><code>"irlba"</code> Use <code><a href="https://rdrr.io/pkg/irlba/man/irlba.html" class="external-link">irlba::irlba()</a></code> and post-hoc residual diagnostics.</p></li>
-<li><p><code>"svdr"</code> Use <code><a href="https://rdrr.io/pkg/irlba/man/svdr.html" class="external-link">irlba::svdr()</a></code> and post-hoc residual diagnostics.</p></li>
+<li><p><code>"irlba"</code> Always use <code><a href="https://rdrr.io/pkg/irlba/man/irlba.html" class="external-link">irlba::irlba()</a></code> and post-hoc residual
+diagnostics.</p></li>
+<li><p><code>"svdr"</code> Always use <code><a href="https://rdrr.io/pkg/irlba/man/svdr.html" class="external-link">irlba::svdr()</a></code> and post-hoc residual diagnostics.</p></li>
 <li><p><code>"eig"</code> or <code>"eigen"</code> Use the <code><a href="https://rdrr.io/r/base/eigen.html" class="external-link">base::eigen()</a></code> function. This is only
 feasible for small datasets and should be used for diagnostic purposes
 only. Dense <code>"eig"</code> is the better diagnostic reference when algebraic
@@ -112,7 +117,9 @@ eigenvalue ordering matters.</p></li>
 eigensolver. If <code>NULL</code>, the default is
 <code>min(n - 1L, max(12L, ndim + 2L))</code>, where <code>n</code> is the number of
 observations. Must satisfy <code>ndim + 1 &lt;= eig_k &lt; n</code>. Larger values give
-the Rayleigh-Ritz postprocessing a wider candidate span.</p></dd>
+the Rayleigh-Ritz postprocessing a wider candidate span. Dense
+eigenanalysis computes the full eigensystem, then retains the lowest
+<code>eig_k</code> candidate vectors for that postprocessing.</p></dd>
 
 
 <dt id="arg-output">output<a class="anchor" aria-label="anchor" href="#arg-output"></a></dt>
@@ -152,15 +159,10 @@ neighbor calculation.</p></dd>
 <dt id="arg-n-assembly-threads">n_assembly_threads<a class="anchor" aria-label="anchor" href="#arg-n-assembly-threads"></a></dt>
 <dd><p>Number of threads to use when constructing the LTSA
 alignment matrix <code>B</code> after nearest neighbors are computed. The default
-<code>1</code> preserves the serial assembly path. Values greater than <code>1</code> opt into
-parallel construction of <code>B</code>, which can be faster but may increase peak
-memory use.</p></dd>
-
-
-<dt id="arg-copy-max-mib">copy_max_mib<a class="anchor" aria-label="anchor" href="#arg-copy-max-mib"></a></dt>
-<dd><p>Maximum size, in MiB, of the optional row-major dense
-copy of <code>X</code> used during high-dimensional local Gram assembly. Set to <code>0</code>
-to disable this copy.</p></dd>
+<code>1</code> requests serial assembly. Values greater than <code>1</code> request parallel
+assembly, which trades additional temporary storage for speed. See the
+<a href="https://jlmelville.github.io/flotsam/articles/numerical-diagnostics.html#threading">threading note</a>
+about avoiding oversubscription when BLAS is also multithreaded.</p></dd>
 
 
 <dt id="arg-verbose">verbose<a class="anchor" aria-label="anchor" href="#arg-verbose"></a></dt>
@@ -168,51 +170,44 @@ to disable this copy.</p></dd>
 
 
 <dt id="arg--">...<a class="anchor" aria-label="anchor" href="#arg--"></a></dt>
-<dd><p>Extra eigensolver controls. For <code>"rspectra"</code>, common controls are
-<code>tol</code>, <code>maxitr</code>, and <code>ncv</code>. For <code>"irlba"</code>, common controls are <code>tol</code>,
-<code>maxit</code>, and <code>reorth</code>. For <code>"svdr"</code>, common controls are <code>tol</code> and <code>it</code>.
-<code>resid_tol</code> and <code>gap_tol</code> tune the diagnostic thresholds used to classify
-the requested solve. Other backend arguments may cause the solve to fail.</p></dd>
+<dd><p>Optional eigensolver and diagnostic controls. See the
+<code>Eigensolver controls</code> section.</p></dd>
 
 </dl></div>
     <div class="section level2">
+    <h2 id="value">Value<a class="anchor" aria-label="anchor" href="#value"></a></h2>
+    <p>With <code>output = "embedding"</code>, an <code>n</code> by <code>ndim</code> embedding matrix. With
+<code>output = "B"</code>, the assembled unnormalized LTSA alignment operator. With
+<code>output = "result"</code>, a list containing <code>embedding</code>, compact <code>eigen</code> solve
+information, and <code>assembly</code> neighbor, rank-deficiency, component, route,
+and thread information; <code>B</code> is also included when <code>include_B = TRUE</code>.</p>
+    </div>
+    <div class="section level2">
     <h2 id="details">Details<a class="anchor" aria-label="anchor" href="#details"></a></h2>
-    <p><code>ltsa()</code> builds an LTSA alignment matrix from local neighborhoods and
-returns the lowest nonconstant embedding vectors. The default
-<code>output = "embedding"</code> returns only the embedding matrix.</p>
-<p>Use <code>output = "result"</code> to inspect compact diagnostics when convergence or
-eigenspace ambiguity matters. The result contains the embedding,
-eigenanalysis diagnostics, assembly diagnostics, and, when
-<code>include_B = TRUE</code>, the assembled unnormalized matrix <code>B</code>. The diagnostic
-<code>status</code> and <code>messages</code> fields summarize the requested solve; if they look
-suspicious, rerun with a larger <code>eig_k</code> or stricter backend settings.</p>
-<p>Use <code>output = "B"</code> to return the assembled unnormalized LTSA matrix and skip
-final eigenanalysis.</p>
+    <p><code>ltsa()</code> builds a symmetric positive-semidefinite LTSA alignment operator
+<code>B</code> from local neighborhoods and returns its lowest nonconstant embedding
+vectors. The constant vector is a known null direction of <code>B</code>, although the
+nullspace can contain other directions.</p>
+<p>With <code>output = "result"</code>, <code>eigen$status</code> and <code>eigen$messages</code> report solve
+problems. If <code>eigen$diagnostics$near_zero_block_truncated</code> is <code>TRUE</code>, the
+requested dimensions cut through an observed near-zero eigenspace, so
+individual coordinates may not be identifiable; inspect the selected
+subspace or increase <code>ndim</code>. A positive <code>assembly$rank_deficient_count</code> and
+its <code>assembly$min_local_rank</code> suggest reconsidering the neighborhoods or
+input. If <code>assembly$component_count</code> exceeds one, use
+<code>assembly$component_sizes</code> and <code>assembly$component_membership</code> to reconnect
+the effective-neighborhood graph or analyze its components separately.</p>
     </div>
     <div class="section level2">
     <h2 id="normalized-ltsa">Normalized LTSA<a class="anchor" aria-label="anchor" href="#normalized-ltsa"></a></h2>
 
 
-<p><code>normalize = TRUE</code> applies symmetric Jacobi scaling to the assembled LTSA
-alignment matrix <code>B</code>. Let <code>D = diag(B)</code>. The eigensolve is performed on
-<code>D^(-1/2) B D^(-1/2)</code>, and the selected vectors are mapped back with
-<code>D^(-1/2)</code>. Equivalently, this solves the generalized eigenproblem
-<code>B v = lambda D v</code>.</p>
-<p>This keeps the same LTSA alignment energy but changes the pointwise mass
-used by the final eigenproblem, so it can produce a different embedding from
-the standard formulation. The diagonal <code>diag(B)</code> measures pointwise
-participation in the LTSA alignment energy. Reverse-neighborhood
-participation often contributes strongly, so the scaling can reduce the
-influence of points that appear in many neighborhoods (i.e. hubness) and can
-improve eigensolver convergence.</p>
-<p>However, other effects, such as boundary behavior, curvature, and local
-scale, also contribute to <code>diag(B)</code> and it's hard to know a priori which
-will dominate. Additionally, points with small diagonal mass are
-relatively amplified by the <code>D^(-1/2)</code> scaling so the scaling may not always
-be beneficial. Empirically, in testing across a variety of datasets, when
-the assumption of a single-smooth manifold is violated, the normalized
-embeddings often show more local structure and converge faster, compared to
-the standard formulation.</p>
+<p>Let <code>D = diag(B)</code>. With <code>normalize = TRUE</code>, the eigensolve is performed on
+<code>D^(-1/2) B D^(-1/2)</code> and the selected vectors are mapped back with
+<code>D^(-1/2)</code>. This solves the generalized eigenproblem <code>B v = lambda D v</code>.</p>
+<p>Normalized LTSA is a distinct estimator with <code>D</code>-weighted orthogonality and
+centering constraints. It is not a graph-cut estimator or merely a
+conditioning route to ordinary LTSA.</p>
     </div>
     <div class="section level2">
     <h2 id="precomputed-neighbor-input">Precomputed neighbor input<a class="anchor" aria-label="anchor" href="#precomputed-neighbor-input"></a></h2>
@@ -225,12 +220,43 @@ the first column must contain the row index and is dropped before LTSA
 assembly, so the matrix must have <code>n_neighbors + 1</code> columns.</p>
     </div>
     <div class="section level2">
-    <h2 id="performance-and-memory-controls">Performance and memory controls<a class="anchor" aria-label="anchor" href="#performance-and-memory-controls"></a></h2>
+    <h2 id="assembly-resources">Assembly resources<a class="anchor" aria-label="anchor" href="#assembly-resources"></a></h2>
 
 
-<p><code>copy_max_mib</code> limits an optional row-major dense copy of <code>X</code> used during
-high-dimensional local Gram assembly. Increase it only when that copy is
-useful and enough memory is available; set it to <code>0</code> to disable the copy.</p>
+<p>Serial assembly generally uses less temporary storage. Parallel assembly
+trades additional storage for speed and may compound threaded-BLAS
+oversubscription.</p>
+    </div>
+    <div class="section level2">
+    <h2 id="eigensolver-controls">Eigensolver controls<a class="anchor" aria-label="anchor" href="#eigensolver-controls"></a></h2>
+
+
+<p>Automatic-selection controls:</p><ul><li><p><code>"auto"</code>: <code>dense_n</code> and <code>dense_fraction</code>. Dense eigenanalysis is selected
+when <code>n &lt;= dense_n</code> or <code>eig_k &gt;= dense_fraction * n</code>; their defaults are
+<code>100</code> and <code>0.5</code>.</p></li>
+</ul><p>Backend controls for explicit iterative methods:</p><ul><li><p><code>"rspectra"</code>: <code>tol</code>, <code>maxitr</code>, and <code>ncv</code>. See
+<a href="https://rdrr.io/pkg/RSpectra/man/eigs.html" class="external-link">RSpectra::eigs_sym()</a> for their meanings. The
+package default for <code>tol</code> is <code>1e-6</code>, deliberately looser than RSpectra's
+own <code>1e-10</code> default; specify <code>tol</code> for a like-for-like comparison.</p></li>
+<li><p><code>"irlba"</code>: <code>tol</code>, <code>maxit</code>, and <code>reorth</code>.
+See <a href="https://rdrr.io/pkg/irlba/man/irlba.html" class="external-link">irlba::irlba()</a> for their meanings.</p></li>
+<li><p><code>"svdr"</code>: <code>tol</code>, <code>it</code>, and <code>extra</code>. See
+<a href="https://rdrr.io/pkg/irlba/man/svdr.html" class="external-link">irlba::svdr()</a> for their meanings.</p></li>
+</ul><p>These are the backend controls exposed by <code>ltsa()</code>; other arguments accepted
+by the underlying packages are not automatically available. Values for the
+listed controls are passed to the selected backend unchanged.</p>
+<p><code>resid_tol</code> and <code>gap_tol</code> set diagnostic thresholds for candidate residuals
+and the Ritz boundary gap. They default to <code>1e-5</code> and <code>1e-4</code>, respectively.
+They are accepted for every eigensolver mode and do not affect backend
+selection.
+Dense <code>"eig"</code>/<code>"eigen"</code> accepts only these diagnostic controls.</p>
+<p><code>shift_eps</code> controls the positive shift margin used by iterative methods and
+defaults to <code>1e-6</code>. It is accepted only with an explicit iterative method.
+Backend controls are accepted only with their explicit backend. The
+requested policy or canonical method is stored in <code>eigen$method</code>
+(<code>"eigen"</code> becomes <code>"eig"</code>), while <code>eigen$backend$name</code> identifies the
+backend actually used (<code>"dense_eigen"</code>, <code>"rspectra"</code>, <code>"irlba"</code>, or
+<code>"svdr"</code>). <code>output = "B"</code> does not accept eigenanalysis controls in <code>...</code>.</p>
     </div>
     <div class="section level2">
     <h2 id="references">References<a class="anchor" aria-label="anchor" href="#references"></a></h2>
@@ -253,6 +279,7 @@ On the Equivalence of HLLE and LTSA.
 <span class="r-in"><span>  n_neighbors <span class="op">=</span> <span class="fl">12</span>,</span></span>
 <span class="r-in"><span>  nn_method <span class="op">=</span> <span class="st">"exact"</span></span></span>
 <span class="r-in"><span><span class="op">)</span></span></span>
+<span class="r-wrn co"><span class="r-pr">#&gt;</span> <span class="warning">Warning: </span>The effective-neighborhood co-membership graph has 2 disconnected components (sizes: 50, 25). Inspect output = "result" component diagnostics and increase n_neighbors or revise neighbor construction so effective neighborhoods overlap.</span>
 <span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="co"># Request compact eigenanalysis and assembly diagnostics.</span></span></span>
 <span class="r-in"><span><span class="va">iris_result</span> <span class="op">&lt;-</span> <span class="fu">ltsa</span><span class="op">(</span></span></span>
@@ -263,10 +290,13 @@ On the Equivalence of HLLE and LTSA.
 <span class="r-in"><span>  output <span class="op">=</span> <span class="st">"result"</span></span></span>
 <span class="r-in"><span><span class="op">)</span></span></span>
 <span class="r-in"><span><span class="va">iris_result</span><span class="op">$</span><span class="va">eigen</span><span class="op">$</span><span class="va">status</span></span></span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> [1] "warning"</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] "ok"</span>
 <span class="r-in"><span><span class="va">iris_result</span><span class="op">$</span><span class="va">eigen</span><span class="op">$</span><span class="va">messages</span></span></span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> [1] "Only part of a near-zero selected Ritz block is present."     </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> [2] "Increasing eig_k or using stricter backend settings may help."</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> character(0)</span>
+<span class="r-in"><span><span class="va">iris_result</span><span class="op">$</span><span class="va">eigen</span><span class="op">$</span><span class="va">method</span></span></span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] "auto"</span>
+<span class="r-in"><span><span class="va">iris_result</span><span class="op">$</span><span class="va">eigen</span><span class="op">$</span><span class="va">backend</span><span class="op">$</span><span class="va">name</span></span></span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] "dense_eigen"</span>
 <span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="co"># Return the assembled unnormalized LTSA matrix.</span></span></span>
 <span class="r-in"><span><span class="va">iris_B</span> <span class="op">&lt;-</span> <span class="fu">ltsa</span><span class="op">(</span></span></span>

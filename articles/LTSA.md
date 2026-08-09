@@ -10,18 +10,20 @@ clear, but this is what happens:
 2.  Create an empty `N` x `N` matrix B (filled with zeros).
 3.  For each item in the dataset, define a neighborhood, i.e. the
     `k`-nearest neighbors.
-4.  Calculate the SVD for just that neighborhood.
-5.  Create the `k` x `k` matrix `W = I - V.V'` where `V` is the right
-    singular vectors of the SVD (with some centering).
+4.  Center the `k` x `p` neighborhood matrix and calculate its SVD.
+5.  Let `U` contain the retained **left** singular vectors, which give
+    tangent coordinates for the `k` observations. Create the local
+    residual projector
+    $`W = I - \mathbf{1}\mathbf{1}^{\mathsf T}/k - UU^{\mathsf T}`$.
 6.  Update the elements of the `N` x `N` matrix `B` with the values of
     `W` by adding the elements of `W` to the entries in `B` that
     correspond to the items in the neighborhood.
 7.  Repeat for all items in the dataset.
-8.  `B` is now an un-normalized graph Laplacian matrix. Discard the
-    smallest eigenvector, and the next `d` eigenvectors are the
-    coordinates of the reduced dimension. This step is carried out like
-    any other related spectral method, like Laplacian eigenmaps or
-    diffusion maps.
+8.  `B` is now a symmetric positive-semidefinite LTSA alignment operator
+    with the constant vector as a known null direction. Remove that
+    direction and select the lowest `d` nonconstant directions for the
+    embedding. The nullspace need not be one-dimensional, so there is
+    not necessarily a unique smallest eigenvector.
 
 ### Parameters
 
@@ -32,18 +34,20 @@ be worth modifying in roughly descending order of importance:
   visualization.
 - `n_neighbors`: The number of neighbors to use for the local
   neighborhood. Default is `15`. Usually this is the performance
-  bottleneck, but if you set `n_neighbors` too low, you risk a
-  disconnected (or close to disconnected) graph which can make the
-  eigensolver slow or even fail to converge.
+  bottleneck, but a value that is too low can leave disconnected
+  effective-neighborhood components or poorly separated low-energy
+  directions.
 - `nn_method`: The method to use for finding nearest neighbors:
   - `"nnd"`: Use approximate nearest neighbors by Nearest Neighbor
     Descent. This is the default and appropriate for large datasets.
   - `"exact"`: Use exact nearest neighbors by exhaustively comparing all
     items. Slow for large datasets.
-  - A precomputed nearest-neighbor index matrix of size `N` x
-    `n_neighbors`.
-  - A nearest-neighbor result object with an `idx` matrix of size `N` x
-    `n_neighbors`.
+  - A precomputed nearest-neighbor index matrix, or a nearest-neighbor
+    result object with an `idx` matrix. With `include_self = TRUE`, the
+    shape is `N` x `n_neighbors` and every row contains its own index.
+    With `include_self = FALSE`, the shape is `N` x (`n_neighbors + 1`),
+    self must be in the first column, and that column is removed before
+    assembly.
 - `include_self`: Whether to include the item itself as a neighbor.
   [Zhang and co-workers](https://doi.org/10.1109/JSTARS.2017.2682189)
   suggest that this is in effect the main difference between LTSA and
@@ -52,24 +56,33 @@ be worth modifying in roughly descending order of importance:
 - `n_threads`: The number of threads to use for the nearest neighbor
   calculation. Default is `1`.
 - `n_assembly_threads`: The number of threads to use when constructing
-  the LTSA matrix `B`. Default is `1` which means to be single-threaded.
-  Values greater than `1` opt into parallel construction of `B`, which
-  can be faster but may increase peak memory use.
+  the LTSA matrix `B`. Default is `1`, which requests serial assembly
+  and generally uses less temporary storage. Values greater than `1`
+  request parallel construction of `B`, which trades additional storage
+  for speed and may compound threaded-BLAS oversubscription. See the
+  [threading
+  warning](https://jlmelville.github.io/flotsam/articles/numerical-diagnostics.html#threading).
 - `eig_method`: The method to use for finding eigenvalues.
-  - `"rspectra"`: Use
+  - `"auto"`: Use dense
+    [`base::eigen()`](https://rdrr.io/r/base/eigen.html) when
+    `N <= dense_n` or `eig_k >= dense_fraction * N`, and otherwise use
     [`RSpectra::eigs_sym()`](https://rdrr.io/pkg/RSpectra/man/eigs.html).
     This is the default.
-  - `"irlba"`: Use
+  - `"rspectra"`: Always use
+    [`RSpectra::eigs_sym()`](https://rdrr.io/pkg/RSpectra/man/eigs.html).
+  - `"irlba"`: Always use
     [`irlba::irlba()`](https://rdrr.io/pkg/irlba/man/irlba.html) and
     post-hoc residual diagnostics.
-  - `"svdr"`: Use
+  - `"svdr"`: Always use
     [`irlba::svdr()`](https://rdrr.io/pkg/irlba/man/svdr.html) and
     post-hoc residual diagnostics.
-  - `"eigen"`: Use [`base::eigen()`](https://rdrr.io/r/base/eigen.html).
-    This will convert the sparse matrix `B` to a dense matrix and also
-    calculates all eigenvectors (`eig_k` is ignored). In terms of both
-    memory usage and CPU time this is only feasible for small datasets,
-    but will give very reliable results.
+  - `"eigen"` or `"eig"`: Use
+    [`base::eigen()`](https://rdrr.io/r/base/eigen.html). This converts
+    `B` to a dense matrix and computes the full eigensystem, then
+    retains the lowest `eig_k` candidate vectors for Rayleigh–Ritz
+    postprocessing. In terms of both memory usage and CPU time this is
+    only feasible for small datasets, but it is useful as a diagnostic
+    reference.
 - `eig_k`: The number of eigenvectors to return before a post-processing
   step and final `ndim` return. If `NULL`, the default is
   `min(N - 1L, max(12, ndim + 2))`. Must satisfy
@@ -77,11 +90,14 @@ be worth modifying in roughly descending order of importance:
   seems to improve the reliability of the final result: RSpectra may
   otherwise miss eigenvectors that are close to zero, or fail to
   converge if the tolerance is tightened. The default seems sufficiently
-  generous for most cases. The “Numerical Diagnostics” article has more
-  details.
-- `normalize`: Whether to normalize the LTSA matrix, in the style of a
-  normalized graph Laplacian. Can converge much faster, but may not be
-  as faithful to the original manifold.
+  generous for most cases. Dense eigenanalysis still uses `eig_k` to
+  limit the candidate span passed to the postprocessing step. The
+  “Numerical Diagnostics” article has more details.
+- `normalize`: Whether to solve the generalized problem
+  $`Bv = \lambda Dv`$, where $`D = \operatorname{diag}(B)`$. This is a
+  different problem from standard LTSA, with `D`-weighted orthogonality
+  and centering constraints, rather than merely a numerically
+  conditioned route to the same coordinates.
 - `output`: The type of output to return:
   - `"embedding"`: Return the embedding matrix. This is the default.
   - `"result"`: Return a list containing the embedding, compact
@@ -90,10 +106,24 @@ be worth modifying in roughly descending order of importance:
   - `"B"`: Return the assembled unnormalized LTSA matrix and skip final
     eigenanalysis.
 - `include_B`: Whether to include the assembled unnormalized LTSA matrix
-  `B` in the result.
-- `copy_max_mib` is a parameter that controls whether to make a
-  row-major copy of `X` when the number of columns in `X` is greater
-  than `n_neighbors`. If the copy would take up more memory in MiB than
-  this value, the copy is disabled. The default is 256 MiB. If you have
-  the memory to spare this will make the `B` matrix assembly stage
-  faster, but this is rarely the speed bottleneck.
+  `B` in the result. Under `eig_method = "auto"`, dense
+  [`base::eigen()`](https://rdrr.io/r/base/eigen.html) is selected when
+  `N <= 100` or `eig_k >= 0.5 * N`; `dense_n` and `dense_fraction`
+  change those thresholds. Otherwise automatic selection uses RSpectra.
+  Explicit `"rspectra"`, `"irlba"`, and `"svdr"` requests always use the
+  named backend, including for small inputs. With `output = "result"`,
+  `eigen$method` records `"auto"` or the explicit canonical method
+  (`"eigen"` is stored as `"eig"`), while `eigen$backend$name` records
+  the backend that actually ran. The package uses `tol = 1e-6` for
+  RSpectra, rather than RSpectra’s own `1e-10` default.
+
+`dense_n` and `dense_fraction` are accepted only with `"auto"`. The
+curated backend controls are accepted only with their explicit backend,
+and `shift_eps` only with an explicit iterative method. `resid_tol` and
+`gap_tol` are non-routing diagnostics accepted in every mode; they are
+the only controls accepted by `"eig"`/`"eigen"`. `output = "B"` rejects
+all eigenanalysis controls in `...`.
+
+For practical solver and troubleshooting guidance, see the [Numerical
+Diagnostics](https://jlmelville.github.io/flotsam/articles/numerical-diagnostics.md)
+article.

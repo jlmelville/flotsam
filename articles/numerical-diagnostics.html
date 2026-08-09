@@ -77,11 +77,12 @@ other. I use MKL but need to set the following in my
 <div class="section level2">
 <h2 id="eigenanalysis-steps">Eigenanalysis Steps<a class="anchor" aria-label="anchor" href="#eigenanalysis-steps"></a>
 </h2>
-<p>The <code>ndim</code> eigenvectors you want are the lowest
-nonconstant eigenvectors of the LTSA matrix <code>B</code>, i.e. not the
-eigenvector associated with the smallest eigenvalue, which is always
-constant. In this respect, LTSA is similar to Laplacian eigenmaps or
-diffusion maps.</p>
+<p>The <code>ndim</code> embedding directions are the lowest nonconstant
+directions of the symmetric positive-semidefinite LTSA alignment
+operator <code>B</code>. The constant vector is a known null direction,
+not necessarily a unique smallest eigenvector: disconnected effective
+neighborhoods or other degeneracies can give <code>B</code> a larger
+nullspace.</p>
 <p>However, finding the lowest nonconstant eigenvectors for a large
 sparse matrix can be tricky. It’s easy to get into a scenario where
 convergence fails, takes an excessive time, or worse hangs forever. To
@@ -90,22 +91,26 @@ following steps:</p>
 <div class="section level3">
 <h3 id="shifted-largest-algebraic-solves">Shifted largest-algebraic solves<a class="anchor" aria-label="anchor" href="#shifted-largest-algebraic-solves"></a>
 </h3>
-<p>The eigenvectors of a shifted matrix
-(<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>B</mi><mo>+</mo><mi>μ</mi><mi>I</mi></mrow><annotation encoding="application/x-tex">B + \mu I</annotation></semantics></math>)
-are the same as the eigenvectors of the original matrix, but the
-corresponding eigenvalues are shifted by
-<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>μ</mi><annotation encoding="application/x-tex">\mu</annotation></semantics></math>.
-Finding the largest eigenvalues of a matrix tends to be easier than
-finding the smallest eigenvalues, so this can make the eigensolver
-converge faster. Many methods offer a “shift-invert” option to do this,
-which will also spread out the eigenvalues if they are clustered close
-to each other. Unfortunately, I’ve <em>never</em> had good luck with the
-shift-invert approach when it comes to large sparse matrices, so instead
-<code>flotsam</code> does a manual shift by doing a quick calculation to
-find the largest eigenvalue (this doesn’t need to be exact, just a rough
-estimate) and then shifting the matrix by that amount. This doesn’t fix
-the clustered eigenvalue problem, but it does seem to help with
-convergence in general.</p>
+<p><code>flotsam</code> forms the reflected operator
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>μ</mi><mi>I</mi><mo>−</mo><mi>B</mi></mrow><annotation encoding="application/x-tex">\mu I - B</annotation></semantics></math>,
+where
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>μ</mi><annotation encoding="application/x-tex">\mu</annotation></semantics></math>
+is a rough estimate of the largest eigenvalue of <code>B</code> plus a
+small positive margin. A direction with eigenvalue
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>λ</mi><annotation encoding="application/x-tex">\lambda</annotation></semantics></math>
+for <code>B</code> has eigenvalue
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>μ</mi><mo>−</mo><mi>λ</mi></mrow><annotation encoding="application/x-tex">\mu - \lambda</annotation></semantics></math>
+for the reflected operator, so the smallest directions of <code>B</code>
+become the largest algebraic (or singular) directions requested from the
+iterative backend. Many methods offer a “shift-invert” option to target
+small eigenvalues, which will also spread out eigenvalues if they are
+clustered close to each other. Unfortunately, I’ve <em>never</em> had
+good luck with the shift-invert approach when it comes to large sparse
+matrices, so instead <code>flotsam</code> does a manual shift by doing a
+quick calculation to find the largest eigenvalue (this doesn’t need to
+be exact, just a rough estimate) and then shifting the matrix by that
+amount. This doesn’t fix the clustered eigenvalue problem, but it does
+seem to help with convergence in general.</p>
 <p>This approach was motivated by practical issues around small
 clustered eigenvalues and by discussion between Aaron Lun, Kevin
 Doherty, and Yixuan Qiu in at <a href="https://github.com/yixuan/spectra/issues/126" class="external-link uri">https://github.com/yixuan/spectra/issues/126</a>.</p>
@@ -133,6 +138,28 @@ seen that worked. In practice, I have only seen this happen with
 synthetic datasets.</p>
 </div>
 <div class="section level3">
+<h3 id="automatic-selection-and-eig_k">Automatic selection and <code>eig_k</code><a class="anchor" aria-label="anchor" href="#automatic-selection-and-eig_k"></a>
+</h3>
+<p>With <code>eig_method = "auto"</code>, <code>flotsam</code> uses
+dense <code><a href="https://rdrr.io/r/base/eigen.html" class="external-link">base::eigen()</a></code> when <code>n &lt;= dense_n</code> or
+<code>eig_k &gt;= dense_fraction * n</code>; the defaults are
+<code>dense_n = 100</code> and <code>dense_fraction = 0.5</code>;
+otherwise it uses RSpectra. Explicit <code>"rspectra"</code>,
+<code>"irlba"</code>, and <code>"svdr"</code> requests always run the
+named backend. <code>resid_tol</code> and <code>gap_tol</code> affect
+diagnostics only. With <code>output = "result"</code>,
+<code>eigen$method</code> records <code>"auto"</code> or the explicit
+canonical method (the <code>"eigen"</code> alias is stored as
+<code>"eig"</code>), while <code>eigen$backend$name</code> records the
+backend that actually ran.</p>
+<p>An explicit <code>eig_method = "eig"</code> or <code>"eigen"</code>
+computes the full dense eigensystem, but <code>eig_k</code> is still
+validated and used: only the lowest <code>eig_k</code> candidate vectors
+are passed to the Rayleigh–Ritz step. It therefore bounds the observed
+candidate span and the post-null <code>ritz_values</code> even on the
+dense route.</p>
+</div>
+<div class="section level3">
 <h3 id="rayleigh-ritz-postprocessing">Rayleigh-Ritz postprocessing<a class="anchor" aria-label="anchor" href="#rayleigh-ritz-postprocessing"></a>
 </h3>
 <p>The Rayleigh-Ritz postprocessing step is a small polishing step that
@@ -142,18 +169,28 @@ remaining eigenvectors onto the candidate span. It may help with mixed
 or rotated vectors in the clustered low-eigenvalue case. It can’t
 recover an entirely missing eigenvector, hence the use of
 <code>eig_k</code> as mentioned above.</p>
+<p>If <code>eigen$diagnostics$near_zero_block_truncated</code> is
+<code>TRUE</code>, the requested <code>ndim</code> cuts through a larger
+near-zero nonconstant eigenspace observed within that span. The selected
+subspace can still be meaningful, but its individual coordinates are not
+uniquely identifiable. Inspect the selected subspace, increase
+<code>ndim</code>, or use subspace-based downstream analysis. A stricter
+tolerance does not resolve a genuinely repeated eigenspace, and this
+flag is not evidence of data clustering.</p>
 </div>
 </div>
 <div class="section level2">
 <h2 id="comparison-to-scikit-learn-ltsa">Comparison to scikit-learn LTSA<a class="anchor" aria-label="anchor" href="#comparison-to-scikit-learn-ltsa"></a>
 </h2>
-<p>The Python implementation in scikit-learn (using <a href="https://scikit-learn.org/stable/modules/generated/sklearn.manifold.LocallyLinearEmbedding.htm" class="external-link">LocallyLinearEmbedding</a>)
-with <code>method="ltsa"</code>) will be faster on very large datasets
-because it can use approximate nearest neighbor neighbors and will
-usually converge with datasets where ARPACK (used by the scikit-learn
-implementation) fails.</p>
-<p>However, the clustered eigenvalue problem may be better handled with
-ARPACK.</p>
+<p>The Python implementation in scikit-learn uses <a href="https://scikit-learn.org/stable/modules/generated/sklearn.manifold.LocallyLinearEmbedding.html" class="external-link"><code>LocallyLinearEmbedding</code></a>
+with <code>method = "ltsa"</code>. It offers exact neighbor-search
+strategies and either dense eigenanalysis or ARPACK.
+<code>flotsam</code> can instead use approximate nearest-neighbor
+descent and its RSpectra or <code>irlba</code> shifted-candidate routes,
+so it may be faster on large datasets and may behave differently when
+the low spectrum is difficult. Neither implementation is uniformly
+faster or more reliable; the data size, neighbor search, and eigensolver
+settings all matter.</p>
 </div>
 <div class="section level2">
 <h2 id="a-clustered-eigenvalue-example">A Clustered Eigenvalue Example<a class="anchor" aria-label="anchor" href="#a-clustered-eigenvalue-example"></a>
@@ -175,7 +212,7 @@ dataset from the <code>snedata</code> package:</p>
 you can’t see the hole (maybe the embedding is also twisted).</p>
 <p>Increasing the tolerance might be seen as the obvious step:</p>
 <div class="sourceCode" id="cb4"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">res_strict</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/ltsa.html">ltsa</a></span><span class="op">(</span><span class="va">sch</span>, eig_k <span class="op">=</span> <span class="fl">6</span>, tol <span class="op">=</span> <span class="fl">1e-8</span><span class="op">)</span></span></code></pre></div>
+<code class="sourceCode R"><span><span class="va">res_strict</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/ltsa.html">ltsa</a></span><span class="op">(</span><span class="va">sch</span>, eig_method <span class="op">=</span> <span class="st">"rspectra"</span>, eig_k <span class="op">=</span> <span class="fl">6</span>, tol <span class="op">=</span> <span class="fl">1e-8</span><span class="op">)</span></span></code></pre></div>
 <p>But this fails to converge:</p>
 <pre><code>Error: Eigenanalysis failed: RSpectra failed to converge enough LTSA candidate vectors: 0 / 6
 In addition: Warning message:
@@ -184,7 +221,7 @@ In do.call(.Call, args = dot_call_args) :
 <p>Increasing the number of eigenvectors to 18 helps the convergence
 succeed:</p>
 <div class="sourceCode" id="cb6"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">res_strict</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/ltsa.html">ltsa</a></span><span class="op">(</span><span class="va">sch</span>, eig_k <span class="op">=</span> <span class="fl">18</span>, tol <span class="op">=</span> <span class="fl">1e-8</span><span class="op">)</span></span></code></pre></div>
+<code class="sourceCode R"><span><span class="va">res_strict</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/ltsa.html">ltsa</a></span><span class="op">(</span><span class="va">sch</span>, eig_method <span class="op">=</span> <span class="st">"rspectra"</span>, eig_k <span class="op">=</span> <span class="fl">18</span>, tol <span class="op">=</span> <span class="fl">1e-8</span><span class="op">)</span></span></code></pre></div>
 <div class="float">
 <img src="figures/s-curve-hole-eig-k-18-tol-1e-8.png" alt="eig_k = 18, tol = 1e-8"><div class="figcaption">
 <code>eig_k = 18</code>,
@@ -217,23 +254,80 @@ visible.</p>
 <span></span>
 <span><span class="va">ltsa_result</span><span class="op">$</span><span class="va">eigen</span><span class="op">[</span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"status"</span>, <span class="st">"eig_k"</span>, <span class="st">"rank"</span><span class="op">)</span><span class="op">]</span></span>
 <span><span class="va">ltsa_result</span><span class="op">$</span><span class="va">eigen</span><span class="op">$</span><span class="va">messages</span></span></code></pre></div>
-<p>A large number of other values are returned, but they probably aren’t
-that useful except for isolating bugs in particular code paths. If the
-<code>eigen$messages</code> complain about a weak Ritz boundary gap,
-then there is a risk of missing eigenvectors in my experience. Stricter
-convergence criteria can help here at the cost of longer
-computation.</p>
+<p>Inspect <code>eigen$status</code> and <code>eigen$messages</code>
+first. If they report a weak Ritz boundary gap, the selected subspace
+may be poorly separated from the next candidate direction. Stricter
+convergence criteria can help when the cause is solver accuracy, at the
+cost of longer computation.</p>
+</div>
+</div>
+<div class="section level2">
+<h2 id="assembly-diagnostics-and-normalized-ltsa">Assembly diagnostics and normalized LTSA<a class="anchor" aria-label="anchor" href="#assembly-diagnostics-and-normalized-ltsa"></a>
+</h2>
+<div class="section level3">
+<h3 id="local-rank-route">Local rank route<a class="anchor" aria-label="anchor" href="#local-rank-route"></a>
+</h3>
+<p>Local tangent bases use a direct SVD when the number of input columns
+is no larger than the effective neighborhood size, and an
+eigendecomposition of the centered Gram matrix otherwise. The direct
+route thresholds singular values. The Gram route thresholds squared
+singular values more conservatively because forming a Gram matrix
+squares the condition number. This is a stability tradeoff: near the
+threshold, the same local geometry can have a lower reported numerical
+rank on the Gram route. A rank-deficiency warning reports the number of
+affected neighborhoods in <code>assembly$rank_deficient_count</code> and
+the minimum numerical rank in <code>assembly$min_local_rank</code>.
+Reconsider the neighborhood size or inspect the input for repeated or
+degenerate observations.</p>
+</div>
+<div class="section level3">
+<h3 id="effective-neighborhood-components">Effective-neighborhood components<a class="anchor" aria-label="anchor" href="#effective-neighborhood-components"></a>
+</h3>
+<p><code>assembly$component_count</code>,
+<code>assembly$component_sizes</code>, and
+<code>assembly$component_membership</code> describe connected components
+of the co-membership graph formed from the effective neighborhoods used
+in assembly. Disconnected components guarantee componentwise constant
+null directions. Use the sizes and membership to reconnect the
+effective-neighborhood graph or analyze the components separately.
+Connectedness does not rule out other weakly coupled or low-energy
+structure.</p>
+</div>
+<div class="section level3">
+<h3 id="normalized-ltsa">Normalized LTSA<a class="anchor" aria-label="anchor" href="#normalized-ltsa"></a>
+</h3>
+<p>With <code>normalize = TRUE</code>, <code>flotsam</code> solves</p>
+<p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>B</mi><mi>v</mi><mo>=</mo><mi>λ</mi><mi>D</mi><mi>v</mi><mo>,</mo><mspace width="2.0em"></mspace><mi>D</mi><mo>=</mo><mrow><mi mathvariant="normal">diag</mi><mo>⁡</mo></mrow><mo stretchy="false" form="prefix">(</mo><mi>B</mi><mo stretchy="false" form="postfix">)</mo><mo>,</mo></mrow><annotation encoding="application/x-tex">
+Bv = \lambda Dv, \qquad D = \operatorname{diag}(B),
+</annotation></semantics></math></p>
+<p>by diagonalizing
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msup><mi>D</mi><mrow><mi>−</mi><mn>1</mn><mi>/</mi><mn>2</mn></mrow></msup><mi>B</mi><msup><mi>D</mi><mrow><mi>−</mi><mn>1</mn><mi>/</mi><mn>2</mn></mrow></msup></mrow><annotation encoding="application/x-tex">D^{-1/2} B D^{-1/2}</annotation></semantics></math>
+in symmetric coordinates
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>u</mi><annotation encoding="application/x-tex">u</annotation></semantics></math>
+and returning mapped coordinates
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>v</mi><mo>=</mo><msup><mi>D</mi><mrow><mi>−</mi><mn>1</mn><mi>/</mi><mn>2</mn></mrow></msup><mi>u</mi></mrow><annotation encoding="application/x-tex">v = D^{-1/2}u</annotation></semantics></math>.
+Standard LTSA uses ordinary orthogonality and centering; normalized LTSA
+uses <code>D</code>-weighted constraints. The alignment energy is the
+same, but this is a different generalized problem, not merely a
+better-conditioned solve for the standard coordinates.</p>
+<p>The diagonal <code>D</code> is part of the LTSA generalized
+estimator, not ordinary graph degree. Normalized LTSA is not a graph-cut
+estimator.</p>
 </div>
 </div>
 <div class="section level2">
 <h2 id="convergence-controls">Convergence controls<a class="anchor" aria-label="anchor" href="#convergence-controls"></a>
 </h2>
-<p>For the default RSpectra backend, the main convergence controls are
+<p>For the requested RSpectra method, the main convergence controls are
 <code>tol</code>, <code>maxitr</code> and <code>ncv</code> and are
-passed directly to <code>ltsa</code>:</p>
+passed directly to <code>ltsa</code>. <code>flotsam</code> defaults to
+<code>tol = 1e-6</code>, deliberately looser than RSpectra’s own
+<code>1e-10</code> default. Select RSpectra explicitly when supplying
+these controls:</p>
 <div class="sourceCode" id="cb9"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">ltsa_strict</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/ltsa.html">ltsa</a></span><span class="op">(</span></span>
 <span>  <span class="va">swiss_roll</span>,</span>
+<span>  eig_method <span class="op">=</span> <span class="st">"rspectra"</span>,</span>
 <span>  eig_k <span class="op">=</span> <span class="fl">16</span>,</span>
 <span>  output <span class="op">=</span> <span class="st">"result"</span>,</span>
 <span>  tol <span class="op">=</span> <span class="fl">1e-8</span>,</span>
@@ -249,9 +343,20 @@ passed directly to <code>ltsa</code>:</p>
 <code>eig_method = "irlba"</code>: <code>tol</code>,
 <code>maxit</code>, and <code>reorth</code>.</li>
 <li>
-<code>eig_method = "svdr"</code>: <code>tol</code> and
-<code>it</code>.</li>
+<code>eig_method = "svdr"</code>: <code>tol</code>, <code>it</code>,
+and <code>extra</code>.</li>
 </ul>
+<p>This is a curated wrapper contract rather than every argument exposed
+by the underlying packages. The listed values are passed to their
+selected backend unchanged; unknown controls, controls for a different
+method, and backend-owned vector/count arguments are rejected.
+<code>dense_n</code> and <code>dense_fraction</code> belong only to
+<code>"auto"</code>, while <code>shift_eps</code> belongs only to
+explicit iterative methods. <code>resid_tol</code> and
+<code>gap_tol</code> are accepted in every mode and never change the
+selected route. Dense <code>"eig"</code>/<code>"eigen"</code> accepts
+only those diagnostic controls. <code>output = "B"</code> accepts no
+eigenanalysis controls in <code>...</code>.</p>
 <p>In the event of a convergence failure with stricter convergence, you
 may also need to increase <code>eig_k</code> (the number of eigenvectors
 returned before the Rayleigh-Ritz processing):</p>
@@ -273,9 +378,11 @@ be used instead of RSpectra. They do not expose the same convergence
 metadata as RSpectra, so they rely on post-hoc residual diagnostics
 rather than hard backend convergence counts. For small diagnostic cases,
 <code>eig_method = "eig"</code> and <code>eig_method = "eigen"</code>
-are synonyms for base <code><a href="https://rdrr.io/r/base/eigen.html" class="external-link">eigen()</a></code>. This is not affected by
-clustering issues and will always return the correct eigenvectors, but
-is very expensive and slow for all but the smallest datasets.</p>
+are synonyms for base <code><a href="https://rdrr.io/r/base/eigen.html" class="external-link">eigen()</a></code>. The dense route avoids
+iterative convergence uncertainty and is useful as an eigenvalue or
+eigenspace reference, but repeated null or selected eigenspaces still
+make individual eigenvectors non-unique. It is very expensive and slow
+for all but the smallest datasets.</p>
 <p>Set <code>include_B = TRUE</code> with <code>output = "result"</code>
 if the detailed result should also carry the assembled unnormalized
 matrix.</p>

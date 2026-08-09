@@ -11,7 +11,7 @@ ltsa(
   n_neighbors = NULL,
   ndim = 2,
   nn_method = "nnd",
-  eig_method = "rspectra",
+  eig_method = "auto",
   eig_k = NULL,
   output = c("embedding", "result", "B"),
   include_B = FALSE,
@@ -19,7 +19,6 @@ ltsa(
   normalize = FALSE,
   n_threads = 1,
   n_assembly_threads = 1,
-  copy_max_mib = 256,
   verbose = FALSE,
   ...
 )
@@ -38,7 +37,9 @@ ltsa(
   The size of local neighborhood (in terms of number of neighboring
   sample points) used for manifold approximation. If `NULL`, the default
   is `15` when neighbors are computed, or inferred when a precomputed
-  graph is supplied as `nn_method`.
+  graph is supplied as `nn_method`. It must be at least `ndim + 2` so
+  each local projector has a residual direction beyond the constant and
+  tangent subspaces.
 
 - ndim:
 
@@ -62,16 +63,22 @@ ltsa(
 
   How to carry out the final eigendecomposition. Possible values are:
 
-  - `"rspectra"` Use
+  - `"auto"` Use dense
+    [`base::eigen()`](https://rdrr.io/r/base/eigen.html) when
+    `n <= dense_n` or `eig_k >= dense_fraction * n`, and otherwise use
     [`RSpectra::eigs_sym()`](https://rdrr.io/pkg/RSpectra/man/eigs.html).
-    This is the default and can report hard backend convergence failures
-    through RSpectra's `nconv` metadata.
+    This is the default.
 
-  - `"irlba"` Use
+  - `"rspectra"` Always use
+    [`RSpectra::eigs_sym()`](https://rdrr.io/pkg/RSpectra/man/eigs.html).
+    This method can report hard backend convergence failures through
+    RSpectra's `nconv` metadata.
+
+  - `"irlba"` Always use
     [`irlba::irlba()`](https://rdrr.io/pkg/irlba/man/irlba.html) and
     post-hoc residual diagnostics.
 
-  - `"svdr"` Use
+  - `"svdr"` Always use
     [`irlba::svdr()`](https://rdrr.io/pkg/irlba/man/svdr.html) and
     post-hoc residual diagnostics.
 
@@ -87,7 +94,8 @@ ltsa(
   `NULL`, the default is `min(n - 1L, max(12L, ndim + 2L))`, where `n`
   is the number of observations. Must satisfy `ndim + 1 <= eig_k < n`.
   Larger values give the Rayleigh-Ritz postprocessing a wider candidate
-  span.
+  span. Dense eigenanalysis computes the full eigensystem, then retains
+  the lowest `eig_k` candidate vectors for that postprocessing.
 
 - output:
 
@@ -128,16 +136,12 @@ ltsa(
 - n_assembly_threads:
 
   Number of threads to use when constructing the LTSA alignment matrix
-  `B` after nearest neighbors are computed. The default `1` preserves
-  the serial assembly path. Values greater than `1` opt into parallel
-  construction of `B`, which can be faster but may increase peak memory
-  use.
-
-- copy_max_mib:
-
-  Maximum size, in MiB, of the optional row-major dense copy of `X` used
-  during high-dimensional local Gram assembly. Set to `0` to disable
-  this copy.
+  `B` after nearest neighbors are computed. The default `1` requests
+  serial assembly. Values greater than `1` request parallel assembly,
+  which trades additional temporary storage for speed. See the
+  [threading
+  note](https://jlmelville.github.io/flotsam/articles/numerical-diagnostics.html#threading)
+  about avoiding oversubscription when BLAS is also multithreaded.
 
 - verbose:
 
@@ -145,54 +149,45 @@ ltsa(
 
 - ...:
 
-  Extra eigensolver controls. For `"rspectra"`, common controls are
-  `tol`, `maxitr`, and `ncv`. For `"irlba"`, common controls are `tol`,
-  `maxit`, and `reorth`. For `"svdr"`, common controls are `tol` and
-  `it`. `resid_tol` and `gap_tol` tune the diagnostic thresholds used to
-  classify the requested solve. Other backend arguments may cause the
-  solve to fail.
+  Optional eigensolver and diagnostic controls. See the
+  `Eigensolver controls` section.
+
+## Value
+
+With `output = "embedding"`, an `n` by `ndim` embedding matrix. With
+`output = "B"`, the assembled unnormalized LTSA alignment operator. With
+`output = "result"`, a list containing `embedding`, compact `eigen`
+solve information, and `assembly` neighbor, rank-deficiency, component,
+route, and thread information; `B` is also included when
+`include_B = TRUE`.
 
 ## Details
 
-`ltsa()` builds an LTSA alignment matrix from local neighborhoods and
-returns the lowest nonconstant embedding vectors. The default
-`output = "embedding"` returns only the embedding matrix.
+`ltsa()` builds a symmetric positive-semidefinite LTSA alignment
+operator `B` from local neighborhoods and returns its lowest nonconstant
+embedding vectors. The constant vector is a known null direction of `B`,
+although the nullspace can contain other directions.
 
-Use `output = "result"` to inspect compact diagnostics when convergence
-or eigenspace ambiguity matters. The result contains the embedding,
-eigenanalysis diagnostics, assembly diagnostics, and, when
-`include_B = TRUE`, the assembled unnormalized matrix `B`. The
-diagnostic `status` and `messages` fields summarize the requested solve;
-if they look suspicious, rerun with a larger `eig_k` or stricter backend
-settings.
-
-Use `output = "B"` to return the assembled unnormalized LTSA matrix and
-skip final eigenanalysis.
+With `output = "result"`, `eigen$status` and `eigen$messages` report
+solve problems. If `eigen$diagnostics$near_zero_block_truncated` is
+`TRUE`, the requested dimensions cut through an observed near-zero
+eigenspace, so individual coordinates may not be identifiable; inspect
+the selected subspace or increase `ndim`. A positive
+`assembly$rank_deficient_count` and its `assembly$min_local_rank`
+suggest reconsidering the neighborhoods or input. If
+`assembly$component_count` exceeds one, use `assembly$component_sizes`
+and `assembly$component_membership` to reconnect the
+effective-neighborhood graph or analyze its components separately.
 
 ## Normalized LTSA
 
-`normalize = TRUE` applies symmetric Jacobi scaling to the assembled
-LTSA alignment matrix `B`. Let `D = diag(B)`. The eigensolve is
-performed on `D^(-1/2) B D^(-1/2)`, and the selected vectors are mapped
-back with `D^(-1/2)`. Equivalently, this solves the generalized
-eigenproblem `B v = lambda D v`.
+Let `D = diag(B)`. With `normalize = TRUE`, the eigensolve is performed
+on `D^(-1/2) B D^(-1/2)` and the selected vectors are mapped back with
+`D^(-1/2)`. This solves the generalized eigenproblem `B v = lambda D v`.
 
-This keeps the same LTSA alignment energy but changes the pointwise mass
-used by the final eigenproblem, so it can produce a different embedding
-from the standard formulation. The diagonal `diag(B)` measures pointwise
-participation in the LTSA alignment energy. Reverse-neighborhood
-participation often contributes strongly, so the scaling can reduce the
-influence of points that appear in many neighborhoods (i.e. hubness) and
-can improve eigensolver convergence.
-
-However, other effects, such as boundary behavior, curvature, and local
-scale, also contribute to `diag(B)` and it's hard to know a priori which
-will dominate. Additionally, points with small diagonal mass are
-relatively amplified by the `D^(-1/2)` scaling so the scaling may not
-always be beneficial. Empirically, in testing across a variety of
-datasets, when the assumption of a single-smooth manifold is violated,
-the normalized embeddings often show more local structure and converge
-faster, compared to the standard formulation.
+Normalized LTSA is a distinct estimator with `D`-weighted orthogonality
+and centering constraints. It is not a graph-cut estimator or merely a
+conditioning route to ordinary LTSA.
 
 ## Precomputed neighbor input
 
@@ -203,12 +198,55 @@ include its own row index and have `n_neighbors` columns. With
 is dropped before LTSA assembly, so the matrix must have
 `n_neighbors + 1` columns.
 
-## Performance and memory controls
+## Assembly resources
 
-`copy_max_mib` limits an optional row-major dense copy of `X` used
-during high-dimensional local Gram assembly. Increase it only when that
-copy is useful and enough memory is available; set it to `0` to disable
-the copy.
+Serial assembly generally uses less temporary storage. Parallel assembly
+trades additional storage for speed and may compound threaded-BLAS
+oversubscription.
+
+## Eigensolver controls
+
+Automatic-selection controls:
+
+- `"auto"`: `dense_n` and `dense_fraction`. Dense eigenanalysis is
+  selected when `n <= dense_n` or `eig_k >= dense_fraction * n`; their
+  defaults are `100` and `0.5`.
+
+Backend controls for explicit iterative methods:
+
+- `"rspectra"`: `tol`, `maxitr`, and `ncv`. See
+  [RSpectra::eigs_sym()](https://rdrr.io/pkg/RSpectra/man/eigs.html) for
+  their meanings. The package default for `tol` is `1e-6`, deliberately
+  looser than RSpectra's own `1e-10` default; specify `tol` for a
+  like-for-like comparison.
+
+- `"irlba"`: `tol`, `maxit`, and `reorth`. See
+  [irlba::irlba()](https://rdrr.io/pkg/irlba/man/irlba.html) for their
+  meanings.
+
+- `"svdr"`: `tol`, `it`, and `extra`. See
+  [irlba::svdr()](https://rdrr.io/pkg/irlba/man/svdr.html) for their
+  meanings.
+
+These are the backend controls exposed by `ltsa()`; other arguments
+accepted by the underlying packages are not automatically available.
+Values for the listed controls are passed to the selected backend
+unchanged.
+
+`resid_tol` and `gap_tol` set diagnostic thresholds for candidate
+residuals and the Ritz boundary gap. They default to `1e-5` and `1e-4`,
+respectively. They are accepted for every eigensolver mode and do not
+affect backend selection. Dense `"eig"`/`"eigen"` accepts only these
+diagnostic controls.
+
+`shift_eps` controls the positive shift margin used by iterative methods
+and defaults to `1e-6`. It is accepted only with an explicit iterative
+method. Backend controls are accepted only with their explicit backend.
+The requested policy or canonical method is stored in `eigen$method`
+(`"eigen"` becomes `"eig"`), while `eigen$backend$name` identifies the
+backend actually used (`"dense_eigen"`, `"rspectra"`, `"irlba"`, or
+`"svdr"`). `output = "B"` does not accept eigenanalysis controls in
+`...`.
 
 ## References
 
@@ -231,6 +269,7 @@ iris_ltsa <- ltsa(
   n_neighbors = 12,
   nn_method = "exact"
 )
+#> Warning: The effective-neighborhood co-membership graph has 2 disconnected components (sizes: 50, 25). Inspect output = "result" component diagnostics and increase n_neighbors or revise neighbor construction so effective neighborhoods overlap.
 
 # Request compact eigenanalysis and assembly diagnostics.
 iris_result <- ltsa(
@@ -241,10 +280,13 @@ iris_result <- ltsa(
   output = "result"
 )
 iris_result$eigen$status
-#> [1] "warning"
+#> [1] "ok"
 iris_result$eigen$messages
-#> [1] "Only part of a near-zero selected Ritz block is present."     
-#> [2] "Increasing eig_k or using stricter backend settings may help."
+#> character(0)
+iris_result$eigen$method
+#> [1] "auto"
+iris_result$eigen$backend$name
+#> [1] "dense_eigen"
 
 # Return the assembled unnormalized LTSA matrix.
 iris_B <- ltsa(

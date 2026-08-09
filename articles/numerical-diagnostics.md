@@ -19,10 +19,11 @@ export MKL_NUM_THREADS=1
 
 ## Eigenanalysis Steps
 
-The `ndim` eigenvectors you want are the lowest nonconstant eigenvectors
-of the LTSA matrix `B`, i.e. not the eigenvector associated with the
-smallest eigenvalue, which is always constant. In this respect, LTSA is
-similar to Laplacian eigenmaps or diffusion maps.
+The `ndim` embedding directions are the lowest nonconstant directions of
+the symmetric positive-semidefinite LTSA alignment operator `B`. The
+constant vector is a known null direction, not necessarily a unique
+smallest eigenvector: disconnected effective neighborhoods or other
+degeneracies can give `B` a larger nullspace.
 
 However, finding the lowest nonconstant eigenvectors for a large sparse
 matrix can be tricky. It’s easy to get into a scenario where convergence
@@ -31,19 +32,20 @@ this, the `flotsam` implementation tries the following steps:
 
 ### Shifted largest-algebraic solves
 
-The eigenvectors of a shifted matrix ($`B + \mu I`$) are the same as the
-eigenvectors of the original matrix, but the corresponding eigenvalues
-are shifted by $`\mu`$. Finding the largest eigenvalues of a matrix
-tends to be easier than finding the smallest eigenvalues, so this can
-make the eigensolver converge faster. Many methods offer a
-“shift-invert” option to do this, which will also spread out the
-eigenvalues if they are clustered close to each other. Unfortunately,
-I’ve *never* had good luck with the shift-invert approach when it comes
-to large sparse matrices, so instead `flotsam` does a manual shift by
-doing a quick calculation to find the largest eigenvalue (this doesn’t
-need to be exact, just a rough estimate) and then shifting the matrix by
-that amount. This doesn’t fix the clustered eigenvalue problem, but it
-does seem to help with convergence in general.
+`flotsam` forms the reflected operator $`\mu I - B`$, where $`\mu`$ is a
+rough estimate of the largest eigenvalue of `B` plus a small positive
+margin. A direction with eigenvalue $`\lambda`$ for `B` has eigenvalue
+$`\mu - \lambda`$ for the reflected operator, so the smallest directions
+of `B` become the largest algebraic (or singular) directions requested
+from the iterative backend. Many methods offer a “shift-invert” option
+to target small eigenvalues, which will also spread out eigenvalues if
+they are clustered close to each other. Unfortunately, I’ve *never* had
+good luck with the shift-invert approach when it comes to large sparse
+matrices, so instead `flotsam` does a manual shift by doing a quick
+calculation to find the largest eigenvalue (this doesn’t need to be
+exact, just a rough estimate) and then shifting the matrix by that
+amount. This doesn’t fix the clustered eigenvalue problem, but it does
+seem to help with convergence in general.
 
 This approach was motivated by practical issues around small clustered
 eigenvalues and by discussion between Aaron Lun, Kevin Doherty, and
@@ -68,6 +70,24 @@ eigenvalues if you are actually getting all the eigenvectors back and
 increasing `eig_k` was the only thing that I have seen that worked. In
 practice, I have only seen this happen with synthetic datasets.
 
+### Automatic selection and `eig_k`
+
+With `eig_method = "auto"`, `flotsam` uses dense
+[`base::eigen()`](https://rdrr.io/r/base/eigen.html) when `n <= dense_n`
+or `eig_k >= dense_fraction * n`; the defaults are `dense_n = 100` and
+`dense_fraction = 0.5`; otherwise it uses RSpectra. Explicit
+`"rspectra"`, `"irlba"`, and `"svdr"` requests always run the named
+backend. `resid_tol` and `gap_tol` affect diagnostics only. With
+`output = "result"`, `eigen$method` records `"auto"` or the explicit
+canonical method (the `"eigen"` alias is stored as `"eig"`), while
+`eigen$backend$name` records the backend that actually ran.
+
+An explicit `eig_method = "eig"` or `"eigen"` computes the full dense
+eigensystem, but `eig_k` is still validated and used: only the lowest
+`eig_k` candidate vectors are passed to the Rayleigh–Ritz step. It
+therefore bounds the observed candidate span and the post-null
+`ritz_values` even on the dense route.
+
 ### Rayleigh-Ritz postprocessing
 
 The Rayleigh-Ritz postprocessing step is a small polishing step that
@@ -78,17 +98,26 @@ or rotated vectors in the clustered low-eigenvalue case. It can’t
 recover an entirely missing eigenvector, hence the use of `eig_k` as
 mentioned above.
 
+If `eigen$diagnostics$near_zero_block_truncated` is `TRUE`, the
+requested `ndim` cuts through a larger near-zero nonconstant eigenspace
+observed within that span. The selected subspace can still be
+meaningful, but its individual coordinates are not uniquely
+identifiable. Inspect the selected subspace, increase `ndim`, or use
+subspace-based downstream analysis. A stricter tolerance does not
+resolve a genuinely repeated eigenspace, and this flag is not evidence
+of data clustering.
+
 ## Comparison to scikit-learn LTSA
 
-The Python implementation in scikit-learn (using
-[LocallyLinearEmbedding](https://scikit-learn.org/stable/modules/generated/sklearn.manifold.LocallyLinearEmbedding.htm))
-with `method="ltsa"`) will be faster on very large datasets because it
-can use approximate nearest neighbor neighbors and will usually converge
-with datasets where ARPACK (used by the scikit-learn implementation)
-fails.
-
-However, the clustered eigenvalue problem may be better handled with
-ARPACK.
+The Python implementation in scikit-learn uses
+[`LocallyLinearEmbedding`](https://scikit-learn.org/stable/modules/generated/sklearn.manifold.LocallyLinearEmbedding.html)
+with `method = "ltsa"`. It offers exact neighbor-search strategies and
+either dense eigenanalysis or ARPACK. `flotsam` can instead use
+approximate nearest-neighbor descent and its RSpectra or `irlba`
+shifted-candidate routes, so it may be faster on large datasets and may
+behave differently when the low spectrum is difficult. Neither
+implementation is uniformly faster or more reliable; the data size,
+neighbor search, and eigensolver settings all matter.
 
 ## A Clustered Eigenvalue Example
 
@@ -121,7 +150,7 @@ Increasing the tolerance might be seen as the obvious step:
 
 ``` r
 
-res_strict <- ltsa(sch, eig_k = 6, tol = 1e-8)
+res_strict <- ltsa(sch, eig_method = "rspectra", eig_k = 6, tol = 1e-8)
 ```
 
 But this fails to converge:
@@ -136,7 +165,7 @@ succeed:
 
 ``` r
 
-res_strict <- ltsa(sch, eig_k = 18, tol = 1e-8)
+res_strict <- ltsa(sch, eig_method = "rspectra", eig_k = 18, tol = 1e-8)
 ```
 
 ![eig_k = 18, tol = 1e-8](figures/s-curve-hole-eig-k-18-tol-1e-8.png)
@@ -177,21 +206,70 @@ ltsa_result$eigen[c("status", "eig_k", "rank")]
 ltsa_result$eigen$messages
 ```
 
-A large number of other values are returned, but they probably aren’t
-that useful except for isolating bugs in particular code paths. If the
-`eigen$messages` complain about a weak Ritz boundary gap, then there is
-a risk of missing eigenvectors in my experience. Stricter convergence
-criteria can help here at the cost of longer computation.
+Inspect `eigen$status` and `eigen$messages` first. If they report a weak
+Ritz boundary gap, the selected subspace may be poorly separated from
+the next candidate direction. Stricter convergence criteria can help
+when the cause is solver accuracy, at the cost of longer computation.
+
+## Assembly diagnostics and normalized LTSA
+
+### Local rank route
+
+Local tangent bases use a direct SVD when the number of input columns is
+no larger than the effective neighborhood size, and an
+eigendecomposition of the centered Gram matrix otherwise. The direct
+route thresholds singular values. The Gram route thresholds squared
+singular values more conservatively because forming a Gram matrix
+squares the condition number. This is a stability tradeoff: near the
+threshold, the same local geometry can have a lower reported numerical
+rank on the Gram route. A rank-deficiency warning reports the number of
+affected neighborhoods in `assembly$rank_deficient_count` and the
+minimum numerical rank in `assembly$min_local_rank`. Reconsider the
+neighborhood size or inspect the input for repeated or degenerate
+observations.
+
+### Effective-neighborhood components
+
+`assembly$component_count`, `assembly$component_sizes`, and
+`assembly$component_membership` describe connected components of the
+co-membership graph formed from the effective neighborhoods used in
+assembly. Disconnected components guarantee componentwise constant null
+directions. Use the sizes and membership to reconnect the
+effective-neighborhood graph or analyze the components separately.
+Connectedness does not rule out other weakly coupled or low-energy
+structure.
+
+### Normalized LTSA
+
+With `normalize = TRUE`, `flotsam` solves
+
+``` math
+Bv = \lambda Dv, \qquad D = \operatorname{diag}(B),
+```
+
+by diagonalizing $`D^{-1/2} B D^{-1/2}`$ in symmetric coordinates $`u`$
+and returning mapped coordinates $`v = D^{-1/2}u`$. Standard LTSA uses
+ordinary orthogonality and centering; normalized LTSA uses `D`-weighted
+constraints. The alignment energy is the same, but this is a different
+generalized problem, not merely a better-conditioned solve for the
+standard coordinates.
+
+The diagonal `D` is part of the LTSA generalized estimator, not ordinary
+graph degree. Normalized LTSA is not a graph-cut estimator.
 
 ## Convergence controls
 
-For the default RSpectra backend, the main convergence controls are
-`tol`, `maxitr` and `ncv` and are passed directly to `ltsa`:
+For the requested RSpectra method, the main convergence controls are
+`tol`, `maxitr` and `ncv` and are passed directly to `ltsa`. `flotsam`
+defaults to `tol = 1e-6`, deliberately looser than RSpectra’s own
+`1e-10` default. Select RSpectra explicitly when supplying these
+controls:
 
 ``` r
 
 ltsa_strict <- ltsa(
   swiss_roll,
+  eig_method = "rspectra",
   eig_k = 16,
   output = "result",
   tol = 1e-8,
@@ -204,7 +282,17 @@ Backend-specific tuning is passed through `...`:
 
 - `eig_method = "rspectra"`: `tol`, `maxitr`, and `ncv`.
 - `eig_method = "irlba"`: `tol`, `maxit`, and `reorth`.
-- `eig_method = "svdr"`: `tol` and `it`.
+- `eig_method = "svdr"`: `tol`, `it`, and `extra`.
+
+This is a curated wrapper contract rather than every argument exposed by
+the underlying packages. The listed values are passed to their selected
+backend unchanged; unknown controls, controls for a different method,
+and backend-owned vector/count arguments are rejected. `dense_n` and
+`dense_fraction` belong only to `"auto"`, while `shift_eps` belongs only
+to explicit iterative methods. `resid_tol` and `gap_tol` are accepted in
+every mode and never change the selected route. Dense `"eig"`/`"eigen"`
+accepts only those diagnostic controls. `output = "B"` accepts no
+eigenanalysis controls in `...`.
 
 In the event of a convergence failure with stricter convergence, you may
 also need to increase `eig_k` (the number of eigenvectors returned
@@ -236,9 +324,11 @@ not expose the same convergence metadata as RSpectra, so they rely on
 post-hoc residual diagnostics rather than hard backend convergence
 counts. For small diagnostic cases, `eig_method = "eig"` and
 `eig_method = "eigen"` are synonyms for base
-[`eigen()`](https://rdrr.io/r/base/eigen.html). This is not affected by
-clustering issues and will always return the correct eigenvectors, but
-is very expensive and slow for all but the smallest datasets.
+[`eigen()`](https://rdrr.io/r/base/eigen.html). The dense route avoids
+iterative convergence uncertainty and is useful as an eigenvalue or
+eigenspace reference, but repeated null or selected eigenspaces still
+make individual eigenvectors non-unique. It is very expensive and slow
+for all but the smallest datasets.
 
 Set `include_B = TRUE` with `output = "result"` if the detailed result
 should also carry the assembled unnormalized matrix.
