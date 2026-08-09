@@ -69,17 +69,18 @@ extract_assembly_diagnostics <- function(components) {
 }
 
 compute_effective_components <- function(weight_idx, n) {
-  parent <- seq_len(n)
-  tree_size <- rep.int(1L, n)
+  state <- new.env(parent = emptyenv())
+  state$parent <- seq_len(n)
+  state$tree_size <- rep.int(1L, n)
 
   find_root <- function(node) {
     root <- node
-    while (parent[[root]] != root) {
-      root <- parent[[root]]
+    while (state$parent[[root]] != root) {
+      root <- state$parent[[root]]
     }
-    while (parent[[node]] != node) {
-      next_node <- parent[[node]]
-      parent[[node]] <<- root
+    while (state$parent[[node]] != node) {
+      next_node <- state$parent[[node]]
+      state$parent[[node]] <- root
       node <- next_node
     }
     root
@@ -91,14 +92,14 @@ compute_effective_components <- function(weight_idx, n) {
     if (left_root == right_root) {
       return(invisible(NULL))
     }
-    if (tree_size[[left_root]] < tree_size[[right_root]]) {
+    if (state$tree_size[[left_root]] < state$tree_size[[right_root]]) {
       tmp <- left_root
       left_root <- right_root
       right_root <- tmp
     }
-    parent[[right_root]] <<- left_root
-    tree_size[[left_root]] <<-
-      tree_size[[left_root]] + tree_size[[right_root]]
+    state$parent[[right_root]] <- left_root
+    state$tree_size[[left_root]] <-
+      state$tree_size[[left_root]] + state$tree_size[[right_root]]
     invisible(NULL)
   }
 

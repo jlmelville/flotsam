@@ -434,7 +434,7 @@ test_that("public eigen control names are validated before eigenanalysis", {
         list(eig_method = "rspectra", tol = 1e-8, tol = 1e-9)
       )
     ),
-    '^Argument `tol` is supplied more than once$'
+    "^Argument `tol` is supplied more than once$"
   )
   expect_error(
     do.call(
@@ -519,7 +519,7 @@ test_that("every eigen control belongs only to its selected mode", {
         expect_error(
           flotsam:::validate_eigen_controls(args, method, "result"),
           paste0(
-            '^Argument `',
+            "^Argument `",
             control,
             '` is not supported for eig_method = "',
             method,
