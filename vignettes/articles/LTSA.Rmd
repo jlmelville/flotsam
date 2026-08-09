@@ -10,7 +10,7 @@ but this is what happens:
 1. You have a dataset `X` with `N` items that you would like to reduce to `d` dimensions.
 1. Create an empty `N` x `N` matrix B (filled with zeros).
 1. For each item in the dataset, define a neighborhood, i.e. the `k`-nearest neighbors.
-1. Center the row-major `k` x `p` neighborhood matrix and calculate its SVD.
+1. Center the `k` x `p` neighborhood matrix and calculate its SVD.
 1. Let `U` contain the retained **left** singular vectors, which give tangent coordinates for the
 `k` observations. Create the local residual projector
 $W = I - \mathbf{1}\mathbf{1}^{\mathsf T}/k - UU^{\mathsf T}$.
@@ -46,10 +46,10 @@ roughly descending order of importance:
   so setting this to `FALSE` may allow emulating HLLE. Default is `TRUE`.
 * `n_threads`: The number of threads to use for the nearest neighbor calculation. Default is `1`.
 * `n_assembly_threads`: The number of threads to use when constructing the LTSA matrix `B`. Default 
-   is `1` which means to be single-threaded. Values greater than `1` opt into parallel construction 
-   of `B`, which can be faster but may increase peak memory use. See the
-   [threading warning](numerical-diagnostics.html#threading) before combining assembly threads with
-   a multithreaded BLAS.
+   is `1`, which requests serial assembly and generally uses less temporary storage. Values greater
+   than `1` request parallel construction of `B`, which trades additional storage for speed and may
+   compound threaded-BLAS oversubscription. See the
+   [threading warning](numerical-diagnostics.html#threading).
 * `eig_method`: The method to use for finding eigenvalues.
   * `"auto"`: Use dense `base::eigen()` when `N <= dense_n` or
   `eig_k >= dense_fraction * N`, and otherwise use `RSpectra::eigs_sym()`. This is the default.
@@ -77,12 +77,6 @@ roughly descending order of importance:
     diagnostics, and optionally the assembled unnormalized LTSA matrix `B`. 
   * `"B"`: Return the assembled unnormalized LTSA matrix and skip final eigenanalysis.
 * `include_B`: Whether to include the assembled unnormalized LTSA matrix `B` in the result.
-* `copy_max_mib` is a parameter that controls whether to make a row-major copy of `X` when the 
-   number of columns in `X` is greater than `n_neighbors`. If the copy would take up more memory in
-   MiB than this value, the copy is disabled. The default is 256 MiB. If you have the memory to
-   spare this will make the `B` matrix assembly stage faster, but this is rarely the speed 
-   bottleneck.
-
 Under `eig_method = "auto"`, dense `base::eigen()` is selected when `N <= 100` or
 `eig_k >= 0.5 * N`; `dense_n` and `dense_fraction` change those thresholds. Otherwise automatic
 selection uses RSpectra. Explicit `"rspectra"`, `"irlba"`, and `"svdr"` requests always use the

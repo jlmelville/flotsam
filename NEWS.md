@@ -1,5 +1,10 @@
 # flotsam 0.0.0.9002
 
+* Assembly resources are now controlled only by `n_assembly_threads`: `1`
+  requests serial assembly and larger values request parallel assembly. The
+  development-only `copy_max_mib` and `assembly_max_mib` controls and detailed
+  memory and optimization accounting were removed; row-major copying is now an
+  internal optimization.
 * `eig_method` now defaults to `"auto"`, which retains the existing dense
   threshold policy and otherwise uses RSpectra. Explicit `"rspectra"`,
   `"irlba"`, and `"svdr"` requests now always use the named backend, including

@@ -612,4 +612,9 @@ test_that("verbose output describes computed and precomputed neighbor handling",
     precomputed_messages,
     fixed = TRUE
   )))
+  expect_false(any(grepl(
+    "row-major|fallback|modeled|memory cap",
+    precomputed_messages,
+    ignore.case = TRUE
+  )))
 })

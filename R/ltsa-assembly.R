@@ -4,8 +4,6 @@ assemble_ltsa_B <- function(
   ndim,
   include_self,
   n_assembly_threads = 1L,
-  copy_max_mib = 256,
-  assembly_max_mib = 4096,
   verbose = FALSE
 ) {
   n_assembly_threads <- check_whole_number(
@@ -13,31 +11,8 @@ assemble_ltsa_B <- function(
     "n_assembly_threads",
     min = 1
   )
-  copy_max_mib <- check_nonnegative_number(
-    copy_max_mib,
-    "copy_max_mib"
-  )
-  assembly_max_mib <- check_nonnegative_number(
-    assembly_max_mib,
-    "assembly_max_mib"
-  )
-  row_major_copy_max_bytes <- ltsa_mib_to_bytes(
-    copy_max_mib,
-    "copy_max_mib"
-  )
-
   n <- nrow(X)
   k <- ncol(nn_idx) - as.integer(!include_self)
-  memory <- ltsa_assembly_memory_preflight(
-    n = n,
-    k = k,
-    p = ncol(X),
-    ndim = ndim,
-    requested_assembly_threads = n_assembly_threads,
-    include_self = include_self,
-    row_major_copy_max_bytes = row_major_copy_max_bytes,
-    assembly_max_mib = assembly_max_mib
-  )
   weight_idx <- ltsa_effective_weight_idx(nn_idx, include_self)
 
   if (verbose) {
@@ -47,27 +22,17 @@ assemble_ltsa_B <- function(
     )
   }
   value_nnt <- t(weight_idx)
-  components <- if (memory$selected_route == "serial") {
-    ltsa_assemble_local_weights(X, value_nnt, k, ndim, row_major_copy_max_bytes)
+  components <- if (n_assembly_threads == 1L) {
+    ltsa_assemble_local_weights(X, value_nnt, k, ndim)
   } else {
     ltsa_assemble_local_weights_parallel(
       X,
       value_nnt,
       k,
       ndim,
-      n_assembly_threads,
-      row_major_copy_max_bytes
+      n_assembly_threads
     )
   }
-  if (
-    memory$requested_route == "parallel" &&
-      memory$selected_route == "serial"
-  ) {
-    components$requested_assembly_threads <- n_assembly_threads
-    components$parallel_fallback_reason <-
-      "parallel_estimate_exceeds_assembly_cap"
-  }
-  components$memory <- memory
   components <- lmerge(
     lmerge(
       components,
@@ -109,167 +74,9 @@ ltsa_assembly_diagnostics <- function(components) {
     "component_sizes",
     "component_membership",
     "requested_assembly_threads",
-    "effective_assembly_threads",
-    "raw_entries_estimate",
-    "raw_bytes_estimate",
-    "memory",
-    "row_major_used",
-    "row_major_fallback_reason",
-    "parallel_fallback_reason"
+    "effective_assembly_threads"
   )
   components[intersect(fields, names(components))]
-}
-
-ltsa_mib_to_bytes <- function(mib, name) {
-  bytes <- mib * 1024 * 1024
-  if (!is.finite(bytes)) {
-    stop(name, " is too large", call. = FALSE)
-  }
-  bytes
-}
-
-ltsa_assembly_memory_estimates <- function(
-  n,
-  k,
-  p,
-  ndim,
-  requested_assembly_threads,
-  include_self,
-  row_major_copy_max_bytes
-) {
-  estimates <- ltsa_assembly_memory_estimates_cpp(
-    n,
-    k,
-    p,
-    ndim,
-    requested_assembly_threads,
-    include_self,
-    row_major_copy_max_bytes
-  )
-  for (route in c("serial", "parallel")) {
-    estimates[[route]]$modeled_peak_mib_bound <-
-      estimates[[route]]$modeled_peak_bytes_bound / 1024^2
-    estimates[[route]]$final_sparse_output_mib_bound <-
-      estimates[[route]]$components_bytes$final_sparse_output_bound / 1024^2
-  }
-  estimates
-}
-
-ltsa_assembly_memory_preflight <- function(
-  n,
-  k,
-  p,
-  ndim,
-  requested_assembly_threads,
-  include_self,
-  row_major_copy_max_bytes,
-  assembly_max_mib
-) {
-  cap_bytes <- ltsa_mib_to_bytes(assembly_max_mib, "assembly_max_mib")
-  estimates <- ltsa_assembly_memory_estimates(
-    n = n,
-    k = k,
-    p = p,
-    ndim = ndim,
-    requested_assembly_threads = requested_assembly_threads,
-    include_self = include_self,
-    row_major_copy_max_bytes = row_major_copy_max_bytes
-  )
-  requested_route <- if (requested_assembly_threads > 1L) {
-    "parallel"
-  } else {
-    "serial"
-  }
-  selected_route <- requested_route
-
-  if (requested_route == "serial") {
-    if (estimates$serial$modeled_peak_bytes_bound > cap_bytes) {
-      ltsa_stop_assembly_memory_cap(
-        requested_route,
-        estimates,
-        assembly_max_mib
-      )
-    }
-  } else if (estimates$parallel$modeled_peak_bytes_bound > cap_bytes) {
-    if (estimates$serial$modeled_peak_bytes_bound <= cap_bytes) {
-      selected_route <- "serial"
-      warning(
-        "Parallel LTSA assembly modeled peak bound (",
-        format(estimates$parallel$modeled_peak_mib_bound, digits = 5),
-        " MiB) exceeds assembly_max_mib = ",
-        format(assembly_max_mib, digits = 5),
-        "; using serial assembly with modeled peak bound ",
-        format(estimates$serial$modeled_peak_mib_bound, digits = 5),
-        " MiB.",
-        call. = FALSE
-      )
-    } else {
-      ltsa_stop_assembly_memory_cap(
-        requested_route,
-        estimates,
-        assembly_max_mib
-      )
-    }
-  }
-
-  list(
-    estimate_kind = "modeled_storage_bound",
-    cap_mib = assembly_max_mib,
-    cap_bytes = cap_bytes,
-    requested_route = requested_route,
-    selected_route = selected_route,
-    serial = estimates$serial,
-    parallel = if (requested_route == "parallel") estimates$parallel else NULL,
-    sizeof_bytes = estimates$sizeof_bytes,
-    excludes = c(
-      "pre-existing X and neighbor input",
-      "allocator and STL capacity overhead beyond modeled objects",
-      "thread stacks and LAPACK/BLAS internal allocations",
-      "R object headers and diagnostic character-string contents",
-      "temporary workspaces internal to R primitives such as unique and match",
-      "later eigensolver allocations"
-    )
-  )
-}
-
-ltsa_stop_assembly_memory_cap <- function(
-  requested_route,
-  estimates,
-  assembly_max_mib
-) {
-  requested <- estimates[[requested_route]]
-  serial_text <- if (requested_route == "parallel") {
-    paste0(
-      "; serial modeled peak bound is ",
-      format(estimates$serial$modeled_peak_mib_bound, digits = 5),
-      " MiB"
-    )
-  } else {
-    ""
-  }
-  components <- unlist(requested$components_bytes, use.names = TRUE)
-  components <- sort(components[components > 0], decreasing = TRUE)
-  component_text <- paste0(
-    names(utils::head(components, 4L)),
-    "=",
-    format(utils::head(components, 4L) / 1024^2, digits = 5),
-    " MiB",
-    collapse = ", "
-  )
-  stop(
-    "LTSA assembly memory preflight failed before assembly staging: requested ",
-    requested_route,
-    " modeled peak bound is ",
-    format(requested$modeled_peak_mib_bound, digits = 5),
-    " MiB, above assembly_max_mib = ",
-    format(assembly_max_mib, digits = 5),
-    serial_text,
-    ". Largest modeled components: ",
-    component_text,
-    ". Increase assembly_max_mib only when sufficient memory is available, ",
-    "or reduce the data or neighborhood size.",
-    call. = FALSE
-  )
 }
 
 ltsa_local_rank_diagnostics <- function(local_ranks, ndim, max_rank) {
@@ -417,33 +224,7 @@ log_ltsa_assembly_diagnostics <- function(components, verbose) {
     diagnostics$effective_assembly_threads,
     verbose = verbose
   )
-  tsmessage(
-    "LTSA row-major Gram used: ",
-    diagnostics$row_major_used,
-    verbose = verbose
-  )
-  if (ltsa_log_fallback_reason(diagnostics$row_major_fallback_reason)) {
-    tsmessage(
-      "LTSA row-major fallback reason: ",
-      diagnostics$row_major_fallback_reason,
-      verbose = verbose
-    )
-  }
-  if (ltsa_log_fallback_reason(diagnostics$parallel_fallback_reason)) {
-    tsmessage(
-      "LTSA parallel fallback reason: ",
-      diagnostics$parallel_fallback_reason,
-      verbose = verbose
-    )
-  }
   invisible(NULL)
-}
-
-ltsa_log_fallback_reason <- function(reason) {
-  if (is.null(reason) || length(reason) != 1L || is.na(reason)) {
-    return(FALSE)
-  }
-  nzchar(reason) && !reason %in% c("not_requested", "not_applicable_svd_route")
 }
 
 ltsa_components_to_dgCMatrix <- function(components, n) {

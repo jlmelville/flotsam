@@ -21,7 +21,9 @@ int checked_neighbor_index(int idx, std::size_t n_obs) {
 
 void checked_append_output(int row, double value, std::vector<int>& out_i,
                            std::vector<double>& out_x, std::size_t max_int) {
-  if (out_i.size() >= max_int) {
+  const std::size_t max_slots =
+      std::min(max_int, std::min(out_i.max_size(), out_x.max_size()));
+  if (out_i.size() >= max_slots) {
     cpp11::stop("Too many non-zero slots for a dgCMatrix");
   }
   out_i.push_back(row);
@@ -41,18 +43,4 @@ int checked_lapack_dim(std::size_t value, const char* name) {
     cpp11::stop("%s is too large for LAPACK", name);
   }
   return static_cast<int>(value);
-}
-
-std::size_t checked_row_major_copy_max_bytes(double max_bytes) {
-  if (!std::isfinite(max_bytes) || max_bytes < 0.0) {
-    cpp11::stop("copy_max_mib must be a finite number >= 0");
-  }
-
-  const double max_size =
-      static_cast<double>(std::numeric_limits<std::size_t>::max());
-  if (max_bytes > max_size) {
-    cpp11::stop("copy_max_mib is too large");
-  }
-
-  return static_cast<std::size_t>(std::floor(max_bytes));
 }

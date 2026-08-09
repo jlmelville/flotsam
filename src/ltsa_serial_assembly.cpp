@@ -1,11 +1,10 @@
 #include "ltsa_internal.h"
 
-[[cpp11::register]] cpp11::list ltsa_assemble_local_weights(
-    const cpp11::doubles_matrix<>& x, const cpp11::integers& value_nnt,
-    std::size_t value_n_nbrs, int ndim, double row_major_copy_max_bytes) {
+[[cpp11::register]] cpp11::list
+ltsa_assemble_local_weights(const cpp11::doubles_matrix<>& x,
+                            const cpp11::integers& value_nnt,
+                            std::size_t value_n_nbrs, int ndim) {
   checked_ndim(ndim);
-  const std::size_t row_major_copy_max =
-      checked_row_major_copy_max_bytes(row_major_copy_max_bytes);
   if (value_nnt.size() == 0 || value_n_nbrs == 0) {
     cpp11::stop("Value neighborhoods must not be empty");
   }
@@ -20,7 +19,7 @@
 
   const auto max_int =
       static_cast<std::size_t>(std::numeric_limits<int>::max());
-  if (n_obs + 1 > max_int) {
+  if (n_obs >= max_int) {
     cpp11::stop("Too many observations for a dgCMatrix");
   }
 
@@ -28,18 +27,17 @@
 
   int rank_deficient_count = 0;
   int min_local_rank = ndim;
-  std::vector<int> local_ranks(n_obs, 0);
+  std::vector<int> local_ranks(
+      checked_vector_size<int>(n_obs, "serial LTSA local ranks"), 0);
   const bool use_gram_workspace =
       x.ncol() != 0 && static_cast<std::size_t>(x.ncol()) > value_n_nbrs;
   const double* x_data = use_gram_workspace ? REAL(x.data()) : nullptr;
   std::vector<double> row_major_x;
   bool use_row_major_gram = false;
-  bool row_major_within_limit = false;
   std::unique_ptr<GramLocalWeightsWorkspace> gram_workspace;
   if (use_gram_workspace) {
-    row_major_within_limit = row_major_copy_within_limit(
-        n_obs, static_cast<std::size_t>(x.ncol()), row_major_copy_max);
-    if (row_major_within_limit) {
+    if (row_major_copy_within_limit(n_obs, static_cast<std::size_t>(x.ncol()),
+                                    LTSA_ROW_MAJOR_COPY_MAX_BYTES)) {
       try {
         make_row_major_copy(x_data, n_obs, static_cast<std::size_t>(x.ncol()),
                             row_major_x);
@@ -85,9 +83,6 @@
   }
 
   SparseComponents components = builder.finalize_components();
-  const std::size_t raw_entries = builder.raw_entries_estimate();
-  const std::string fallback_reason = row_major_fallback_reason(
-      use_gram_workspace, use_row_major_gram, row_major_within_limit);
 
   // Convert through const references before named_arg's by-value assignment so
   // the R payloads do not overlap temporary copies of the C++ vectors.
@@ -106,10 +101,5 @@
            use_gram_workspace ? "gram" : "svd",
        cpp11::named_arg("assembly_route") = "serial_triangular",
        cpp11::named_arg("requested_assembly_threads") = 1,
-       cpp11::named_arg("effective_assembly_threads") = 1,
-       cpp11::named_arg("raw_entries_estimate") =
-           static_cast<double>(raw_entries),
-       cpp11::named_arg("row_major_used") = use_row_major_gram,
-       cpp11::named_arg("row_major_fallback_reason") = fallback_reason,
-       cpp11::named_arg("parallel_fallback_reason") = "not_requested"});
+       cpp11::named_arg("effective_assembly_threads") = 1});
 }

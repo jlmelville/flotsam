@@ -1,26 +1,5 @@
 #include "ltsa_internal.h"
 
-int query_dsyev_workspace_size(int n) {
-  char jobz = 'V';
-  char uplo = 'U';
-  int lwork = -1;
-  int info = 0;
-  double matrix_dummy = 0.0;
-  double value_dummy = 0.0;
-  double work_query = 0.0;
-
-  F77_CALL(dsyev)(&jobz, &uplo, &n, &matrix_dummy, &n, &value_dummy,
-                  &work_query, &lwork, &info FCONE FCONE);
-  if (info != 0) {
-    cpp11::stop("LAPACK dsyev workspace query failed with info = %d", info);
-  }
-  if (work_query > std::numeric_limits<int>::max()) {
-    cpp11::stop("LAPACK dsyev workspace is too large");
-  }
-
-  return std::max(1, static_cast<int>(work_query));
-}
-
 int query_dsyev_workspace(int n, std::vector<double>& gram,
                           std::vector<double>& values) {
   char jobz = 'V';
@@ -68,35 +47,6 @@ int query_dgesdd_workspace(int n_nbrs, int n_dim, int min_dim,
   return std::max(1, static_cast<int>(work_query));
 }
 
-int query_dgesdd_workspace_size(int n_nbrs, int n_dim, int min_dim) {
-  char jobz = 'S';
-  int m = n_nbrs;
-  int n = n_dim;
-  int lda = n_nbrs;
-  int ldu = n_nbrs;
-  int ldvt = min_dim;
-  int info = 0;
-  int lwork = -1;
-  double matrix_dummy = 0.0;
-  double singular_value_dummy = 0.0;
-  double u_dummy = 0.0;
-  double vt_dummy = 0.0;
-  double work_query = 0.0;
-  int iwork_dummy = 0;
-
-  F77_CALL(dgesdd)(&jobz, &m, &n, &matrix_dummy, &lda, &singular_value_dummy,
-                   &u_dummy, &ldu, &vt_dummy, &ldvt, &work_query, &lwork,
-                   &iwork_dummy, &info FCONE);
-  if (info != 0) {
-    cpp11::stop("LAPACK dgesdd workspace query failed with info = %d", info);
-  }
-  if (work_query > std::numeric_limits<int>::max()) {
-    cpp11::stop("LAPACK dgesdd workspace is too large");
-  }
-
-  return std::max(1, static_cast<int>(work_query));
-}
-
 GramLocalWeightsWorkspace::GramLocalWeightsWorkspace(std::size_t n_nbrs,
                                                      std::size_t n_dim,
                                                      int ndim,
@@ -105,20 +55,32 @@ GramLocalWeightsWorkspace::GramLocalWeightsWorkspace(std::size_t n_nbrs,
       n_nbrs(checked_lapack_dim(n_nbrs, "n_neighbors")),
       n_dim(checked_lapack_dim(n_dim, "ncol(X)")),
       requested(std::min(ndim, std::min(this->n_nbrs, this->n_dim))),
-      nni(n_nbrs), centered(n_nbrs * n_dim), gram(n_nbrs * n_nbrs),
-      values(n_nbrs), weights(n_nbrs * n_nbrs) {
+      nni(checked_vector_size<int>(n_nbrs, "LTSA neighborhood indices")),
+      centered(checked_vector_size_mul<double>(
+          n_nbrs, n_dim, "LTSA centered neighborhood workspace")),
+      gram(checked_vector_size_mul<double>(n_nbrs, n_nbrs,
+                                           "LTSA Gram workspace")),
+      values(checked_vector_size<double>(n_nbrs, "LTSA Gram eigenvalues")),
+      weights(checked_vector_size_mul<double>(n_nbrs, n_nbrs,
+                                              "LTSA local weights")) {
   if (use_row_major) {
-    row_buffer.resize(n_nbrs * n_dim);
-    col_means.resize(n_dim);
+    row_buffer.resize(checked_vector_size_mul<double>(
+        n_nbrs, n_dim, "LTSA row-major neighborhood workspace"));
+    col_means.resize(checked_vector_size<double>(n_dim, "LTSA column means"));
   }
-  keep.reserve(requested);
-  work.resize(query_dsyev_workspace(this->n_nbrs, gram, values));
+  keep.reserve(checked_vector_size<int>(static_cast<std::size_t>(requested),
+                                        "LTSA retained local basis"));
+  work.resize(checked_vector_size<double>(
+      static_cast<std::size_t>(
+          query_dsyev_workspace(this->n_nbrs, gram, values)),
+      "LTSA dsyev workspace"));
 }
 
 std::vector<int> flat_neighbors_zero_based(const cpp11::integers& value_nnt,
                                            std::size_t offset,
                                            std::size_t n_nbrs) {
-  std::vector<int> out(n_nbrs);
+  std::vector<int> out(
+      checked_vector_size<int>(n_nbrs, "LTSA neighborhood indices"));
   fill_flat_neighbors_zero_based(value_nnt, offset, n_nbrs, out);
   return out;
 }
@@ -126,7 +88,7 @@ std::vector<int> flat_neighbors_zero_based(const cpp11::integers& value_nnt,
 void fill_flat_neighbors_zero_based(const cpp11::integers& value_nnt,
                                     std::size_t offset, std::size_t n_nbrs,
                                     std::vector<int>& out) {
-  out.resize(n_nbrs);
+  out.resize(checked_vector_size<int>(n_nbrs, "LTSA neighborhood indices"));
   for (std::size_t local = 0; local < n_nbrs; local++) {
     out[local] = value_nnt[offset + local] - 1;
   }
@@ -139,7 +101,8 @@ void fill_centered_neighborhood(const cpp11::doubles_matrix<>& x,
                                 std::vector<double>& centered) {
   const std::size_t n_nbrs = nni.size();
   const std::size_t n_dim = x.ncol();
-  const std::size_t n_values = n_nbrs * n_dim;
+  const std::size_t n_values = checked_vector_size_mul<double>(
+      n_nbrs, n_dim, "LTSA centered neighborhood");
   if (centered.size() != n_values) {
     centered.resize(n_values);
   }
@@ -194,7 +157,8 @@ bool row_major_copy_within_limit(std::size_t n_obs, std::size_t n_dim,
 
 void make_row_major_copy(const double* x_data, std::size_t n_obs,
                          std::size_t n_dim, std::vector<double>& row_major) {
-  row_major.resize(n_obs * n_dim);
+  row_major.resize(checked_vector_size_mul<double>(
+      n_obs, n_dim, "LTSA row-major input copy"));
   for (std::size_t col = 0; col < n_dim; col++) {
     const double* col_ptr = x_data + col * n_obs;
     for (std::size_t row = 0; row < n_obs; row++) {
@@ -240,7 +204,8 @@ void fill_centered_neighborhood_row_major(const std::vector<double>& row_major,
 void fill_weights_from_basis(std::size_t n_nbrs, const std::vector<int>& keep,
                              const std::vector<double>& basis,
                              std::vector<double>& weights) {
-  const std::size_t n_weights = n_nbrs * n_nbrs;
+  const std::size_t n_weights =
+      checked_vector_size_mul<double>(n_nbrs, n_nbrs, "LTSA local weights");
   if (weights.size() != n_weights) {
     weights.resize(n_weights);
   }
@@ -264,18 +229,16 @@ void fill_weights_from_basis(std::size_t n_nbrs, const std::vector<int>& keep,
 
 int select_local_basis_columns(const std::vector<double>& values, int n_values,
                                int n_nbrs, int n_dim, int requested,
-                               bool values_ascending,
-                               std::vector<int>& keep) {
+                               bool values_ascending, std::vector<int>& keep) {
   double max_value = 0.0;
   for (int i = 0; i < n_values; i++) {
     max_value = std::max(max_value, values[i]);
   }
 
   const double tol =
-      max_value <= 0.0
-          ? 0.0
-          : static_cast<double>(std::max(n_nbrs, n_dim)) * max_value *
-                std::numeric_limits<double>::epsilon();
+      max_value <= 0.0 ? 0.0
+                       : static_cast<double>(std::max(n_nbrs, n_dim)) *
+                             max_value * std::numeric_limits<double>::epsilon();
 
   int rank = 0;
   if (max_value > 0.0) {
@@ -311,10 +274,16 @@ LocalWeights compute_local_weights_svd(const cpp11::doubles_matrix<>& x,
   std::vector<double> centered;
   fill_centered_neighborhood(x, nni, centered);
   std::vector<double> a = centered;
-  std::vector<double> d(min_dim);
-  std::vector<double> u(static_cast<std::size_t>(n_nbrs) * min_dim);
-  std::vector<double> vt(static_cast<std::size_t>(min_dim) * n_dim);
-  std::vector<int> iwork(static_cast<std::size_t>(8) * min_dim);
+  std::vector<double> d(checked_vector_size<double>(
+      static_cast<std::size_t>(min_dim), "LTSA singular values"));
+  std::vector<double> u(checked_vector_size_mul<double>(
+      static_cast<std::size_t>(n_nbrs), static_cast<std::size_t>(min_dim),
+      "LTSA left singular vectors"));
+  std::vector<double> vt(checked_vector_size_mul<double>(
+      static_cast<std::size_t>(min_dim), static_cast<std::size_t>(n_dim),
+      "LTSA right singular vectors"));
+  std::vector<int> iwork(checked_vector_size_mul<int>(
+      8, static_cast<std::size_t>(min_dim), "LTSA dgesdd integer workspace"));
 
   char jobz = 'S';
   int m = n_nbrs;
@@ -337,7 +306,8 @@ LocalWeights compute_local_weights_svd(const cpp11::doubles_matrix<>& x,
   }
 
   lwork = std::max(1, static_cast<int>(work_query));
-  std::vector<double> work(lwork);
+  std::vector<double> work(checked_vector_size<double>(
+      static_cast<std::size_t>(lwork), "LTSA dgesdd workspace"));
   F77_CALL(dgesdd)(&jobz, &m, &n, a.data(), &lda, d.data(), u.data(), &ldu,
                    vt.data(), &ldvt, work.data(), &lwork, iwork.data(),
                    &info FCONE);
@@ -347,7 +317,8 @@ LocalWeights compute_local_weights_svd(const cpp11::doubles_matrix<>& x,
 
   LocalWeights out;
   std::vector<int> keep;
-  keep.reserve(requested);
+  keep.reserve(checked_vector_size<int>(static_cast<std::size_t>(requested),
+                                        "LTSA retained local basis"));
   out.rank = select_local_basis_columns(d, min_dim, n_nbrs, n_dim, requested,
                                         false, keep);
 
@@ -366,7 +337,9 @@ LocalWeights compute_local_weights_gram(const cpp11::doubles_matrix<>& x,
 
   std::vector<double> centered;
   fill_centered_neighborhood(x, nni, centered);
-  std::vector<double> gram(n_nbrs_size * n_nbrs_size, 0.0);
+  std::vector<double> gram(checked_vector_size_mul<double>(
+                               n_nbrs_size, n_nbrs_size, "LTSA Gram workspace"),
+                           0.0);
 
   char uplo = 'U';
   char trans = 'N';
@@ -379,7 +352,8 @@ LocalWeights compute_local_weights_gram(const cpp11::doubles_matrix<>& x,
   F77_CALL(dsyrk)(&uplo, &trans, &n, &k, &alpha, centered.data(), &lda, &beta,
                   gram.data(), &ldc FCONE FCONE);
 
-  std::vector<double> values(n_nbrs);
+  std::vector<double> values(checked_vector_size<double>(
+      static_cast<std::size_t>(n_nbrs), "LTSA Gram eigenvalues"));
   char jobz = 'V';
   int info = 0;
   int lwork = -1;
@@ -394,7 +368,8 @@ LocalWeights compute_local_weights_gram(const cpp11::doubles_matrix<>& x,
   }
 
   lwork = std::max(1, static_cast<int>(work_query));
-  std::vector<double> work(lwork);
+  std::vector<double> work(checked_vector_size<double>(
+      static_cast<std::size_t>(lwork), "LTSA dsyev workspace"));
   F77_CALL(dsyev)(&jobz, &uplo, &n, gram.data(), &n, values.data(), work.data(),
                   &lwork, &info FCONE FCONE);
   if (info != 0) {
@@ -403,7 +378,8 @@ LocalWeights compute_local_weights_gram(const cpp11::doubles_matrix<>& x,
 
   LocalWeights out;
   std::vector<int> keep;
-  keep.reserve(requested);
+  keep.reserve(checked_vector_size<int>(static_cast<std::size_t>(requested),
+                                        "LTSA retained local basis"));
   out.rank = select_local_basis_columns(values, n_nbrs, n_nbrs, n_dim,
                                         requested, true, keep);
 
@@ -456,9 +432,9 @@ int compute_local_weights_gram_workspace(const double* x_data,
   return rank;
 }
 
-LocalWeights compute_local_weights_shape_routed(const cpp11::doubles_matrix<>& x,
-                                                const std::vector<int>& nni,
-                                                int ndim) {
+LocalWeights
+compute_local_weights_shape_routed(const cpp11::doubles_matrix<>& x,
+                                   const std::vector<int>& nni, int ndim) {
   if (x.ncol() == 0) {
     cpp11::stop("X must contain at least one column");
   }

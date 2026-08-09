@@ -27,25 +27,3 @@ std::size_t triangular_pair_offset(std::size_t local_col,
                                    std::size_t local_row) {
   return local_col * (local_col + 1) / 2 + local_row;
 }
-
-std::size_t checked_raw_staging_bytes(std::size_t raw_count) {
-  const std::size_t row_bytes = checked_size_mul(
-      raw_count, sizeof(int), "Raw LTSA row staging buffer is too large");
-  const std::size_t value_bytes = checked_size_mul(
-      raw_count, sizeof(double), "Raw LTSA value staging buffer is too large");
-  return checked_size_add(row_bytes, value_bytes,
-                          "Raw LTSA staging buffers are too large");
-}
-
-std::string row_major_fallback_reason(bool use_gram_workspace,
-                                      bool row_major_used,
-                                      bool row_major_within_limit) {
-  if (!use_gram_workspace) {
-    return "not_applicable_svd_route";
-  }
-  if (row_major_used) {
-    return "";
-  }
-  return row_major_within_limit ? "allocation_failed"
-                                : "copy_size_exceeds_limit";
-}

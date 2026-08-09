@@ -135,12 +135,7 @@ expect_ltsa_public_result <- function(
     "component_sizes",
     "component_membership",
     "requested_assembly_threads",
-    "effective_assembly_threads",
-    "raw_entries_estimate",
-    "memory",
-    "row_major_used",
-    "row_major_fallback_reason",
-    "parallel_fallback_reason"
+    "effective_assembly_threads"
   )
   if (!normalized) {
     assembly_fields <- c(assembly_fields, "component_embedding_overlap")

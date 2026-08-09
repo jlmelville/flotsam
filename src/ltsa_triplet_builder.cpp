@@ -4,15 +4,20 @@ LtsaTripletAssemblyBuilder::LtsaTripletAssemblyBuilder(
     const cpp11::integers& value_nnt, std::size_t value_n_nbrs,
     std::size_t n_obs, std::size_t max_int)
     : n_obs_(n_obs), value_n_nbrs_(value_n_nbrs), max_int_(max_int),
-      canonical_columns_(n_obs), full_columns_(n_obs) {
+      canonical_columns_(checked_vector_size<std::vector<CompactEntry>>(
+          n_obs, "serial LTSA canonical column containers")),
+      full_columns_(checked_vector_size<std::vector<CompactEntry>>(
+          n_obs, "serial LTSA full column containers")) {
   checked_triplet_count(n_obs_, value_n_nbrs_, "value_n_nbrs");
+  checked_size_mul(n_obs_, triangular_pair_count(value_n_nbrs_),
+                   "Too many triangular LTSA contributions to stage");
 
-  std::vector<std::size_t> canonical_col_counts(n_obs_, 0);
-  std::vector<int> nni(value_n_nbrs_);
-  const std::size_t triangular_count = triangular_pair_count(value_n_nbrs_);
-  raw_entries_estimate_ =
-      checked_size_mul(n_obs_, triangular_count,
-                       "Too many triangular LTSA contributions to stage");
+  std::vector<std::size_t> canonical_col_counts(
+      checked_vector_size<std::size_t>(n_obs_,
+                                       "serial LTSA canonical column counts"),
+      0);
+  std::vector<int> nni(checked_vector_size<int>(
+      value_n_nbrs_, "serial LTSA neighborhood indices"));
 
   for (std::size_t obs = 0; obs < n_obs_; obs++) {
     std::size_t offset = obs * value_n_nbrs_;
@@ -30,7 +35,8 @@ LtsaTripletAssemblyBuilder::LtsaTripletAssemblyBuilder(
   }
 
   for (std::size_t col = 0; col < n_obs_; col++) {
-    canonical_columns_[col].reserve(canonical_col_counts[col]);
+    canonical_columns_[col].reserve(checked_vector_size<CompactEntry>(
+        canonical_col_counts[col], "serial LTSA canonical column"));
   }
 }
 
@@ -66,10 +72,16 @@ SparseComponents LtsaTripletAssemblyBuilder::finalize_components() {
   }
 
   SparseComponents out;
-  out.p.resize(n_obs_ + 1, 0);
+  out.p.resize(
+      checked_vector_size<int>(
+          checked_size_add(n_obs_, 1, "Too many serial LTSA sparse columns"),
+          "serial LTSA sparse column pointers"),
+      0);
 
-  std::vector<double> row_sums(n_obs_, 0.0);
-  std::vector<int> row_seen(n_obs_, -1);
+  std::vector<double> row_sums(
+      checked_vector_size<double>(n_obs_, "serial LTSA row sums"), 0.0);
+  std::vector<int> row_seen(
+      checked_vector_size<int>(n_obs_, "serial LTSA row markers"), -1);
   std::vector<int> touched_rows;
 
   expand_canonical_to_full(row_sums, row_seen, touched_rows);
@@ -105,10 +117,6 @@ SparseComponents LtsaTripletAssemblyBuilder::finalize_components() {
   full_columns_.shrink_to_fit();
 
   return out;
-}
-
-std::size_t LtsaTripletAssemblyBuilder::raw_entries_estimate() const {
-  return raw_entries_estimate_;
 }
 
 void LtsaTripletAssemblyBuilder::append_triangular_prechecked(
@@ -147,8 +155,14 @@ void LtsaTripletAssemblyBuilder::expand_canonical_to_full(
       if (value == 0.0) {
         continue;
       }
+      if (full_columns_[col].size() >= full_columns_[col].max_size()) {
+        cpp11::stop("serial LTSA full compact column is too large");
+      }
       full_columns_[col].push_back(CompactEntry{row, value});
       if (row != static_cast<int>(col)) {
+        if (full_columns_[row].size() >= full_columns_[row].max_size()) {
+          cpp11::stop("serial LTSA full compact column is too large");
+        }
         full_columns_[row].push_back(
             CompactEntry{static_cast<int>(col), value});
       }

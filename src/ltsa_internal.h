@@ -35,6 +35,27 @@ struct LocalWeights {
   int rank = 0;
 };
 
+constexpr std::size_t LTSA_ROW_MAJOR_COPY_MAX_BYTES =
+    static_cast<std::size_t>(256) * 1024 * 1024;
+
+template <typename T>
+std::size_t checked_vector_size(std::size_t count, const char* name) {
+  if (count > std::vector<T>().max_size()) {
+    cpp11::stop("%s is too large", name);
+  }
+  return count;
+}
+
+template <typename T>
+std::size_t checked_vector_size_mul(std::size_t lhs, std::size_t rhs,
+                                    const char* name) {
+  const std::size_t max_count = std::vector<T>().max_size();
+  if (lhs != 0 && rhs > max_count / lhs) {
+    cpp11::stop("%s is too large", name);
+  }
+  return lhs * rhs;
+}
+
 struct GramLocalWeightsWorkspace {
   GramLocalWeightsWorkspace(std::size_t n_nbrs, std::size_t n_dim, int ndim,
                             bool use_row_major);
@@ -67,8 +88,6 @@ void checked_ndim(int ndim);
 
 int checked_lapack_dim(std::size_t value, const char* name);
 
-std::size_t checked_row_major_copy_max_bytes(double max_bytes);
-
 std::vector<int> flat_neighbors_zero_based(const cpp11::integers& value_nnt,
                                            std::size_t offset,
                                            std::size_t n_nbrs);
@@ -100,14 +119,10 @@ int select_local_basis_columns(const std::vector<double>& values, int n_values,
 int query_dsyev_workspace(int n, std::vector<double>& gram,
                           std::vector<double>& values);
 
-int query_dsyev_workspace_size(int n);
-
 int query_dgesdd_workspace(int n_nbrs, int n_dim, int min_dim,
                            std::vector<double>& a, std::vector<double>& d,
                            std::vector<double>& u, std::vector<double>& vt,
                            std::vector<int>& iwork);
-
-int query_dgesdd_workspace_size(int n_nbrs, int n_dim, int min_dim);
 
 bool row_major_copy_within_limit(std::size_t n_obs, std::size_t n_dim,
                                  std::size_t max_bytes);
@@ -130,16 +145,10 @@ std::size_t checked_size_add(std::size_t lhs, std::size_t rhs,
 std::size_t checked_size_mul(std::size_t lhs, std::size_t rhs,
                              const char* message);
 
-std::size_t checked_raw_staging_bytes(std::size_t raw_count);
-
 std::size_t triangular_pair_count(std::size_t n_nbrs);
 
 std::size_t triangular_pair_offset(std::size_t local_col,
                                    std::size_t local_row);
-
-std::string row_major_fallback_reason(bool use_gram_workspace,
-                                      bool row_major_used,
-                                      bool row_major_within_limit);
 
 class LtsaTripletAssemblyBuilder {
 public:
@@ -152,14 +161,11 @@ public:
 
   SparseComponents finalize_components();
 
-  std::size_t raw_entries_estimate() const;
-
 private:
   std::size_t n_obs_;
   std::size_t value_n_nbrs_;
   std::size_t max_int_;
   std::size_t n_appended_ = 0;
-  std::size_t raw_entries_estimate_ = 0;
   bool finalized_ = false;
   std::vector<std::vector<CompactEntry>> canonical_columns_;
   std::vector<std::vector<CompactEntry>> full_columns_;

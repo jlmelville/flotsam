@@ -146,42 +146,27 @@ test_that("dimension and neighborhood arguments are validated", {
     ltsa(iris[1:10, ], n_assembly_threads = c(1, 2)),
     "n_assembly_threads"
   )
-  expect_error(
-    ltsa(iris[1:10, ], copy_max_mib = -1),
-    "copy_max_mib"
+})
+
+test_that("removed assembly memory controls are rejected through dots", {
+  base_args <- list(
+    X = iris[1:10, ],
+    nn_method = "exact",
+    n_neighbors = 8L
   )
-  expect_error(
-    ltsa(iris[1:10, ], copy_max_mib = NA_real_),
-    "copy_max_mib"
-  )
-  expect_error(
-    ltsa(iris[1:10, ], copy_max_mib = Inf),
-    "copy_max_mib"
-  )
-  expect_error(
-    ltsa(iris[1:10, ], copy_max_mib = c(128, 256)),
-    "copy_max_mib"
-  )
-  expect_error(
-    ltsa(iris[1:10, ], assembly_max_mib = -1),
-    "assembly_max_mib"
-  )
-  expect_error(
-    ltsa(iris[1:10, ], assembly_max_mib = NA_real_),
-    "assembly_max_mib"
-  )
-  expect_error(
-    ltsa(iris[1:10, ], assembly_max_mib = Inf),
-    "assembly_max_mib"
-  )
-  expect_error(
-    ltsa(iris[1:10, ], assembly_max_mib = .Machine$double.xmax),
-    "assembly_max_mib is too large"
-  )
-  expect_error(
-    ltsa(iris[1:10, ], assembly_max_mib = c(2048, 4096)),
-    "assembly_max_mib"
-  )
+
+  for (argument in c("copy_max_mib", "assembly_max_mib")) {
+    args <- base_args
+    args[[argument]] <- 0
+    expect_error(
+      do.call(ltsa, args),
+      paste0(
+        "^Argument `",
+        argument,
+        '` is not supported for eig_method = "auto"$'
+      )
+    )
+  }
 })
 
 make_c1_precomputed_neighbors <- function(n, include_self, n_neighbors) {
@@ -436,7 +421,6 @@ test_that("public eigen control names are validated before eigenanalysis", {
           normalize = FALSE,
           n_threads = 1L,
           n_assembly_threads = 1L,
-          copy_max_mib = 256,
           verbose = FALSE,
           eig_method = "rspectra",
           1e-8
@@ -605,7 +589,6 @@ test_that("output B rejects all eigenanalysis controls before assembly", {
         normalize = FALSE,
         n_threads = 1L,
         n_assembly_threads = 1L,
-        copy_max_mib = 256,
         verbose = FALSE,
         1e-8
       )
