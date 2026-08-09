@@ -171,19 +171,6 @@ test_that("removed assembly memory controls are rejected through dots", {
   }
 })
 
-make_c1_precomputed_neighbors <- function(n, include_self, n_neighbors) {
-  offsets <- if (include_self) {
-    seq.int(0L, n_neighbors - 1L)
-  } else {
-    seq.int(0L, n_neighbors)
-  }
-  t(vapply(
-    seq_len(n),
-    function(i) as.integer((i - 1L + offsets) %% n + 1L),
-    integer(length(offsets))
-  ))
-}
-
 test_that("effective neighborhood size is validated before processing", {
   set.seed(101)
   X <- matrix(stats::rnorm(6L * 4L), nrow = 6L, ncol = 4L)
@@ -206,7 +193,11 @@ test_that("effective neighborhood size is validated before processing", {
         X,
         ndim = 2L,
         n_neighbors = 3L,
-        nn_method = make_c1_precomputed_neighbors(6L, include_self, 3L),
+        nn_method = make_precomputed_neighbor_indices(
+          6L,
+          3L,
+          include_self = include_self
+        ),
         include_self = include_self,
         output = "B"
       ),
@@ -238,7 +229,11 @@ test_that("ndim plus two is the smallest accepted effective neighborhood", {
         X,
         ndim = 2L,
         n_neighbors = 4L,
-        nn_method = make_c1_precomputed_neighbors(6L, include_self, 4L),
+        nn_method = make_precomputed_neighbor_indices(
+          6L,
+          4L,
+          include_self = include_self
+        ),
         include_self = include_self,
         output = "B"
       ),

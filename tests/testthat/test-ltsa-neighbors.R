@@ -1,17 +1,4 @@
-expect_sparse_equivalent <- function(candidate, reference, tolerance = 1e-12) {
-  candidate <- Matrix::drop0(candidate)
-  reference <- Matrix::drop0(reference)
-  expect_s4_class(candidate, "dgCMatrix")
-  expect_s4_class(reference, "dgCMatrix")
-  expect_identical(candidate@Dim, reference@Dim)
-  expect_equal(
-    as.matrix(candidate),
-    as.matrix(reference),
-    tolerance = tolerance
-  )
-}
-
-exact_nn_idx <- function(X, n_neighbors, include_self) {
+canonical_exact_neighbor_indices <- function(X, n_neighbors, include_self) {
   nn <- rnndescent::brute_force_knn(
     data = X,
     k = min(n_neighbors + 1L, nrow(X)),
@@ -28,19 +15,6 @@ exact_nn_idx <- function(X, n_neighbors, include_self) {
 
 capture_ltsa_messages <- function(...) {
   capture.output(invisible(ltsa(...)), type = "message")
-}
-
-precomputed_nn_idx <- function(n, n_neighbors, include_self) {
-  offsets <- if (include_self) {
-    seq.int(0L, n_neighbors - 1L)
-  } else {
-    seq.int(0L, n_neighbors)
-  }
-  t(vapply(
-    seq_len(n),
-    function(i) as.integer((i - 1L + offsets) %% n + 1L),
-    integer(length(offsets))
-  ))
 }
 
 test_that("computed neighbors are canonicalized deterministically", {
@@ -144,7 +118,11 @@ test_that("precomputed exact neighborhoods match computed exact LTSA B", {
   X <- as.matrix(iris[seq_len(18L), seq_len(4L)])
 
   for (include_self in c(TRUE, FALSE)) {
-    nn_idx <- exact_nn_idx(X, n_neighbors = 6L, include_self = include_self)
+    nn_idx <- canonical_exact_neighbor_indices(
+      X,
+      n_neighbors = 6L,
+      include_self = include_self
+    )
     computed <- ltsa(
       X,
       n_neighbors = 6L,
@@ -195,7 +173,7 @@ test_that("default nnd neighbor path returns usable public diagnostics", {
 test_that("precomputed graph supplied as nn_method skips nearest-neighbor search", {
   set.seed(20)
   X <- matrix(rnorm(8L * 10L), nrow = 8L)
-  nn_idx <- precomputed_nn_idx(8L, 4L, include_self = TRUE)
+  nn_idx <- make_precomputed_neighbor_indices(8L, 4L, include_self = TRUE)
 
   reference <- flotsam:::assemble_ltsa_B(
     X = X,
@@ -217,7 +195,11 @@ test_that("precomputed graph supplied as nn_method skips nearest-neighbor search
 
 test_that("nn_method can carry a precomputed neighbor graph", {
   X <- as.matrix(iris[seq_len(18L), seq_len(4L)])
-  nn_idx <- exact_nn_idx(X, n_neighbors = 6L, include_self = TRUE)
+  nn_idx <- canonical_exact_neighbor_indices(
+    X,
+    n_neighbors = 6L,
+    include_self = TRUE
+  )
   reference <- ltsa(
     X,
     n_neighbors = NULL,
@@ -250,7 +232,11 @@ test_that("nn_method can carry a precomputed neighbor graph", {
 
 test_that("detailed results report precomputed neighbor diagnostics", {
   X <- as.matrix(iris[seq_len(18L), seq_len(4L)])
-  nn_idx <- exact_nn_idx(X, n_neighbors = 6L, include_self = TRUE)
+  nn_idx <- canonical_exact_neighbor_indices(
+    X,
+    n_neighbors = 6L,
+    include_self = TRUE
+  )
 
   result <- ltsa(
     X,
@@ -331,7 +317,11 @@ test_that("precomputed duplicate neighborhoods are rejected by row", {
   X <- matrix(seq_len(8L * 4L), nrow = 8L)
 
   for (include_self in c(TRUE, FALSE)) {
-    bad <- precomputed_nn_idx(8L, 4L, include_self)
+    bad <- make_precomputed_neighbor_indices(
+      8L,
+      4L,
+      include_self = include_self
+    )
     bad[3L, ncol(bad)] <- bad[3L, 2L]
 
     expect_error(
@@ -402,7 +392,11 @@ test_that("exact search canonicalizes identical observation neighborhoods", {
 
 test_that("precomputed neighbor graph validation rejects invalid graphs", {
   X <- as.matrix(iris[seq_len(8L), seq_len(4L)])
-  nn_idx <- exact_nn_idx(X, n_neighbors = 4L, include_self = TRUE)
+  nn_idx <- canonical_exact_neighbor_indices(
+    X,
+    n_neighbors = 4L,
+    include_self = TRUE
+  )
 
   expect_error(
     ltsa(X, ndim = 2L, nn_method = nn_idx[-1L, ], output = "B"),
@@ -459,7 +453,11 @@ test_that("precomputed neighbor graph validation rejects invalid graphs", {
     "own row index"
   )
 
-  nn_idx_no_self <- exact_nn_idx(X, n_neighbors = 4L, include_self = FALSE)
+  nn_idx_no_self <- canonical_exact_neighbor_indices(
+    X,
+    n_neighbors = 4L,
+    include_self = FALSE
+  )
   bad <- nn_idx_no_self
   bad[2L, 1L] <- 1L
   expect_error(
@@ -476,7 +474,11 @@ test_that("precomputed neighbor graph validation rejects invalid graphs", {
 
 test_that("precomputed graph with n_threads does not warn", {
   X <- as.matrix(iris[seq_len(18L), seq_len(4L)])
-  nn_idx <- exact_nn_idx(X, n_neighbors = 6L, include_self = TRUE)
+  nn_idx <- canonical_exact_neighbor_indices(
+    X,
+    n_neighbors = 6L,
+    include_self = TRUE
+  )
 
   expect_warning(
     invisible(ltsa(
@@ -493,7 +495,11 @@ test_that("precomputed graph with n_threads does not warn", {
 
 test_that("verbose output describes computed and precomputed neighbor handling", {
   X <- as.matrix(iris[seq_len(18L), seq_len(4L)])
-  nn_idx <- exact_nn_idx(X, n_neighbors = 6L, include_self = TRUE)
+  nn_idx <- canonical_exact_neighbor_indices(
+    X,
+    n_neighbors = 6L,
+    include_self = TRUE
+  )
 
   expect_length(
     capture_ltsa_messages(

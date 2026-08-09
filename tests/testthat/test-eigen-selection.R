@@ -1,4 +1,4 @@
-selection_test_basis <- function() {
+make_selection_test_basis <- function() {
   list(
     u = c(1, 1, 1, 1) / 2,
     v1 = c(1, -1, 0, 0) / sqrt(2),
@@ -7,7 +7,7 @@ selection_test_basis <- function() {
   )
 }
 
-selection_test_matrix <- function(basis) {
+make_selection_test_matrix <- function(basis) {
   Q <- do.call(cbind, basis)
   Q %*% diag(c(0, 1, 2, 3)) %*% t(Q)
 }
@@ -20,7 +20,7 @@ expect_selected_basis <- function(selected, expected) {
   )
 }
 
-centered_test_basis <- function(n, rank) {
+make_centered_test_basis <- function(n, rank) {
   set.seed(123)
   nullvec <- rep(1, n) / sqrt(n)
   Z <- matrix(stats::rnorm(n * rank * 2L), nrow = n)
@@ -31,7 +31,7 @@ centered_test_basis <- function(n, rank) {
 
 synthetic_ltsa_problem <- function(values) {
   n <- length(values)
-  basis <- cbind(rep(1, n) / sqrt(n), centered_test_basis(n, n - 1L))
+  basis <- cbind(rep(1, n) / sqrt(n), make_centered_test_basis(n, n - 1L))
   list(
     matrix = basis %*% diag(values) %*% t(basis),
     basis = basis
@@ -101,8 +101,8 @@ synthetic_candidate_provider_factory <- function(
 }
 
 test_that("embedding vector selection drops a returned trivial vector", {
-  basis <- selection_test_basis()
-  B <- selection_test_matrix(basis)
+  basis <- make_selection_test_basis()
+  B <- make_selection_test_matrix(basis)
   candidates <- cbind(basis$v2, basis$u, basis$v3, basis$v1)
 
   selected <- flotsam:::ltsa_ritz_select(
@@ -116,8 +116,8 @@ test_that("embedding vector selection drops a returned trivial vector", {
 })
 
 test_that("embedding vector selection keeps smallest vectors when trivial vector is absent", {
-  basis <- selection_test_basis()
-  B <- selection_test_matrix(basis)
+  basis <- make_selection_test_basis()
+  B <- make_selection_test_matrix(basis)
   candidates <- cbind(basis$v2, basis$v3, basis$v1)
 
   selected <- flotsam:::ltsa_ritz_select(
@@ -131,8 +131,8 @@ test_that("embedding vector selection keeps smallest vectors when trivial vector
 })
 
 test_that("Ritz selection is invariant to rotations in the candidate subspace", {
-  basis <- selection_test_basis()
-  B <- selection_test_matrix(basis)
+  basis <- make_selection_test_basis()
+  B <- make_selection_test_matrix(basis)
   target <- cbind(basis$v1, basis$v2)
   candidate_space <- cbind(basis$u, target, basis$v3)
   # fmt: skip
@@ -163,7 +163,7 @@ test_that("Ritz selection is invariant to rotations in the candidate subspace", 
 })
 
 test_that("clustered low-eigenvalue subspaces are compared by projector", {
-  basis <- selection_test_basis()
+  basis <- make_selection_test_basis()
   Q <- do.call(cbind, basis)
   B <- Q %*% diag(c(0, 1, 1, 4)) %*% t(Q)
   target <- cbind(basis$v1, basis$v2)
@@ -192,8 +192,8 @@ test_that("clustered low-eigenvalue subspaces are compared by projector", {
 })
 
 test_that("rank loss after null projection fails clearly", {
-  basis <- selection_test_basis()
-  B <- selection_test_matrix(basis)
+  basis <- make_selection_test_basis()
+  B <- make_selection_test_matrix(basis)
   candidates <- cbind(basis$u, 2 * basis$u, basis$v1)
 
   expect_error(

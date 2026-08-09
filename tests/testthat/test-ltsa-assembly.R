@@ -1,16 +1,3 @@
-expect_sparse_equivalent <- function(candidate, reference, tolerance = 1e-12) {
-  candidate <- Matrix::drop0(candidate)
-  reference <- Matrix::drop0(reference)
-  expect_s4_class(candidate, "dgCMatrix")
-  expect_s4_class(reference, "dgCMatrix")
-  expect_identical(candidate@Dim, reference@Dim)
-  expect_equal(
-    as.matrix(candidate),
-    as.matrix(reference),
-    tolerance = tolerance
-  )
-}
-
 expect_ltsa_assembly_parallel_matches <- function(
   X,
   nn_idx,
@@ -85,7 +72,7 @@ expect_embedding_subspace_equivalent <- function(
   expect_same_subspace(candidate, reference, tolerance = tolerance)
 }
 
-exact_nn_idx <- function(X, n_neighbors, include_self) {
+raw_exact_neighbor_indices <- function(X, n_neighbors, include_self) {
   nn <- rnndescent::brute_force_knn(
     data = X,
     k = ifelse(include_self, n_neighbors, n_neighbors + 1L),
@@ -96,7 +83,7 @@ exact_nn_idx <- function(X, n_neighbors, include_self) {
   nn$idx
 }
 
-ltsa_local_weights_r_reference <- function(X, nni, ndim) {
+reference_local_weights <- function(X, nni, ndim) {
   Xi <- scale(X[nni, , drop = FALSE], center = TRUE, scale = FALSE)
   max_rank <- min(dim(Xi))
   ndim <- min(ndim, max_rank)
@@ -121,7 +108,7 @@ ltsa_local_weights_r_reference <- function(X, nni, ndim) {
   list(Wi = Wi, rank = rank)
 }
 
-assemble_ltsa_B_r_triplet_reference <- function(X, nn_idx, ndim, include_self) {
+reference_triplet_assembly <- function(X, nn_idx, ndim, include_self) {
   n <- nrow(X)
   weight_idx <- if (include_self) {
     nn_idx
@@ -138,7 +125,7 @@ assemble_ltsa_B_r_triplet_reference <- function(X, nn_idx, ndim, include_self) {
 
   for (i in seq_len(n)) {
     nni <- weight_idx[i, ]
-    local <- ltsa_local_weights_r_reference(X, nni, ndim)
+    local <- reference_local_weights(X, nni, ndim)
     if (local$rank < ndim) {
       rank_deficient_count <- rank_deficient_count + 1L
       min_local_rank <- min(min_local_rank, local$rank)
@@ -165,7 +152,7 @@ assemble_ltsa_B_r_triplet_reference <- function(X, nn_idx, ndim, include_self) {
 
 test_that("default assembly behavior remains serial", {
   X <- as.matrix(iris[seq_len(18L), seq_len(4L)])
-  nn_idx <- exact_nn_idx(X, n_neighbors = 6L, include_self = TRUE)
+  nn_idx <- raw_exact_neighbor_indices(X, n_neighbors = 6L, include_self = TRUE)
 
   default <- flotsam:::assemble_ltsa_B(
     X,
@@ -301,7 +288,11 @@ test_that("parallel assembly matches serial on high-p Gram route", {
   X <- matrix(rnorm(20L * 14L), nrow = 20L)
 
   for (include_self in c(TRUE, FALSE)) {
-    nn_idx <- exact_nn_idx(X, n_neighbors = 6L, include_self = include_self)
+    nn_idx <- raw_exact_neighbor_indices(
+      X,
+      n_neighbors = 6L,
+      include_self = include_self
+    )
     parallel <- expect_ltsa_assembly_parallel_matches(
       X,
       nn_idx,
@@ -319,7 +310,7 @@ test_that("parallel assembly matches serial on high-p Gram route", {
 test_that("public assembly thread control selects the requested route", {
   set.seed(102)
   X <- matrix(rnorm(18L * 14L), nrow = 18L)
-  nn_idx <- exact_nn_idx(X, n_neighbors = 6L, include_self = TRUE)
+  nn_idx <- raw_exact_neighbor_indices(X, n_neighbors = 6L, include_self = TRUE)
   common_args <- list(
     X = X,
     ndim = 2L,
@@ -380,7 +371,7 @@ test_that("public assembly thread control selects the requested route", {
 test_that("parallel assembly matches serial on low-p SVD route", {
   set.seed(11)
   X <- matrix(rnorm(22L * 3L), nrow = 22L)
-  nn_idx <- exact_nn_idx(X, n_neighbors = 7L, include_self = TRUE)
+  nn_idx <- raw_exact_neighbor_indices(X, n_neighbors = 7L, include_self = TRUE)
 
   expect_ltsa_assembly_parallel_matches(
     X,
@@ -393,7 +384,11 @@ test_that("parallel assembly matches serial on low-p SVD route", {
 
 test_that("parallel assembly preserves rank-deficiency summaries", {
   gram_X <- outer(seq_len(18L), seq_len(12L))
-  gram_nn <- exact_nn_idx(gram_X, n_neighbors = 5L, include_self = TRUE)
+  gram_nn <- raw_exact_neighbor_indices(
+    gram_X,
+    n_neighbors = 5L,
+    include_self = TRUE
+  )
   gram_parallel <- expect_ltsa_assembly_parallel_matches(
     gram_X,
     gram_nn,
@@ -406,7 +401,11 @@ test_that("parallel assembly preserves rank-deficiency summaries", {
 
   x <- seq_len(16L)
   svd_X <- cbind(x, 2 * x, -3 * x)
-  svd_nn <- exact_nn_idx(svd_X, n_neighbors = 6L, include_self = TRUE)
+  svd_nn <- raw_exact_neighbor_indices(
+    svd_X,
+    n_neighbors = 6L,
+    include_self = TRUE
+  )
   svd_parallel <- expect_ltsa_assembly_parallel_matches(
     svd_X,
     svd_nn,
@@ -428,7 +427,7 @@ test_that("public results expose serial and parallel rank summaries", {
 
   for (route in names(fixtures)) {
     X <- fixtures[[route]]
-    nn_idx <- exact_nn_idx(
+    nn_idx <- raw_exact_neighbor_indices(
       X,
       n_neighbors = neighborhood_sizes[[route]],
       include_self = TRUE
@@ -472,7 +471,7 @@ test_that("parallel assembly keeps centered Gram stable on hostile offsets", {
   n <- 200L
   p <- 100L
   X <- matrix(rnorm(n * p, sd = 1e-3), n, p) + 1e6
-  nn_idx <- exact_nn_idx(X, n_neighbors = 8L, include_self = TRUE)
+  nn_idx <- raw_exact_neighbor_indices(X, n_neighbors = 8L, include_self = TRUE)
 
   expect_ltsa_assembly_parallel_matches(
     X,
@@ -487,7 +486,7 @@ test_that("parallel assembly keeps centered Gram stable on hostile offsets", {
 test_that("parallel assembly handles more requested threads than observations", {
   set.seed(13)
   X <- matrix(rnorm(5L * 6L), nrow = 5L)
-  nn_idx <- exact_nn_idx(X, n_neighbors = 4L, include_self = TRUE)
+  nn_idx <- raw_exact_neighbor_indices(X, n_neighbors = 4L, include_self = TRUE)
 
   parallel <- expect_ltsa_assembly_parallel_matches(
     X,
@@ -557,8 +556,12 @@ test_that("serial assembly matches R triplet reference", {
   X <- as.matrix(iris[seq_len(20L), seq_len(4L)])
 
   for (include_self in c(TRUE, FALSE)) {
-    nn_idx <- exact_nn_idx(X, n_neighbors = 6L, include_self = include_self)
-    reference <- assemble_ltsa_B_r_triplet_reference(
+    nn_idx <- raw_exact_neighbor_indices(
+      X,
+      n_neighbors = 6L,
+      include_self = include_self
+    )
+    reference <- reference_triplet_assembly(
       X,
       nn_idx,
       ndim = 2L,
@@ -585,10 +588,10 @@ test_that("serial assembly matches R triplet reference", {
 test_that("serial assembly Gram path matches R triplet reference", {
   set.seed(2)
   X <- matrix(rnorm(18L * 12L), nrow = 18L)
-  nn_idx <- exact_nn_idx(X, n_neighbors = 5L, include_self = TRUE)
+  nn_idx <- raw_exact_neighbor_indices(X, n_neighbors = 5L, include_self = TRUE)
   expect_gt(ncol(X), ncol(nn_idx))
 
-  reference <- assemble_ltsa_B_r_triplet_reference(
+  reference <- reference_triplet_assembly(
     X,
     nn_idx,
     ndim = 2L,
@@ -632,7 +635,7 @@ test_that("triangular production assembly matches R reference on shuffled neighb
   storage.mode(nn_idx) <- "integer"
   expect_gt(ncol(X), ncol(nn_idx))
 
-  reference <- assemble_ltsa_B_r_triplet_reference(
+  reference <- reference_triplet_assembly(
     X,
     nn_idx,
     ndim = 2L,
@@ -655,10 +658,10 @@ test_that("triangular production assembly matches R reference on shuffled neighb
 
 test_that("serial assembly Gram path preserves rank deficiency", {
   X <- outer(seq_len(18L), seq_len(12L))
-  nn_idx <- exact_nn_idx(X, n_neighbors = 5L, include_self = TRUE)
+  nn_idx <- raw_exact_neighbor_indices(X, n_neighbors = 5L, include_self = TRUE)
   expect_gt(ncol(X), ncol(nn_idx))
 
-  reference <- assemble_ltsa_B_r_triplet_reference(
+  reference <- reference_triplet_assembly(
     X,
     nn_idx,
     ndim = 2L,
@@ -684,9 +687,9 @@ test_that("serial assembly Gram path preserves rank deficiency", {
 test_that("triangular assembly preserves low-p rank deficiency", {
   x <- seq_len(16L)
   X <- cbind(x, 2 * x, -3 * x)
-  nn_idx <- exact_nn_idx(X, n_neighbors = 6L, include_self = TRUE)
+  nn_idx <- raw_exact_neighbor_indices(X, n_neighbors = 6L, include_self = TRUE)
 
-  reference <- assemble_ltsa_B_r_triplet_reference(
+  reference <- reference_triplet_assembly(
     X,
     nn_idx,
     ndim = 2L,
@@ -714,10 +717,10 @@ test_that("centered high-p Gram path is stable on hostile large-offset data", {
   n <- 200L
   p <- 100L
   X <- matrix(rnorm(n * p, sd = 1e-3), n, p) + 1e6
-  nn_idx <- exact_nn_idx(X, n_neighbors = 8L, include_self = TRUE)
+  nn_idx <- raw_exact_neighbor_indices(X, n_neighbors = 8L, include_self = TRUE)
   expect_gt(ncol(X), ncol(nn_idx))
 
-  reference <- assemble_ltsa_B_r_triplet_reference(
+  reference <- reference_triplet_assembly(
     X,
     nn_idx,
     ndim = 2L,
@@ -749,7 +752,7 @@ test_that("Gram assembly handles near-machine SVD-rank boundary", {
   nn_idx <- matrix(rep(seq_len(k), times = k), nrow = k, byrow = TRUE)
   storage.mode(nn_idx) <- "integer"
 
-  reference <- assemble_ltsa_B_r_triplet_reference(
+  reference <- reference_triplet_assembly(
     X,
     nn_idx,
     ndim = 2L,
@@ -771,8 +774,12 @@ test_that("Gram assembly handles near-machine SVD-rank boundary", {
 
 test_that("ltsa output B uses production assembly", {
   X <- as.matrix(iris[seq_len(15L), seq_len(4L)])
-  nn_idx <- exact_nn_idx(X, n_neighbors = 5L, include_self = FALSE)
-  reference <- assemble_ltsa_B_r_triplet_reference(
+  nn_idx <- raw_exact_neighbor_indices(
+    X,
+    n_neighbors = 5L,
+    include_self = FALSE
+  )
+  reference <- reference_triplet_assembly(
     X,
     nn_idx,
     ndim = 2L,
