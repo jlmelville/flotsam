@@ -210,8 +210,8 @@ ltsa <-
     ...
   ) {
     output <- match.arg(output)
-    X <- x2m(X)
-    neighbor_args <- normalize_ltsa_neighbor_args(
+    X <- prepare_input_matrix(X)
+    neighbor_args <- resolve_neighbor_input(
       nn_method = nn_method
     )
     nn_method <- neighbor_args$nn_method
@@ -250,7 +250,7 @@ ltsa <-
       verbose = validated$verbose
     )
 
-    tsmessage("Assembling LTSA matrix", verbose = validated$verbose)
+    report_progress("Assembling LTSA matrix", verbose = validated$verbose)
     assembly <- assemble_ltsa_B(
       X = X,
       nn_idx = neighbors$nn_idx,
@@ -278,18 +278,18 @@ ltsa <-
     }
 
     B_operator <- B
-    nullvec <- ltsa_default_null_vector(nrow(B_operator))
+    null_vector <- ltsa_default_null_vector(nrow(B_operator))
     if (validated$normalize) {
-      tsmessage("Forming normalized Bsym", verbose = validated$verbose)
+      report_progress("Forming normalized Bsym", verbose = validated$verbose)
       normalized <- ltsa_normalize_sparse_operator(B_operator)
-      Dinvs <- normalized$Dinvs
-      nullvec <- normalized$nullvec
-      B_operator <- normalized$Lsym
+      inv_sqrt_diagonal <- normalized$inv_sqrt_diagonal
+      null_vector <- normalized$null_vector
+      B_operator <- normalized$normalized_operator
     }
 
-    tsmessage("Performing eigenanalysis", verbose = validated$verbose)
+    report_progress("Performing eigenanalysis", verbose = validated$verbose)
 
-    eig_res <- tryCatch(
+    eigenanalysis_result <- tryCatch(
       {
         ltsa_run_eigenanalysis(
           B = B_operator,
@@ -297,7 +297,7 @@ ltsa <-
           eig_method = validated$eig_method,
           eig_k = validated$eig_k,
           eigen_args = eigen_args,
-          nullvec = nullvec,
+          null_vector = null_vector,
           verbose = validated$verbose
         )
       },
@@ -309,18 +309,18 @@ ltsa <-
       rownames(X),
       paste0("LTSA", seq_len(validated$ndim))
     )
-    embedding <- eig_res$vectors
+    embedding <- eigenanalysis_result$vectors
     if (validated$normalize) {
-      embedding <- Dinvs * embedding
+      embedding <- inv_sqrt_diagonal * embedding
     }
     dimnames(embedding) <- embedding_dimnames
 
     if (identical(validated$output, "embedding")) {
-      signal_eigen_status(eig_res$eigen)
+      signal_eigen_status(eigenanalysis_result$eigen)
       signal_effective_component_status(assembly$diagnostics)
     }
 
-    tsmessage("Finished", verbose = validated$verbose)
+    report_progress("Finished", verbose = validated$verbose)
     if (identical(validated$output, "embedding")) {
       return(embedding)
     }
@@ -330,21 +330,21 @@ ltsa <-
     eigen_result <- list(
       method = validated$eig_method,
       normalized = isTRUE(validated$normalize),
-      eig_k = eig_res$eigen$eig_k,
-      values = eig_res$eigen$values,
-      ritz_values = eig_res$eigen$ritz_values,
-      residuals = eig_res$eigen$residuals,
-      rank = eig_res$eigen$rank,
-      lambda_max = eig_res$eigen$lambda_max,
-      status = eig_res$eigen$status,
-      messages = eig_res$eigen$messages,
-      backend = eig_res$eigen$backend,
-      diagnostics = eig_res$eigen$diagnostics
+      eig_k = eigenanalysis_result$eigen$eig_k,
+      values = eigenanalysis_result$eigen$values,
+      ritz_values = eigenanalysis_result$eigen$ritz_values,
+      residuals = eigenanalysis_result$eigen$residuals,
+      rank = eigenanalysis_result$eigen$rank,
+      lambda_max = eigenanalysis_result$eigen$lambda_max,
+      status = eigenanalysis_result$eigen$status,
+      messages = eigenanalysis_result$eigen$messages,
+      backend = eigenanalysis_result$eigen$backend,
+      diagnostics = eigenanalysis_result$eigen$diagnostics
     )
     result <- list(
       embedding = embedding,
       eigen = eigen_result,
-      assembly = lmerge(
+      assembly = merge_named_lists(
         list(
           n_neighbors = as.integer(validated$n_neighbors),
           include_self = isTRUE(validated$include_self),

@@ -598,7 +598,7 @@ test_that("Ritz driver handles arbitrary normalized-style null vectors", {
     B,
     ndim = 2L,
     provider = provider,
-    nullvec = nullvec,
+    null_vector = nullvec,
     eig_k = 5L
   )
 

@@ -13,10 +13,10 @@ assemble_ltsa_B <- function(
   )
   n <- nrow(X)
   k <- ncol(nn_idx) - as.integer(!include_self)
-  weight_idx <- ltsa_effective_weight_idx(nn_idx, include_self)
+  weight_idx <- effective_weight_indices(nn_idx, include_self)
 
   if (verbose) {
-    tsmessage(
+    report_progress(
       "Computing local weights and assembling sparse matrix",
       verbose = verbose
     )
@@ -33,7 +33,10 @@ assemble_ltsa_B <- function(
       n_assembly_threads
     )
   }
-  components <- lmerge(components, ltsa_effective_components(weight_idx, n))
+  components <- merge_named_lists(
+    components,
+    compute_effective_components(weight_idx, n)
+  )
   log_ltsa_assembly_diagnostics(components, verbose)
   B <- ltsa_components_to_dgCMatrix(components, n)
 
@@ -41,11 +44,11 @@ assemble_ltsa_B <- function(
     B = B,
     rank_deficient_count = components$rank_deficient_count,
     min_local_rank = components$min_local_rank,
-    diagnostics = ltsa_assembly_diagnostics(components)
+    diagnostics = extract_assembly_diagnostics(components)
   )
 }
 
-ltsa_effective_weight_idx <- function(nn_idx, include_self) {
+effective_weight_indices <- function(nn_idx, include_self) {
   if (include_self) {
     nn_idx
   } else {
@@ -53,7 +56,7 @@ ltsa_effective_weight_idx <- function(nn_idx, include_self) {
   }
 }
 
-ltsa_assembly_diagnostics <- function(components) {
+extract_assembly_diagnostics <- function(components) {
   fields <- c(
     "assembly_route",
     "component_count",
@@ -65,7 +68,7 @@ ltsa_assembly_diagnostics <- function(components) {
   components[intersect(fields, names(components))]
 }
 
-ltsa_effective_components <- function(weight_idx, n) {
+compute_effective_components <- function(weight_idx, n) {
   parent <- seq_len(n)
   tree_size <- rep.int(1L, n)
 
@@ -124,8 +127,8 @@ log_ltsa_assembly_diagnostics <- function(components, verbose) {
     return(invisible(NULL))
   }
 
-  diagnostics <- ltsa_assembly_diagnostics(components)
-  tsmessage(
+  diagnostics <- extract_assembly_diagnostics(components)
+  report_progress(
     "LTSA assembly route: ",
     diagnostics$assembly_route,
     "; assembly workers requested/active: ",

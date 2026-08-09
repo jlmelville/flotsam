@@ -9,12 +9,16 @@ ltsa_normalize_sparse_operator <- function(L) {
     )
   }
 
-  Dinvs <- sqrt(1 / diagonal)
+  inv_sqrt_diagonal <- sqrt(1 / diagonal)
   L_scaled <- L
-  L_scaled@x <- scale_csc_columns(L_scaled@p, L_scaled@x, Dinvs)
+  L_scaled@x <- scale_csc_columns(
+    L_scaled@p,
+    L_scaled@x,
+    inv_sqrt_diagonal
+  )
   list(
-    Lsym = Dinvs * L_scaled,
-    Dinvs = Dinvs,
-    nullvec = 1 / Dinvs
+    normalized_operator = inv_sqrt_diagonal * L_scaled,
+    inv_sqrt_diagonal = inv_sqrt_diagonal,
+    null_vector = 1 / inv_sqrt_diagonal
   )
 }

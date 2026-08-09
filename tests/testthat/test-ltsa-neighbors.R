@@ -18,7 +18,7 @@ exact_nn_idx <- function(X, n_neighbors, include_self) {
     n_threads = 0L,
     verbose = FALSE
   )
-  flotsam:::canonicalize_ltsa_computed_neighbors(
+  flotsam:::canonicalize_computed_neighbors(
     nn$idx,
     nn$dist,
     n_neighbors = n_neighbors,
@@ -73,13 +73,13 @@ test_that("computed neighbors are canonicalized deterministically", {
     byrow = TRUE
   )
 
-  with_self <- flotsam:::canonicalize_ltsa_computed_neighbors(
+  with_self <- flotsam:::canonicalize_computed_neighbors(
     nn_idx,
     nn_dist,
     n_neighbors = 4L,
     include_self = TRUE
   )
-  without_self <- flotsam:::canonicalize_ltsa_computed_neighbors(
+  without_self <- flotsam:::canonicalize_computed_neighbors(
     nn_idx,
     nn_dist,
     n_neighbors = 4L,
@@ -109,7 +109,7 @@ test_that("computed neighbor canonicalization reports insufficient rows", {
   nn_dist <- matrix(0, nrow = 4L, ncol = 4L)
 
   expect_error(
-    flotsam:::canonicalize_ltsa_computed_neighbors(
+    flotsam:::canonicalize_computed_neighbors(
       nn_idx,
       nn_dist,
       n_neighbors = 3L,
@@ -118,7 +118,7 @@ test_that("computed neighbor canonicalization reports insufficient rows", {
     "row 2.*unique"
   )
   expect_error(
-    flotsam:::canonicalize_ltsa_computed_neighbors(
+    flotsam:::canonicalize_computed_neighbors(
       nn_idx,
       nn_dist,
       n_neighbors = 2L,
@@ -130,7 +130,7 @@ test_that("computed neighbor canonicalization reports insufficient rows", {
   bad_idx <- nn_idx
   bad_idx[1L, ] <- c(1L, 0L, 2L, 3L)
   expect_error(
-    flotsam:::canonicalize_ltsa_computed_neighbors(
+    flotsam:::canonicalize_computed_neighbors(
       bad_idx,
       nn_dist,
       n_neighbors = 3L,

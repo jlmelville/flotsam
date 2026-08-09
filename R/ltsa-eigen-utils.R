@@ -139,20 +139,20 @@ ltsa_default_null_vector <- function(n) {
   rep(1, n)
 }
 
-ltsa_normalize_null_vector <- function(nullvec, n) {
-  if (length(nullvec) != n || any(!is.finite(nullvec))) {
+ltsa_normalize_null_vector <- function(null_vector, n) {
+  if (length(null_vector) != n || any(!is.finite(null_vector))) {
     stop(
       "LTSA null vector must be finite and match the matrix dimension",
       call. = FALSE
     )
   }
 
-  null_norm <- sqrt(sum(nullvec * nullvec))
+  null_norm <- sqrt(sum(null_vector * null_vector))
   if (!is.finite(null_norm) || null_norm <= 0) {
     stop("LTSA null vector must have positive norm", call. = FALSE)
   }
 
-  nullvec / null_norm
+  null_vector / null_norm
 }
 
 ltsa_near_zero_tol <- function(lambda_max, tol = sqrt(.Machine$double.eps)) {
@@ -191,7 +191,7 @@ ltsa_validate_lambda_probe <- function(probe, B) {
 
 ltsa_lambda_max_probe <- function(B, varargs) {
   opts <- ltsa_rspectra_opts(eig_k = 1L, n = nrow(B))
-  opts <- lmerge(opts, varargs)
+  opts <- merge_named_lists(opts, varargs)
   opts$retvec <- FALSE
 
   args <- list(

@@ -8,7 +8,7 @@ ltsa_ritz_select <- function(
   B,
   vectors,
   ndim,
-  nullvec = ltsa_default_null_vector(nrow(B)),
+  null_vector = ltsa_default_null_vector(nrow(B)),
   lambda_max = NULL,
   drop_tol = 1e-8,
   rank_tol = 1e-10,
@@ -40,8 +40,8 @@ ltsa_ritz_select <- function(
   }
 
   # Remove the known null direction and rank-check the remaining span.
-  nullvec <- ltsa_normalize_null_vector(nullvec, n)
-  projected <- vectors - nullvec %*% crossprod(nullvec, vectors)
+  null_vector <- ltsa_normalize_null_vector(null_vector, n)
+  projected <- vectors - null_vector %*% crossprod(null_vector, vectors)
   original_norms <- sqrt(colSums(vectors * vectors))
   projected_norms <- sqrt(colSums(projected * projected))
   keep <- projected_norms > drop_tol * pmax(1, original_norms)
@@ -99,8 +99,8 @@ ltsa_ritz_select <- function(
   )
 }
 
-ltsa_backend_metadata <- function(eig_res) {
-  backend <- eig_res$backend %||% "unknown"
+ltsa_backend_metadata <- function(candidate_result) {
+  backend <- candidate_result$backend %||% "unknown"
   backend <- as.character(backend[[1L]])
   exact_dense <- backend %in%
     c(
@@ -110,16 +110,17 @@ ltsa_backend_metadata <- function(eig_res) {
     )
   out <- list(
     name = backend,
-    convergence_known = isTRUE(eig_res$convergence_known) || exact_dense
+    convergence_known = isTRUE(candidate_result$convergence_known) ||
+      exact_dense
   )
 
   if (identical(backend, "rspectra")) {
-    out$nconv <- as.integer(eig_res$nconv %||% NA_integer_)
-    out$niter <- as.integer(eig_res$niter %||% NA_integer_)
-    out$nops <- as.integer(eig_res$nops %||% NA_integer_)
+    out$nconv <- as.integer(candidate_result$nconv %||% NA_integer_)
+    out$niter <- as.integer(candidate_result$niter %||% NA_integer_)
+    out$nops <- as.integer(candidate_result$nops %||% NA_integer_)
   } else {
-    niter <- as.integer(eig_res$niter %||% NA_integer_)
-    mprod <- as.integer(eig_res$mprod %||% NA_integer_)
+    niter <- as.integer(candidate_result$niter %||% NA_integer_)
+    mprod <- as.integer(candidate_result$mprod %||% NA_integer_)
     if (!is.na(niter)) {
       out$iter <- niter
     }
@@ -134,11 +135,13 @@ ltsa_backend_metadata <- function(eig_res) {
   out
 }
 
-ltsa_backend_failure_messages <- function(eig_res, eig_k) {
-  backend <- eig_res$backend %||% "unknown"
+ltsa_backend_failure_messages <- function(candidate_result, eig_k) {
+  backend <- candidate_result$backend %||% "unknown"
   backend <- as.character(backend[[1L]])
-  nconv <- as.integer(eig_res$nconv %||% NA_integer_)
-  converged_columns <- as.integer(eig_res$converged_columns %||% nconv)
+  nconv <- as.integer(candidate_result$nconv %||% NA_integer_)
+  converged_columns <- as.integer(
+    candidate_result$converged_columns %||% nconv
+  )
 
   if (identical(backend, "rspectra") && !is.na(nconv) && nconv < eig_k) {
     return(paste0(
@@ -150,7 +153,7 @@ ltsa_backend_failure_messages <- function(eig_res, eig_k) {
     ))
   }
   if (
-    isTRUE(eig_res$convergence_known) &&
+    isTRUE(candidate_result$convergence_known) &&
       !is.na(converged_columns) &&
       converged_columns < eig_k
   ) {
@@ -168,17 +171,17 @@ ltsa_backend_failure_messages <- function(eig_res, eig_k) {
 }
 
 ltsa_diagnose_ritz <- function(
-  eig_res,
-  rr,
+  candidate_result,
+  ritz_result,
   eig_k,
   ndim,
   resid_tol,
   gap_tol
 ) {
-  backend <- ltsa_backend_metadata(eig_res)
-  lambda_max <- eig_res$lambda_max %||% NA_real_
-  values <- as.numeric(rr$values)
-  residuals <- as.numeric(rr$residuals)
+  backend <- ltsa_backend_metadata(candidate_result)
+  lambda_max <- candidate_result$lambda_max %||% NA_real_
+  values <- as.numeric(ritz_result$values)
+  residuals <- as.numeric(ritz_result$residuals)
   max_residual <- if (length(residuals) == 0L) {
     Inf
   } else {
@@ -186,25 +189,25 @@ ltsa_diagnose_ritz <- function(
   }
 
   invalid_messages <- character()
-  if (length(values) < ndim || ncol(rr$vectors) < ndim) {
+  if (length(values) < ndim || ncol(ritz_result$vectors) < ndim) {
     invalid_messages <- c(
       invalid_messages,
       "Fewer than ndim usable nonconstant Ritz vectors were selected."
     )
   }
-  if (rr$rank_after_null < ndim) {
+  if (ritz_result$rank_after_null < ndim) {
     invalid_messages <- c(
       invalid_messages,
       paste0(
         "Post-null candidate rank ",
-        rr$rank_after_null,
+        ritz_result$rank_after_null,
         " is less than ndim = ",
         ndim,
         "."
       )
     )
   }
-  if (!all(is.finite(values)) || !all(is.finite(rr$vectors))) {
+  if (!all(is.finite(values)) || !all(is.finite(ritz_result$vectors))) {
     invalid_messages <- c(
       invalid_messages,
       "Selected Ritz values or vectors contain non-finite entries."
@@ -224,11 +227,11 @@ ltsa_diagnose_ritz <- function(
   }
   invalid_messages <- c(
     invalid_messages,
-    ltsa_backend_failure_messages(eig_res, eig_k)
+    ltsa_backend_failure_messages(candidate_result, eig_k)
   )
 
   warning_messages <- character()
-  if (length(rr$ritz_values) < ndim + 1L) {
+  if (length(ritz_result$ritz_values) < ndim + 1L) {
     warning_messages <- c(
       warning_messages,
       paste0(
@@ -236,17 +239,17 @@ ltsa_diagnose_ritz <- function(
         "values; no spare boundary direction is available."
       )
     )
-  } else if (!is.finite(rr$global_gap)) {
+  } else if (!is.finite(ritz_result$global_gap)) {
     warning_messages <- c(
       warning_messages,
       "Ritz boundary gap after the selected block is unavailable."
     )
-  } else if (rr$global_gap < gap_tol) {
+  } else if (ritz_result$global_gap < gap_tol) {
     warning_messages <- c(
       warning_messages,
       paste0(
         "Weak Ritz boundary gap after the selected block: ",
-        signif(rr$global_gap, 4),
+        signif(ritz_result$global_gap, 4),
         " < ",
         signif(gap_tol, 4),
         "."
@@ -257,7 +260,8 @@ ltsa_diagnose_ritz <- function(
   # The observed candidate span shows truncation when more near-zero modes
   # are present than the requested embedding dimensions. This is an
   # identifiability warning, not evidence of clustering.
-  near_zero_block_truncated <- rr$near_zero_nonconstant_count > ndim
+  near_zero_block_truncated <-
+    ritz_result$near_zero_nonconstant_count > ndim
   if (near_zero_block_truncated) {
     warning_messages <- c(
       warning_messages,
@@ -284,9 +288,9 @@ ltsa_diagnose_ritz <- function(
     method = backend$name,
     eig_k = eig_k,
     values = values,
-    ritz_values = as.numeric(rr$ritz_values),
+    ritz_values = as.numeric(ritz_result$ritz_values),
     residuals = residuals,
-    rank = rr$rank_after_null,
+    rank = ritz_result$rank_after_null,
     lambda_max = lambda_max,
     status = status,
     messages = messages,
@@ -364,17 +368,17 @@ validate_eigen_controls <- function(args, eig_method, output) {
 
   resid_tol <- args$resid_tol %||% 1e-5
   gap_tol <- args$gap_tol %||% 1e-4
-  resid_tol <- ltsa_check_positive_finite(resid_tol, "resid_tol")
-  gap_tol <- ltsa_check_positive_finite(gap_tol, "gap_tol")
+  resid_tol <- check_positive_finite(resid_tol, "resid_tol")
+  gap_tol <- check_positive_finite(gap_tol, "gap_tol")
 
   if ("shift_eps" %in% arg_names) {
-    args$shift_eps <- ltsa_check_positive_finite(args$shift_eps, "shift_eps")
+    args$shift_eps <- check_positive_finite(args$shift_eps, "shift_eps")
   }
   if ("dense_n" %in% arg_names) {
     args$dense_n <- check_whole_number(args$dense_n, "dense_n", min = 0)
   }
   if ("dense_fraction" %in% arg_names) {
-    args$dense_fraction <- ltsa_check_positive_finite(
+    args$dense_fraction <- check_positive_finite(
       args$dense_fraction,
       "dense_fraction"
     )
@@ -392,7 +396,7 @@ validate_eigen_controls <- function(args, eig_method, output) {
   )
 }
 
-ltsa_check_positive_finite <- function(x, name) {
+check_positive_finite <- function(x, name) {
   if (
     !is.numeric(x) ||
       length(x) != 1L ||
@@ -411,26 +415,26 @@ ltsa_run_eigenanalysis <- function(
   eig_method,
   eig_k,
   eigen_args,
-  nullvec,
+  null_vector,
   verbose
 ) {
   provider <- switch(
     eig_method,
     auto = ltsa_auto_candidate_provider,
     rspectra = {
-      tsmessage("Calling rspectra", verbose = verbose)
+      report_progress("Calling rspectra", verbose = verbose)
       ltsa_rspectra_candidate_provider
     },
     irlba = {
-      tsmessage("Calling irlba", verbose = verbose)
+      report_progress("Calling irlba", verbose = verbose)
       ltsa_irlba_candidate_provider
     },
     svdr = {
-      tsmessage("Calling irlba svdr", verbose = verbose)
+      report_progress("Calling irlba svdr", verbose = verbose)
       ltsa_svdr_candidate_provider
     },
     eig = {
-      tsmessage("Using full eigenvalue decomposition", verbose = verbose)
+      report_progress("Using full eigenvalue decomposition", verbose = verbose)
       ltsa_eig_candidate_provider
     }
   )
@@ -442,7 +446,7 @@ ltsa_run_eigenanalysis <- function(
     ndim = ndim,
     provider = provider,
     provider_args = provider_args,
-    nullvec = nullvec,
+    null_vector = null_vector,
     eig_k = eig_k,
     resid_tol = eigen_args$resid_tol,
     gap_tol = eigen_args$gap_tol,
@@ -455,7 +459,7 @@ ltsa_ritz_eig <- function(
   ndim,
   provider,
   provider_args = list(),
-  nullvec = ltsa_default_null_vector(nrow(B)),
+  null_vector = ltsa_default_null_vector(nrow(B)),
   eig_k = NULL,
   resid_tol = 1e-5,
   gap_tol = 1e-4,
@@ -464,7 +468,7 @@ ltsa_ritz_eig <- function(
   eig_k <- ltsa_validate_eig_k(eig_k = eig_k, ndim = ndim, n = nrow(B))
   B <- symmetrize_ltsa_matrix(B)
   provider_args <- provider_args %||% list()
-  eig_res <- do.call(
+  candidate_result <- do.call(
     provider,
     c(
       list(
@@ -476,17 +480,17 @@ ltsa_ritz_eig <- function(
       provider_args
     )
   )
-  lambda_max <- eig_res$lambda_max %||% NA_real_
-  rr <- ltsa_ritz_select(
-    B = eig_res$matrix,
-    vectors = eig_res$vectors,
+  lambda_max <- candidate_result$lambda_max %||% NA_real_
+  ritz_result <- ltsa_ritz_select(
+    B = candidate_result$matrix,
+    vectors = candidate_result$vectors,
     ndim = ndim,
-    nullvec = nullvec,
+    null_vector = null_vector,
     lambda_max = lambda_max
   )
   eigen <- ltsa_diagnose_ritz(
-    eig_res = eig_res,
-    rr = rr,
+    candidate_result = candidate_result,
+    ritz_result = ritz_result,
     eig_k = eig_k,
     ndim = ndim,
     resid_tol = resid_tol,
@@ -494,8 +498,8 @@ ltsa_ritz_eig <- function(
   )
 
   list(
-    vectors = rr$vectors,
-    values = rr$values,
+    vectors = ritz_result$vectors,
+    values = ritz_result$values,
     eigen = eigen,
     backend = eigen$backend,
     lambda_max = eigen$lambda_max,

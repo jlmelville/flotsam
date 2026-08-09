@@ -15,9 +15,9 @@ test_that("sparse normalization implements Jacobi scaling", {
     L %*%
     Matrix::Diagonal(x = Dinvs)
 
-  expect_equal(as.matrix(normalized$Lsym), as.matrix(reference))
-  expect_equal(normalized$Dinvs, Dinvs)
-  expect_equal(normalized$nullvec, sqrt(diagonal))
+  expect_equal(as.matrix(normalized$normalized_operator), as.matrix(reference))
+  expect_equal(normalized$inv_sqrt_diagonal, Dinvs)
+  expect_equal(normalized$null_vector, sqrt(diagonal))
 })
 
 test_that("normalized public embeddings satisfy the generalized problem", {

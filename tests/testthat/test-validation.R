@@ -60,7 +60,9 @@ test_that("input data must be numeric and finite", {
     ltsa(data.frame(group = letters[1:4])),
     "at least one numeric column"
   )
-  mixed_df <- flotsam:::x2m(data.frame(x = 1:3, group = letters[1:3]))
+  mixed_df <- flotsam:::prepare_input_matrix(
+    data.frame(x = 1:3, group = letters[1:3])
+  )
   expect_equal(unname(mixed_df), matrix(as.double(1:3), ncol = 1))
   expect_identical(colnames(mixed_df), "x")
   expect_error(

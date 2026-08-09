@@ -63,11 +63,11 @@ ltsa_auto_candidate_provider <- function(
       dense_fraction = dense_fraction
     )
   ) {
-    tsmessage("Using dense eigenvalue decomposition", verbose = verbose)
+    report_progress("Using dense eigenvalue decomposition", verbose = verbose)
     return(dense_ltsa_eig(B, eig_k))
   }
 
-  tsmessage("Calling rspectra", verbose = verbose)
+  report_progress("Calling rspectra", verbose = verbose)
   ltsa_rspectra_candidate_provider(
     B = B,
     eig_k = eig_k,
@@ -91,7 +91,7 @@ ltsa_rspectra_candidate_provider <- function(
 
   lambda_probe <- NULL
   if (is.null(lambda_max)) {
-    tsmessage("Finding largest eigenvalue", verbose = verbose)
+    report_progress("Finding largest eigenvalue", verbose = verbose)
     lambda_probe <- ltsa_lambda_max_probe(B, varargs)
     lambda_max <- lambda_probe$value
   } else {
@@ -102,13 +102,13 @@ ltsa_rspectra_candidate_provider <- function(
     )
   }
   shift <- lambda_max + ltsa_shift_margin(lambda_max, shift_eps)
-  X_shift <- ltsa_shift_for_smallest(B, shift)
+  shifted_operator <- ltsa_shift_for_smallest(B, shift)
 
-  tsmessage("Decomposing shifted matrix", verbose = verbose)
+  report_progress("Decomposing shifted matrix", verbose = verbose)
   opts <- ltsa_rspectra_opts(eig_k = eig_k, n = n)
-  opts <- lmerge(opts, varargs)
+  opts <- merge_named_lists(opts, varargs)
   args <- list(
-    A = X_shift,
+    A = shifted_operator,
     k = eig_k,
     which = "LA",
     opts = opts
@@ -132,7 +132,7 @@ ltsa_rspectra_candidate_provider <- function(
     lambda_max = lambda_max,
     backend = "RSpectra"
   )
-  tsmessage(
+  report_progress(
     "RSpectra converged ",
     ifelse(is.na(nconv), eig_k, nconv),
     " / ",
@@ -266,7 +266,7 @@ new_ltsa_shifted_candidates <- function(
     lambda_max = lambda_max,
     backend = backend
   )
-  tsmessage(
+  report_progress(
     backend,
     " returned ",
     eig_k,
@@ -318,7 +318,7 @@ ltsa_irlba_candidate_provider <- function(
 
   lambda_probe <- NULL
   if (is.null(lambda_max)) {
-    tsmessage("Finding largest eigenvalue", verbose = verbose)
+    report_progress("Finding largest eigenvalue", verbose = verbose)
     lambda_probe <- ltsa_irlba_lambda_max_probe(B)
     lambda_max <- lambda_probe$value
   } else {
@@ -329,12 +329,12 @@ ltsa_irlba_candidate_provider <- function(
     )
   }
   shift <- lambda_max + ltsa_shift_margin(lambda_max, shift_eps)
-  X_shift <- ltsa_shift_for_smallest(B, shift)
+  shifted_operator <- ltsa_shift_for_smallest(B, shift)
 
-  tsmessage("Decomposing shifted matrix", verbose = verbose)
-  args <- lmerge(
+  report_progress("Decomposing shifted matrix", verbose = verbose)
+  args <- merge_named_lists(
     list(
-      A = X_shift,
+      A = shifted_operator,
       nv = eig_k,
       nu = 0L
     ),
@@ -375,7 +375,7 @@ ltsa_svdr_candidate_provider <- function(
 
   lambda_probe <- NULL
   if (is.null(lambda_max)) {
-    tsmessage("Finding largest eigenvalue", verbose = verbose)
+    report_progress("Finding largest eigenvalue", verbose = verbose)
     lambda_probe <- ltsa_svdr_lambda_max_probe(B)
     lambda_max <- lambda_probe$value
   } else {
@@ -386,12 +386,12 @@ ltsa_svdr_candidate_provider <- function(
     )
   }
   shift <- lambda_max + ltsa_shift_margin(lambda_max, shift_eps)
-  X_shift <- ltsa_shift_for_smallest(B, shift)
+  shifted_operator <- ltsa_shift_for_smallest(B, shift)
 
-  tsmessage("Decomposing shifted matrix", verbose = verbose)
-  args <- lmerge(
+  report_progress("Decomposing shifted matrix", verbose = verbose)
+  args <- merge_named_lists(
     list(
-      x = X_shift,
+      x = shifted_operator,
       k = eig_k
     ),
     varargs
@@ -441,7 +441,7 @@ dense_ltsa_eig <- function(B, eig_k, backend = "dense_eigen") {
     returned_columns = ncol(vectors),
     converged_columns = eig_k
   )
-  lmerge(
+  merge_named_lists(
     candidate,
     list(
       absolute_residuals = residuals$absolute_residuals,

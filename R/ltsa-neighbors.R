@@ -1,4 +1,4 @@
-normalize_ltsa_neighbor_args <- function(nn_method) {
+resolve_neighbor_input <- function(nn_method) {
   if (is.matrix(nn_method)) {
     return(list(nn_method = "nnd", nn_idx = nn_method))
   }
@@ -20,13 +20,13 @@ prepare_ltsa_neighbors <- function(
   verbose = FALSE
 ) {
   if (!is.null(nn_idx)) {
-    tsmessage(
+    report_progress(
       "Using precomputed nearest-neighbor graph with k = ",
       n_neighbors,
       verbose = verbose
     )
     if (n_threads != 1L) {
-      tsmessage(
+      report_progress(
         "Ignoring n_threads = ",
         n_threads,
         " because precomputed nearest-neighbor graph was supplied",
@@ -46,7 +46,7 @@ prepare_ltsa_neighbors <- function(
     exact = rnndescent::brute_force_knn,
     nnd = rnndescent::nnd_knn
   )
-  tsmessage(
+  report_progress(
     "Finding nearest neighbors with method '",
     nn_method,
     "' using n_threads = ",
@@ -62,7 +62,7 @@ prepare_ltsa_neighbors <- function(
   elapsed <- system.time({
     nn <- do.call(nn_fun, nn_args)
   })[["elapsed"]]
-  nn_idx <- canonicalize_ltsa_computed_neighbors(
+  nn_idx <- canonicalize_computed_neighbors(
     nn_idx = nn$idx,
     nn_dist = nn$dist,
     n_neighbors = n_neighbors,
@@ -77,7 +77,7 @@ prepare_ltsa_neighbors <- function(
   )
 }
 
-canonicalize_ltsa_computed_neighbors <- function(
+canonicalize_computed_neighbors <- function(
   nn_idx,
   nn_dist,
   n_neighbors,

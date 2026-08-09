@@ -6,12 +6,12 @@
   }
 }
 
-stime <- function() {
+format_timestamp <- function() {
   format(Sys.time(), "%T")
 }
 
 # Message with a time stamp, controlled explicitly by verbose or force.
-tsmessage <-
+report_progress <-
   function(
     ...,
     verbose = FALSE,
@@ -23,7 +23,7 @@ tsmessage <-
     if (force || isTRUE(verbose)) {
       msg <- ""
       if (time_stamp) {
-        msg <- paste0(stime(), " ")
+        msg <- paste0(format_timestamp(), " ")
       }
       message(msg, ..., domain = domain, appendLF = appendLF)
       utils::flush.console()
@@ -31,7 +31,7 @@ tsmessage <-
   }
 
 # convert data frame to matrix using numeric columns
-x2m <- function(X) {
+prepare_input_matrix <- function(X) {
   if (is.data.frame(X)) {
     numeric_cols <- vapply(X, is.numeric, logical(1))
     if (!any(numeric_cols)) {
@@ -115,7 +115,7 @@ validate_ltsa_args <- function(
       n_neighbors <- 15L
     }
   } else {
-    nn <- validate_ltsa_nn_idx(
+    nn <- validate_precomputed_neighbors(
       nn_idx = nn_idx,
       n_obs = nrow(X),
       n_neighbors = n_neighbors,
@@ -126,7 +126,7 @@ validate_ltsa_args <- function(
     n_neighbors <- nn$n_neighbors
   }
 
-  validate_ltsa_neighbor_count(
+  validate_neighbor_count(
     n_neighbors = n_neighbors,
     ndim = ndim,
     n_obs = nrow(X),
@@ -151,7 +151,7 @@ validate_ltsa_args <- function(
   )
 }
 
-validate_ltsa_neighbor_count <- function(
+validate_neighbor_count <- function(
   n_neighbors,
   ndim,
   n_obs,
@@ -176,7 +176,7 @@ validate_ltsa_neighbor_count <- function(
   invisible(n_neighbors)
 }
 
-validate_ltsa_nn_idx <- function(
+validate_precomputed_neighbors <- function(
   nn_idx,
   n_obs,
   n_neighbors,
@@ -321,11 +321,11 @@ check_choice <- function(x, choices, name) {
   x
 }
 
-# Add the (named) values in l2 to l1.
-# Use to override default values in l1 with user-supplied values in l2
-lmerge <- function(l1, l2) {
-  for (name in names(l2)) {
-    l1[[name]] <- l2[[name]]
+# Add the named overrides to the base list.
+# Use to override default values in base with user-supplied values.
+merge_named_lists <- function(base, overrides) {
+  for (name in names(overrides)) {
+    base[[name]] <- overrides[[name]]
   }
-  l1
+  base
 }
