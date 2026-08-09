@@ -1,34 +1,36 @@
 #include "ltsa_internal.h"
 
 LtsaTripletAssemblyBuilder::LtsaTripletAssemblyBuilder(
-    const cpp11::integers& value_nnt, std::size_t value_n_nbrs,
+    const cpp11::integers& transposed_neighbor_indices, std::size_t n_neighbors,
     std::size_t n_obs, std::size_t max_int)
-    : n_obs_(n_obs), value_n_nbrs_(value_n_nbrs), max_int_(max_int),
+    : n_obs_(n_obs), n_neighbors_(n_neighbors), max_int_(max_int),
       canonical_columns_(checked_vector_size<std::vector<CompactEntry>>(
           n_obs, "serial LTSA canonical column containers")),
       full_columns_(checked_vector_size<std::vector<CompactEntry>>(
           n_obs, "serial LTSA full column containers")) {
-  checked_triplet_count(n_obs_, value_n_nbrs_, "value_n_nbrs");
-  checked_size_mul(n_obs_, triangular_pair_count(value_n_nbrs_),
+  checked_triplet_count(n_obs_, n_neighbors_, "value_n_nbrs");
+  checked_size_mul(n_obs_, triangular_pair_count(n_neighbors_),
                    "Too many triangular LTSA contributions to stage");
 
   std::vector<std::size_t> canonical_col_counts(
       checked_vector_size<std::size_t>(n_obs_,
                                        "serial LTSA canonical column counts"),
       0);
-  std::vector<int> nni(checked_vector_size<int>(
-      value_n_nbrs_, "serial LTSA neighborhood indices"));
+  std::vector<int> neighbor_indices(checked_vector_size<int>(
+      n_neighbors_, "serial LTSA neighborhood indices"));
 
   for (std::size_t obs = 0; obs < n_obs_; obs++) {
-    std::size_t offset = obs * value_n_nbrs_;
-    for (std::size_t local = 0; local < value_n_nbrs_; local++) {
-      const int idx = checked_neighbor_index(value_nnt[offset + local], n_obs_);
-      nni[local] = idx;
+    std::size_t offset = obs * n_neighbors_;
+    for (std::size_t local = 0; local < n_neighbors_; local++) {
+      const int idx = checked_zero_based_neighbor_index(
+          transposed_neighbor_indices[offset + local], n_obs_);
+      neighbor_indices[local] = idx;
     }
 
-    for (std::size_t local_col = 0; local_col < value_n_nbrs_; local_col++) {
+    for (std::size_t local_col = 0; local_col < n_neighbors_; local_col++) {
       for (std::size_t local_row = 0; local_row <= local_col; local_row++) {
-        const int col = std::max(nni[local_row], nni[local_col]);
+        const int col =
+            std::max(neighbor_indices[local_row], neighbor_indices[local_col]);
         canonical_col_counts[col]++;
       }
     }
@@ -40,30 +42,30 @@ LtsaTripletAssemblyBuilder::LtsaTripletAssemblyBuilder(
   }
 }
 
-void LtsaTripletAssemblyBuilder::append_prechecked(
-    const std::vector<int>& nni, const std::vector<double>& weights) {
+void LtsaTripletAssemblyBuilder::append_prechecked_neighborhood(
+    const std::vector<int>& neighbor_indices,
+    const std::vector<double>& weights) {
   if (finalized_) {
     cpp11::stop("LTSA triplet builder has already been finalized");
   }
   if (n_appended_ >= n_obs_) {
     cpp11::stop("Too many LTSA neighborhoods appended");
   }
-  if (nni.size() != value_n_nbrs_) {
+  if (neighbor_indices.size() != n_neighbors_) {
     cpp11::stop("Inconsistent value neighborhood dimensions");
   }
 
-  std::size_t value_k2 =
-      checked_triplet_count(1, value_n_nbrs_, "value_n_nbrs");
+  std::size_t value_k2 = checked_triplet_count(1, n_neighbors_, "value_n_nbrs");
   if (weights.size() != value_k2) {
     cpp11::stop("Inconsistent local weight dimensions");
   }
 
-  append_triangular_prechecked(nni, weights);
+  append_triangular_prechecked(neighbor_indices, weights);
 
   n_appended_++;
 }
 
-SparseComponents LtsaTripletAssemblyBuilder::finalize_components() {
+SparseComponents LtsaTripletAssemblyBuilder::finalize_sparse_components() {
   if (finalized_) {
     cpp11::stop("LTSA triplet builder has already been finalized");
   }
@@ -120,14 +122,15 @@ SparseComponents LtsaTripletAssemblyBuilder::finalize_components() {
 }
 
 void LtsaTripletAssemblyBuilder::append_triangular_prechecked(
-    const std::vector<int>& nni, const std::vector<double>& weights) {
-  for (std::size_t local_col = 0; local_col < value_n_nbrs_; local_col++) {
+    const std::vector<int>& neighbor_indices,
+    const std::vector<double>& weights) {
+  for (std::size_t local_col = 0; local_col < n_neighbors_; local_col++) {
     for (std::size_t local_row = 0; local_row <= local_col; local_row++) {
-      const int global_row = nni[local_row];
-      const int global_col = nni[local_col];
+      const int global_row = neighbor_indices[local_row];
+      const int global_col = neighbor_indices[local_col];
       const int row = std::min(global_row, global_col);
       const int col = std::max(global_row, global_col);
-      const double value = weights[local_col * value_n_nbrs_ + local_row];
+      const double value = weights[local_col * n_neighbors_ + local_row];
       canonical_columns_[col].push_back(CompactEntry{row, value});
     }
   }

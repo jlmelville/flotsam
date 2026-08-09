@@ -21,13 +21,13 @@ assemble_ltsa_B <- function(
       verbose = verbose
     )
   }
-  value_nnt <- t(weight_idx)
+  transposed_neighbor_indices <- t(weight_idx)
   components <- if (n_assembly_threads == 1L) {
-    ltsa_assemble_local_weights(X, value_nnt, k, ndim)
+    ltsa_assemble_local_weights(X, transposed_neighbor_indices, k, ndim)
   } else {
     ltsa_assemble_local_weights_parallel(
       X,
-      value_nnt,
+      transposed_neighbor_indices,
       k,
       ndim,
       n_assembly_threads

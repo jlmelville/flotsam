@@ -3,47 +3,49 @@
 namespace {
 
 struct ParallelLocalWeightsWorkspace {
-  ParallelLocalWeightsWorkspace(std::size_t n_nbrs, std::size_t n_dim, int ndim,
-                                bool use_svd, bool use_row_major)
-      : n_nbrs_size(n_nbrs), n_dim_size(n_dim),
+  ParallelLocalWeightsWorkspace(std::size_t n_nbrs, std::size_t n_features,
+                                int ndim, bool use_svd, bool use_row_major)
+      : n_nbrs_size(n_nbrs), n_features_size(n_features),
         n_nbrs(checked_lapack_dim(n_nbrs, "n_neighbors")),
-        n_dim(checked_lapack_dim(n_dim, "ncol(X)")), route_svd(use_svd),
-        min_dim(std::min(this->n_nbrs, this->n_dim)),
-        requested(std::min(ndim, min_dim)),
-        nni(checked_vector_size<int>(n_nbrs,
-                                     "parallel LTSA neighborhood indices")),
+        n_features(checked_lapack_dim(n_features, "ncol(X)")),
+        route_svd(use_svd), min_dim(std::min(this->n_nbrs, this->n_features)),
+        requested_basis_size(std::min(ndim, min_dim)),
+        neighbor_indices(checked_vector_size<int>(
+            n_nbrs, "parallel LTSA neighborhood indices")),
         centered(checked_vector_size_mul<double>(
-            n_nbrs, n_dim, "parallel LTSA centered neighborhood workspace")),
+            n_nbrs, n_features,
+            "parallel LTSA centered neighborhood workspace")),
         weights(checked_vector_size_mul<double>(
             n_nbrs, n_nbrs, "parallel LTSA local weights")) {
-    keep.reserve(
-        checked_vector_size<int>(static_cast<std::size_t>(requested),
+    basis_columns.reserve(
+        checked_vector_size<int>(static_cast<std::size_t>(requested_basis_size),
                                  "parallel LTSA retained local basis"));
 
     if (route_svd) {
       svd_a.resize(checked_vector_size_mul<double>(
-          n_nbrs, n_dim, "parallel LTSA dgesdd matrix workspace"));
+          n_nbrs, n_features, "parallel LTSA dgesdd matrix workspace"));
       d.resize(checked_vector_size<double>(static_cast<std::size_t>(min_dim),
                                            "parallel LTSA singular values"));
       u.resize(checked_vector_size_mul<double>(
           n_nbrs, static_cast<std::size_t>(min_dim),
           "parallel LTSA left singular vectors"));
       vt.resize(checked_vector_size_mul<double>(
-          static_cast<std::size_t>(min_dim), n_dim,
+          static_cast<std::size_t>(min_dim), n_features,
           "parallel LTSA right singular vectors"));
       iwork.resize(checked_vector_size_mul<int>(
           8, static_cast<std::size_t>(min_dim),
           "parallel LTSA dgesdd integer workspace"));
       svd_work.resize(checked_vector_size<double>(
           static_cast<std::size_t>(query_dgesdd_workspace(
-              this->n_nbrs, this->n_dim, min_dim, svd_a, d, u, vt, iwork)),
+              this->n_nbrs, this->n_features, min_dim, svd_a, d, u, vt, iwork)),
           "parallel LTSA dgesdd workspace"));
     } else {
       if (use_row_major) {
         row_buffer.resize(checked_vector_size_mul<double>(
-            n_nbrs, n_dim, "parallel LTSA row-major neighborhood workspace"));
-        col_means.resize(
-            checked_vector_size<double>(n_dim, "parallel LTSA column means"));
+            n_nbrs, n_features,
+            "parallel LTSA row-major neighborhood workspace"));
+        col_means.resize(checked_vector_size<double>(
+            n_features, "parallel LTSA column means"));
       }
       gram.resize(checked_vector_size_mul<double>(
           n_nbrs, n_nbrs, "parallel LTSA Gram workspace"));
@@ -57,14 +59,14 @@ struct ParallelLocalWeightsWorkspace {
   }
 
   std::size_t n_nbrs_size;
-  std::size_t n_dim_size;
+  std::size_t n_features_size;
   int n_nbrs;
-  int n_dim;
+  int n_features;
   bool route_svd;
   int min_dim;
-  int requested;
-  std::vector<int> nni;
-  std::vector<int> keep;
+  int requested_basis_size;
+  std::vector<int> neighbor_indices;
+  std::vector<int> basis_columns;
   std::vector<double> centered;
   std::vector<double> weights;
   std::vector<double> row_buffer;
@@ -127,7 +129,7 @@ int compute_svd_weights_workspace(ParallelLocalWeightsWorkspace& workspace,
 
   char jobz = 'S';
   int m = workspace.n_nbrs;
-  int n = workspace.n_dim;
+  int n = workspace.n_features;
   int lda = workspace.n_nbrs;
   int ldu = workspace.n_nbrs;
   int ldvt = workspace.min_dim;
@@ -142,12 +144,12 @@ int compute_svd_weights_workspace(ParallelLocalWeightsWorkspace& workspace,
     return info;
   }
 
-  rank = select_local_basis_columns(workspace.d, workspace.min_dim,
-                                    workspace.n_nbrs, workspace.n_dim,
-                                    workspace.requested, false, workspace.keep);
+  rank = select_local_basis_columns(
+      workspace.d, workspace.min_dim, workspace.n_nbrs, workspace.n_features,
+      workspace.requested_basis_size, false, workspace.basis_columns);
 
-  fill_weights_from_basis(workspace.n_nbrs_size, workspace.keep, workspace.u,
-                          workspace.weights);
+  fill_weights_from_basis(workspace.n_nbrs_size, workspace.basis_columns,
+                          workspace.u, workspace.weights);
   return 0;
 }
 
@@ -157,11 +159,12 @@ int compute_gram_weights_workspace_info(
     const std::vector<double>* row_major, int& rank) {
   if (row_major != nullptr) {
     fill_centered_neighborhood_row_major(
-        *row_major, workspace.nni, workspace.row_buffer, workspace.col_means,
-        workspace.centered, workspace.n_dim_size);
+        *row_major, workspace.neighbor_indices, workspace.row_buffer,
+        workspace.col_means, workspace.centered, workspace.n_features_size);
   } else {
-    fill_centered_neighborhood_ptr(x_data, n_obs, workspace.nni,
-                                   workspace.centered, workspace.n_dim_size);
+    fill_centered_neighborhood_column_major(
+        x_data, n_obs, workspace.neighbor_indices, workspace.centered,
+        workspace.n_features_size);
   }
 
   char uplo = 'U';
@@ -169,7 +172,7 @@ int compute_gram_weights_workspace_info(
   double alpha = 1.0;
   double beta = 0.0;
   int n = workspace.n_nbrs;
-  int k = workspace.n_dim;
+  int k = workspace.n_features;
   int lda = workspace.n_nbrs;
   int ldc = workspace.n_nbrs;
   F77_CALL(dsyrk)(&uplo, &trans, &n, &k, &alpha, workspace.centered.data(),
@@ -186,11 +189,12 @@ int compute_gram_weights_workspace_info(
   }
 
   rank = select_local_basis_columns(workspace.values, workspace.n_nbrs,
-                                    workspace.n_nbrs, workspace.n_dim,
-                                    workspace.requested, true, workspace.keep);
+                                    workspace.n_nbrs, workspace.n_features,
+                                    workspace.requested_basis_size, true,
+                                    workspace.basis_columns);
 
-  fill_weights_from_basis(workspace.n_nbrs_size, workspace.keep, workspace.gram,
-                          workspace.weights);
+  fill_weights_from_basis(workspace.n_nbrs_size, workspace.basis_columns,
+                          workspace.gram, workspace.weights);
   return 0;
 }
 
@@ -203,8 +207,9 @@ int compute_parallel_local_weights(const double* x_data, std::size_t n_obs,
   rank = 0;
   int info = 0;
   if (workspace.route_svd) {
-    fill_centered_neighborhood_ptr(x_data, n_obs, workspace.nni,
-                                   workspace.centered, workspace.n_dim_size);
+    fill_centered_neighborhood_column_major(
+        x_data, n_obs, workspace.neighbor_indices, workspace.centered,
+        workspace.n_features_size);
     info = compute_svd_weights_workspace(workspace, rank);
   } else {
     info = compute_gram_weights_workspace_info(x_data, n_obs, workspace,
@@ -254,21 +259,22 @@ TriangularSlotPlan assign_triangular_two_pass_slots_flat(const int* value_ptr,
                        "Too many triangular LTSA slot offsets"),
       "triangular LTSA slot offsets");
 
-  std::vector<int> nni(
+  std::vector<int> neighbor_indices(
       checked_vector_size<int>(n_nbrs, "parallel LTSA neighborhood indices"));
   for (std::size_t obs = 0; obs < n_obs; obs++) {
     const std::size_t offset = obs * n_nbrs;
 
     for (std::size_t local = 0; local < n_nbrs; local++) {
-      const int idx = checked_neighbor_index(value_ptr[offset + local], n_obs);
-      nni[local] = idx;
+      const int idx =
+          checked_zero_based_neighbor_index(value_ptr[offset + local], n_obs);
+      neighbor_indices[local] = idx;
     }
 
     const std::size_t obs_tri_offset = obs * tri_count;
     for (std::size_t local_col = 0; local_col < n_nbrs; local_col++) {
       for (std::size_t local_row = 0; local_row <= local_col; local_row++) {
-        const int global_row = nni[local_row];
-        const int global_col = nni[local_col];
+        const int global_row = neighbor_indices[local_row];
+        const int global_col = neighbor_indices[local_col];
         const int col = std::max(global_row, global_col);
         const std::size_t pair_offset =
             obs_tri_offset + triangular_pair_offset(local_col, local_row);
@@ -315,7 +321,7 @@ struct ParallelTriangularFillWorker {
     for (std::size_t obs = begin; obs < end; obs++) {
       const std::size_t offset = obs * n_nbrs;
       fill_flat_neighbors_zero_based_ptr(value_ptr, offset, n_nbrs,
-                                         workspace.nni);
+                                         workspace.neighbor_indices);
       int local_rank = 0;
       if (compute_parallel_local_weights(x_data, n_obs, workspace, row_major,
                                          ndim, worker_diagnostics, obs,
@@ -326,8 +332,8 @@ struct ParallelTriangularFillWorker {
       const std::size_t obs_tri_offset = obs * tri_count;
       for (std::size_t local_col = 0; local_col < n_nbrs; local_col++) {
         for (std::size_t local_row = 0; local_row <= local_col; local_row++) {
-          const int global_row = workspace.nni[local_row];
-          const int global_col = workspace.nni[local_col];
+          const int global_row = workspace.neighbor_indices[local_row];
+          const int global_col = workspace.neighbor_indices[local_col];
           const int row = std::min(global_row, global_col);
           const int col = std::max(global_row, global_col);
           const std::size_t pair_offset =
@@ -530,20 +536,21 @@ void stop_on_parallel_worker_failure(
 } // namespace
 
 [[cpp11::register]] cpp11::list ltsa_assemble_local_weights_parallel(
-    const cpp11::doubles_matrix<>& x, const cpp11::integers& value_nnt,
-    std::size_t value_n_nbrs, int ndim, int requested_threads) {
+    const cpp11::doubles_matrix<>& x,
+    const cpp11::integers& transposed_neighbor_indices, std::size_t n_neighbors,
+    int ndim, int requested_threads) {
   checked_ndim(ndim);
   if (requested_threads < 1) {
     cpp11::stop("n_assembly_threads must be positive");
   }
-  if (value_nnt.size() == 0 || value_n_nbrs == 0) {
+  if (transposed_neighbor_indices.size() == 0 || n_neighbors == 0) {
     cpp11::stop("Value neighborhoods must not be empty");
   }
-  if (value_nnt.size() % value_n_nbrs != 0) {
+  if (transposed_neighbor_indices.size() % n_neighbors != 0) {
     cpp11::stop("Inconsistent value neighborhood dimensions");
   }
 
-  const std::size_t n_obs = value_nnt.size() / value_n_nbrs;
+  const std::size_t n_obs = transposed_neighbor_indices.size() / n_neighbors;
   if (static_cast<std::size_t>(x.nrow()) != n_obs) {
     cpp11::stop("Inconsistent input and neighborhood dimensions");
   }
@@ -557,9 +564,9 @@ void stop_on_parallel_worker_failure(
     cpp11::stop("Too many observations for a dgCMatrix");
   }
 
-  const int* value_ptr = INTEGER(value_nnt.data());
+  const int* value_ptr = INTEGER(transposed_neighbor_indices.data());
   TriangularSlotPlan slot_plan =
-      assign_triangular_two_pass_slots_flat(value_ptr, n_obs, value_n_nbrs);
+      assign_triangular_two_pass_slots_flat(value_ptr, n_obs, n_neighbors);
 
   const std::size_t requested_thread_count =
       static_cast<std::size_t>(requested_threads);
@@ -567,7 +574,7 @@ void stop_on_parallel_worker_failure(
       pforr::IndexRange(0, n_obs), requested_thread_count, 1);
   const std::size_t effective_threads = obs_ranges.size();
 
-  const bool use_svd_route = static_cast<std::size_t>(x.ncol()) <= value_n_nbrs;
+  const bool use_svd_route = static_cast<std::size_t>(x.ncol()) <= n_neighbors;
   const double* x_data = REAL(x.data());
   std::vector<double> row_major_x;
   const std::vector<double>* row_major_ptr = nullptr;
@@ -593,7 +600,7 @@ void stop_on_parallel_worker_failure(
   workspaces.reserve(checked_vector_size<ParallelLocalWeightsWorkspace>(
       effective_threads, "parallel LTSA worker workspaces"));
   for (std::size_t chunk = 0; chunk < effective_threads; chunk++) {
-    workspaces.emplace_back(value_n_nbrs, static_cast<std::size_t>(x.ncol()),
+    workspaces.emplace_back(n_neighbors, static_cast<std::size_t>(x.ncol()),
                             ndim, use_svd_route, row_major_ptr != nullptr);
   }
 
@@ -607,8 +614,8 @@ void stop_on_parallel_worker_failure(
                                       row_major_ptr,
                                       value_ptr,
                                       n_obs,
-                                      value_n_nbrs,
-                                      triangular_pair_count(value_n_nbrs),
+                                      n_neighbors,
+                                      triangular_pair_count(n_neighbors),
                                       ndim,
                                       &slot_plan.column_starts,
                                       &slot_plan.slot_offsets,

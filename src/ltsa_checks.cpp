@@ -12,7 +12,7 @@ std::size_t checked_triplet_count(std::size_t n_obs, std::size_t n_nbrs,
   return n_obs * n_nbrs * n_nbrs;
 }
 
-int checked_neighbor_index(int idx, std::size_t n_obs) {
+int checked_zero_based_neighbor_index(int idx, std::size_t n_obs) {
   if (idx < 1 || static_cast<std::size_t>(idx) > n_obs) {
     cpp11::stop("Neighborhood index is outside the sparse matrix dimensions");
   }

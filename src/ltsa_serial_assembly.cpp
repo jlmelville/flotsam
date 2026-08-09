@@ -2,17 +2,17 @@
 
 [[cpp11::register]] cpp11::list
 ltsa_assemble_local_weights(const cpp11::doubles_matrix<>& x,
-                            const cpp11::integers& value_nnt,
-                            std::size_t value_n_nbrs, int ndim) {
+                            const cpp11::integers& transposed_neighbor_indices,
+                            std::size_t n_neighbors, int ndim) {
   checked_ndim(ndim);
-  if (value_nnt.size() == 0 || value_n_nbrs == 0) {
+  if (transposed_neighbor_indices.size() == 0 || n_neighbors == 0) {
     cpp11::stop("Value neighborhoods must not be empty");
   }
-  if (value_nnt.size() % value_n_nbrs != 0) {
+  if (transposed_neighbor_indices.size() % n_neighbors != 0) {
     cpp11::stop("Inconsistent value neighborhood dimensions");
   }
 
-  std::size_t n_obs = value_nnt.size() / value_n_nbrs;
+  std::size_t n_obs = transposed_neighbor_indices.size() / n_neighbors;
   if (static_cast<std::size_t>(x.nrow()) != n_obs) {
     cpp11::stop("Inconsistent input and neighborhood dimensions");
   }
@@ -23,12 +23,13 @@ ltsa_assemble_local_weights(const cpp11::doubles_matrix<>& x,
     cpp11::stop("Too many observations for a dgCMatrix");
   }
 
-  LtsaTripletAssemblyBuilder builder(value_nnt, value_n_nbrs, n_obs, max_int);
+  LtsaTripletAssemblyBuilder builder(transposed_neighbor_indices, n_neighbors,
+                                     n_obs, max_int);
 
   int rank_deficient_count = 0;
   int min_local_rank = ndim;
   const bool use_gram_workspace =
-      x.ncol() != 0 && static_cast<std::size_t>(x.ncol()) > value_n_nbrs;
+      x.ncol() != 0 && static_cast<std::size_t>(x.ncol()) > n_neighbors;
   const double* x_data = use_gram_workspace ? REAL(x.data()) : nullptr;
   std::vector<double> row_major_x;
   bool use_row_major_gram = false;
@@ -47,16 +48,17 @@ ltsa_assemble_local_weights(const cpp11::doubles_matrix<>& x,
       }
     }
     gram_workspace.reset(new GramLocalWeightsWorkspace(
-        value_n_nbrs, static_cast<std::size_t>(x.ncol()), ndim,
+        n_neighbors, static_cast<std::size_t>(x.ncol()), ndim,
         use_row_major_gram));
   }
 
   for (std::size_t obs = 0; obs < n_obs; obs++) {
-    const std::size_t offset = obs * value_n_nbrs;
+    const std::size_t offset = obs * n_neighbors;
 
     if (use_gram_workspace) {
-      fill_flat_neighbors_zero_based(value_nnt, offset, value_n_nbrs,
-                                     gram_workspace->nni);
+      fill_flat_neighbors_zero_based(transposed_neighbor_indices, offset,
+                                     n_neighbors,
+                                     gram_workspace->neighbor_indices);
       int rank = compute_local_weights_gram_workspace(
           x_data, n_obs, *gram_workspace,
           use_row_major_gram ? &row_major_x : nullptr);
@@ -64,21 +66,23 @@ ltsa_assemble_local_weights(const cpp11::doubles_matrix<>& x,
         rank_deficient_count++;
         min_local_rank = std::min(min_local_rank, rank);
       }
-      builder.append_prechecked(gram_workspace->nni, gram_workspace->weights);
+      builder.append_prechecked_neighborhood(gram_workspace->neighbor_indices,
+                                             gram_workspace->weights);
     } else {
-      std::vector<int> local_nni =
-          flat_neighbors_zero_based(value_nnt, offset, value_n_nbrs);
+      std::vector<int> local_neighbor_indices = flat_neighbors_zero_based(
+          transposed_neighbor_indices, offset, n_neighbors);
       LocalWeights local =
-          compute_local_weights_shape_routed(x, local_nni, ndim);
+          compute_local_weights_by_shape(x, local_neighbor_indices, ndim);
       if (local.rank < ndim) {
         rank_deficient_count++;
         min_local_rank = std::min(min_local_rank, local.rank);
       }
-      builder.append_prechecked(local_nni, local.weights);
+      builder.append_prechecked_neighborhood(local_neighbor_indices,
+                                             local.weights);
     }
   }
 
-  SparseComponents components = builder.finalize_components();
+  SparseComponents components = builder.finalize_sparse_components();
 
   // Convert through const references before named_arg's by-value assignment so
   // the R payloads do not overlap temporary copies of the C++ vectors.
