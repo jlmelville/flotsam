@@ -41,18 +41,6 @@ expect_ltsa_assembly_parallel_matches <- function(
   )
   expect_identical(parallel$min_local_rank, serial$min_local_rank)
   expect_identical(
-    parallel$diagnostics$local_solver_route,
-    serial$diagnostics$local_solver_route
-  )
-  expect_identical(
-    parallel$diagnostics$local_rank_histogram,
-    serial$diagnostics$local_rank_histogram
-  )
-  expect_identical(
-    parallel$diagnostics$rank_deficient_neighborhood_indices,
-    serial$diagnostics$rank_deficient_neighborhood_indices
-  )
-  expect_identical(
     parallel$diagnostics$component_count,
     serial$diagnostics$component_count
   )
@@ -349,6 +337,22 @@ test_that("public assembly thread control selects the requested route", {
     do.call(ltsa, c(common_args, list(n_assembly_threads = 3L)))
   )
 
+  assembly_fields <- c(
+    "n_neighbors",
+    "include_self",
+    "neighbor_source",
+    "neighbor_elapsed",
+    "rank_deficient_count",
+    "min_local_rank",
+    "assembly_route",
+    "component_count",
+    "component_sizes",
+    "component_membership",
+    "requested_assembly_threads",
+    "effective_assembly_threads"
+  )
+  expect_named(serial$assembly, assembly_fields)
+  expect_named(parallel$assembly, assembly_fields)
   expect_sparse_equivalent(parallel$B, serial$B, tolerance = 1e-11)
   expect_identical(serial$assembly$assembly_route, "serial_triangular")
   expect_identical(serial$assembly$requested_assembly_threads, 1L)
@@ -387,7 +391,7 @@ test_that("parallel assembly matches serial on low-p SVD route", {
   )
 })
 
-test_that("parallel assembly preserves rank-deficient Gram and SVD metadata", {
+test_that("parallel assembly preserves rank-deficiency summaries", {
   gram_X <- outer(seq_len(18L), seq_len(12L))
   gram_nn <- exact_nn_idx(gram_X, n_neighbors = 5L, include_self = TRUE)
   gram_parallel <- expect_ltsa_assembly_parallel_matches(
@@ -414,7 +418,7 @@ test_that("parallel assembly preserves rank-deficient Gram and SVD metadata", {
   expect_identical(svd_parallel$min_local_rank, 1L)
 })
 
-test_that("public results expose serial and parallel local-rank diagnostics", {
+test_that("public results expose serial and parallel rank summaries", {
   x <- seq_len(18L)
   fixtures <- list(
     svd = cbind(x, 2 * x, -3 * x),
@@ -456,30 +460,10 @@ test_that("public results expose serial and parallel local-rank diagnostics", {
       "numerical rank"
     )
 
-    max_rank <- min(ncol(X), ncol(nn_idx))
-    expected_histogram <- stats::setNames(
-      integer(max_rank + 1L),
-      0:max_rank
-    )
-    expected_histogram[["1"]] <- nrow(X)
-    expect_identical(serial$assembly$local_solver_route, route)
-    expect_identical(parallel$assembly$local_solver_route, route)
-    expect_identical(
-      serial$assembly$local_rank_histogram,
-      expected_histogram
-    )
-    expect_identical(
-      parallel$assembly$local_rank_histogram,
-      expected_histogram
-    )
-    expect_identical(
-      serial$assembly$rank_deficient_neighborhood_indices,
-      seq_len(nrow(X))
-    )
-    expect_identical(
-      parallel$assembly$rank_deficient_neighborhood_indices,
-      seq_len(nrow(X))
-    )
+    expect_identical(serial$assembly$rank_deficient_count, nrow(X))
+    expect_identical(parallel$assembly$rank_deficient_count, nrow(X))
+    expect_identical(serial$assembly$min_local_rank, 1L)
+    expect_identical(parallel$assembly$min_local_rank, 1L)
   }
 })
 

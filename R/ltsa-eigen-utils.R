@@ -159,38 +159,6 @@ ltsa_near_zero_tol <- function(lambda_max, tol = sqrt(.Machine$double.eps)) {
   tol * ltsa_residual_scale(lambda_max)
 }
 
-ltsa_gap_zero_tol <- function(lambda_max, tol = sqrt(.Machine$double.eps)) {
-  tol * ltsa_residual_scale(lambda_max)
-}
-
-ltsa_near_zero_threshold_scales <- function() {
-  c(
-    "1e-08" = 1e-8,
-    "1e-07" = 1e-7,
-    "1e-06" = 1e-6,
-    "1e-05" = 1e-5
-  )
-}
-
-ltsa_near_zero_thresholds <- function(lambda_max) {
-  scales <- ltsa_near_zero_threshold_scales()
-  stats::setNames(scales * ltsa_residual_scale(lambda_max), names(scales))
-}
-
-ltsa_near_zero_counts <- function(values, thresholds) {
-  values <- as.numeric(values)
-  stats::setNames(
-    vapply(
-      thresholds,
-      function(threshold) {
-        as.integer(sum(abs(values) <= threshold))
-      },
-      integer(1)
-    ),
-    names(thresholds)
-  )
-}
-
 ltsa_validate_backend_lambda_max <- function(lambda_max, B, backend) {
   if (length(lambda_max) < 1L || !is.finite(lambda_max[[1L]])) {
     stop(

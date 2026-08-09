@@ -6,85 +6,27 @@
 #' @details
 #' `ltsa()` builds a symmetric positive-semidefinite LTSA alignment operator
 #' `B` from local neighborhoods and returns its lowest nonconstant embedding
-#' vectors. The constant vector is a known null direction of `B`, but the
-#' nullspace can contain other directions. The default
-#' `output = "embedding"` returns only the embedding matrix.
+#' vectors. The constant vector is a known null direction of `B`, although the
+#' nullspace can contain other directions.
 #'
-#' Use `output = "result"` to inspect compact diagnostics when convergence or
-#' eigenspace ambiguity matters. The result contains the embedding,
-#' eigenanalysis diagnostics, assembly diagnostics, and, when
-#' `include_B = TRUE`, the assembled unnormalized matrix `B`.
-#' `eigen$status` and `eigen$messages` summarize the solve; inspect those
-#' condition-specific messages when `eigen$status` is not `"ok"`.
-#'
-#' Use `output = "B"` to return the assembled unnormalized LTSA matrix and skip
-#' final eigenanalysis.
-#'
-#' When `output = "result"`, `eigen$method` records the requested policy or
-#' canonical method name: automatic selection is stored as `"auto"`, and the
-#' `"eigen"` alias is stored as `"eig"`. `eigen$backend$name` records the
-#' backend actually used.
-#'
-#' @section Eigenanalysis and structural diagnostics:
-#' Rayleigh--Ritz postprocessing removes the known constant null direction from
-#' the candidate span before selecting `ndim` coordinates. A larger observed
-#' near-zero nonconstant eigenspace can make the individual coordinates
-#' non-identifiable: `eigen$diagnostics$near_zero_block_truncated` is `TRUE`
-#' when the requested embedding cuts through that observed block. The related
-#' counts and boundaries describe only the returned candidate span; they do not
-#' establish the full nullity of `B` or diagnose clusters.
-#'
-#' `assembly$component_count`, `assembly$component_sizes`, and
-#' `assembly$component_membership` describe connected components of the
-#' co-membership graph induced by the effective neighborhoods used to assemble
-#' `B`. Disconnected components imply componentwise constant null directions. A
-#' connected graph does not rule out other weak or low-energy structure.
-#' `assembly$component_embedding_overlap` reports how the standard LTSA
-#' embedding subspace overlaps the nonconstant component-indicator contrast
-#' subspace; it is not a graph-cut or clustering score. For normalized LTSA,
-#' the corresponding field is
-#' `eigen$normalized_details$component_embedding_overlap`.
+#' With `output = "result"`, `eigen$status` and `eigen$messages` report solve
+#' problems. If `eigen$diagnostics$near_zero_block_truncated` is `TRUE`, the
+#' requested dimensions cut through an observed near-zero eigenspace, so
+#' individual coordinates may not be identifiable; inspect the selected
+#' subspace or increase `ndim`. A positive `assembly$rank_deficient_count` and
+#' its `assembly$min_local_rank` suggest reconsidering the neighborhoods or
+#' input. If `assembly$component_count` exceeds one, use
+#' `assembly$component_sizes` and `assembly$component_membership` to reconnect
+#' the effective-neighborhood graph or analyze its components separately.
 #'
 #' @section Normalized LTSA:
-#' `normalize = TRUE` applies symmetric Jacobi scaling to the assembled LTSA
-#' alignment matrix `B`. Let `D = diag(B)`. The eigensolve is performed on
-#' `D^(-1/2) B D^(-1/2)`, and the selected vectors are mapped back with
-#' `D^(-1/2)`. Equivalently, this solves the generalized eigenproblem
-#' `B v = lambda D v`.
+#' Let `D = diag(B)`. With `normalize = TRUE`, the eigensolve is performed on
+#' `D^(-1/2) B D^(-1/2)` and the selected vectors are mapped back with
+#' `D^(-1/2)`. This solves the generalized eigenproblem `B v = lambda D v`.
 #'
-#' This is a different generalized problem, not merely a better-conditioned
-#' route to the standard LTSA eigenvectors. It keeps the alignment energy but
-#' changes the orthogonality and centering constraints from the ordinary inner
-#' product to the `D`-weighted inner product.
-#'
-#' The mass `diag(B)` is residual leverage, not ordinary graph degree. Each
-#' occurrence of a point in a neighborhood contributes the corresponding
-#' diagonal of that neighborhood's residual projector, so the mass combines
-#' reverse-neighborhood participation with local tangent leverage. Boundaries,
-#' curvature, rank deficiency, and unusual local geometry can therefore affect
-#' it. Mapping back from symmetric coordinates also amplifies points with small
-#' mass.
-#'
-#' With `output = "result"`, `eigen$normalized_details` contains `mass` and
-#' `mass_summary`; the latter contains `quantiles`, `max_to_min_ratio`,
-#' `min_to_median_ratio`, `log10_max_to_min_ratio`,
-#' `log10_min_to_median_ratio`, `index_limit`, `smallest_mass_indices`, and
-#' `largest_mass_indices`. The symmetric coordinates are stored in
-#' `symmetric_embedding`, while the top-level `embedding` contains the mapped
-#' generalized coordinates.
-#'
-#' `generalized_absolute_residuals` contains the columnwise Euclidean norms of
-#' `B v - lambda D v`. `generalized_residual_scale` is
-#' `sqrt(max(mass)) * max(eigen$lambda_max, 1)`, and `generalized_residuals` is
-#' the absolute vector divided by that scale. `weighted_orthogonality_error`,
-#' `weighted_centering_error`, and `map_back_error` are the maximum absolute
-#' entries of `V' D V - I`, `V' D 1`, and `u - sqrt(D) v`, respectively.
-#' `reverse_occurrence` contains `counts`, `quantiles`, and
-#' `correlation_with_mass`; `component_embedding_overlap` contains the
-#' normalized component-subspace comparison described above. Comparing
-#' `embedding` with `symmetric_embedding` separates changes in the scaled
-#' operator's eigenspace from pointwise map-back scaling. These fields do not
-#' have ordinary normalized-graph-Laplacian or graph-cut interpretations.
+#' Normalized LTSA is a distinct estimator with `D`-weighted orthogonality and
+#' centering constraints. It is not a graph-cut estimator or merely a
+#' conditioning route to ordinary LTSA.
 #'
 #' @section Precomputed neighbor input:
 #' `nn_method` may be a precomputed 1-based neighbor index matrix or an object
@@ -97,16 +39,6 @@
 #' Serial assembly generally uses less temporary storage. Parallel assembly
 #' trades additional storage for speed and may compound threaded-BLAS
 #' oversubscription.
-#'
-#' Local bases use a direct SVD when `ncol(X)` is no larger than the effective
-#' neighborhood size and an eigendecomposition of the centered Gram matrix
-#' otherwise. The Gram route applies a more conservative effective
-#' singular-value threshold because forming the Gram matrix squares the
-#' condition number. This stability tradeoff can produce different numerical
-#' ranks near the threshold. With `output = "result"`, inspect
-#' `assembly$local_solver_route`, `assembly$local_rank_histogram`, and
-#' `assembly$rank_deficient_neighborhood_indices` for the route and its
-#' observed ranks.
 #'
 #' @param X The input data matrix or data frame with one observation per row. If
 #'   a data frame is supplied, non-numeric columns are ignored. At least one
@@ -211,6 +143,12 @@
 #' (`"eigen"` becomes `"eig"`), while `eigen$backend$name` identifies the
 #' backend actually used (`"dense_eigen"`, `"rspectra"`, `"irlba"`, or
 #' `"svdr"`). `output = "B"` does not accept eigenanalysis controls in `...`.
+#'
+#' @return With `output = "embedding"`, an `n` by `ndim` embedding matrix. With
+#'   `output = "B"`, the assembled unnormalized LTSA alignment operator. With
+#'   `output = "result"`, a list containing `embedding`, compact `eigen` solve
+#'   information, and `assembly` neighbor, rank-deficiency, component, route,
+#'   and thread information; `B` is also included when `include_B = TRUE`.
 #'
 #' @references
 #' Zhang, Z., & Zha, H. (2004).
@@ -344,7 +282,6 @@ ltsa <-
     if (validated$normalize) {
       tsmessage("Forming normalized Bsym", verbose = validated$verbose)
       normalized <- ltsa_normalize_sparse_operator(B_operator)
-      mass <- normalized$mass
       Dinvs <- normalized$Dinvs
       nullvec <- normalized$nullvec
       B_operator <- normalized$Lsym
@@ -368,13 +305,11 @@ ltsa <-
         stop("Eigenanalysis failed: ", conditionMessage(e), call. = FALSE)
       }
     )
-    symmetric_embedding <- eig_res$vectors
     embedding_dimnames <- list(
       rownames(X),
       paste0("LTSA", seq_len(validated$ndim))
     )
-    dimnames(symmetric_embedding) <- embedding_dimnames
-    embedding <- symmetric_embedding
+    embedding <- eig_res$vectors
     if (validated$normalize) {
       embedding <- Dinvs * embedding
     }
@@ -391,14 +326,6 @@ ltsa <-
     }
 
     assembly_diagnostics <- assembly$diagnostics %||% list()
-    if (!validated$normalize) {
-      assembly_diagnostics$component_embedding_overlap <-
-        ltsa_component_embedding_overlap(
-          eig_res$vectors,
-          assembly_diagnostics$component_membership,
-          assembly_diagnostics$component_sizes
-        )
-    }
 
     eigen_result <- list(
       method = validated$eig_method,
@@ -414,20 +341,6 @@ ltsa <-
       backend = eig_res$eigen$backend,
       diagnostics = eig_res$eigen$diagnostics
     )
-    if (validated$normalize) {
-      eigen_result$normalized_details <- ltsa_normalized_details(
-        B = B,
-        mass = mass,
-        symmetric_embedding = symmetric_embedding,
-        embedding = embedding,
-        values = eig_res$eigen$values,
-        lambda_max = eig_res$eigen$lambda_max,
-        reverse_occurrence = assembly$reverse_occurrence,
-        component_membership = assembly_diagnostics$component_membership,
-        component_sizes = assembly_diagnostics$component_sizes
-      )
-    }
-
     result <- list(
       embedding = embedding,
       eigen = eigen_result,

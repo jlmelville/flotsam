@@ -230,66 +230,7 @@ test_that("Ritz residual diagnostics use the scaled residual convention", {
   )
 })
 
-test_that("Ritz gap diagnostics report global and local scales", {
-  # Exact candidate-span boundary algebra cannot be made deterministic through
-  # a public backend, so this narrow helper test uses a synthetic eigensystem.
-  problem <- synthetic_ltsa_problem(c(0, 5e-9, 5e-8, 5e-7, 5e-6, 1))
-
-  rr <- flotsam:::ltsa_ritz_select(
-    problem$matrix,
-    problem$basis,
-    ndim = 2L,
-    lambda_max = 1
-  )
-
-  expected_gap <- rr$ritz_values[[3L]] - rr$ritz_values[[2L]]
-  expect_equal(unname(expected_gap), 4.5e-7, tolerance = 1e-8)
-  expect_equal(rr$selected_boundary_gap, expected_gap, tolerance = 1e-15)
-  expect_equal(
-    unname(rr$global_gap),
-    unname(expected_gap),
-    tolerance = 1e-15
-  )
-  expect_equal(unname(rr$local_gap), 0.9, tolerance = 1e-8)
-  expect_gt(abs(rr$local_gap - rr$global_gap), 0.1)
-})
-
-test_that("near-zero Ritz counts are reported at multiple thresholds", {
-  # The helper is required here to control the full observed Ritz span and
-  # verify when a near-zero-block boundary lies outside that span.
-  problem <- synthetic_ltsa_problem(c(0, 5e-9, 5e-8, 5e-7, 5e-6, 1))
-
-  rr <- flotsam:::ltsa_ritz_select(
-    problem$matrix,
-    problem$basis,
-    ndim = 2L,
-    lambda_max = 1
-  )
-
-  expect_equal(
-    rr$near_zero_nonconstant_counts,
-    c("1e-08" = 1L, "1e-07" = 2L, "1e-06" = 3L, "1e-05" = 4L)
-  )
-  expected_ritz_values <- c(5e-9, 5e-8, 5e-7, 5e-6, 1)
-  expect_length(rr$ritz_values, length(expected_ritz_values))
-  expect_lt(max(abs(rr$ritz_values - expected_ritz_values)), 1e-14)
-  expect_identical(rr$candidate_span_size, 5L)
-  expect_lt(abs(rr$near_zero_boundary_gap - 4.5e-8), 1e-14)
-  expect_true(rr$near_zero_boundary_observed)
-  expected_boundary_gaps <- c(
-    "1e-08" = 4.5e-8,
-    "1e-07" = 4.5e-7,
-    "1e-06" = 4.5e-6,
-    "1e-05" = 1 - 5e-6
-  )
-  expect_lt(
-    max(abs(rr$near_zero_boundary_gaps - expected_boundary_gaps)),
-    1e-14
-  )
-  expect_true(all(rr$near_zero_boundaries_observed))
-})
-
-test_that("near-zero truncation counts use the observed candidate span", {
+test_that("near-zero truncation uses the observed candidate span", {
   ndim <- 2L
   threshold <- flotsam:::ltsa_near_zero_tol(4)
   cases <- list(
@@ -339,21 +280,9 @@ test_that("near-zero truncation counts use the observed candidate span", {
     diagnostics <- result$eigen$diagnostics
 
     expect_identical(
-      diagnostics$near_zero_nonconstant_count,
-      case$count
-    )
-    expect_equal(diagnostics$near_zero_threshold, threshold, tolerance = 1e-15)
-    expect_identical(
       diagnostics$near_zero_block_truncated,
       case$count > ndim
     )
-    expect_identical(
-      diagnostics$near_zero_boundary_observed,
-      case$count < diagnostics$candidate_span_size
-    )
-    if (case$count == diagnostics$candidate_span_size) {
-      expect_true(is.na(diagnostics$near_zero_boundary_gap))
-    }
   }
 })
 
@@ -383,7 +312,6 @@ test_that("small Ritz-selected cases agree with dense eigen reference subspaces"
   expect_equal(rr$values, dense$values[ord[2:3]], tolerance = 1e-12)
   expect_same_subspace(rr$vectors, reference, tolerance = 1e-7)
   expect_lt(max(rr$residuals), 1e-12)
-  expect_gt(rr$global_gap, 0)
 })
 
 test_that("default eig_k follows the public rule", {
@@ -515,38 +443,9 @@ test_that("Ritz diagnostics use compact solver-neutral shape", {
   expect_equal(res$eigen$residuals, rep(0, 2L), tolerance = 1e-12)
   expect_identical(res$eigen$method, "synthetic")
   expect_identical(res$eigen$backend$name, "synthetic")
-  expect_false(any(
-    c(
-      "attempts",
-      "acceptance",
-      "boundary_gap",
-      "global_gap",
-      "local_gap",
-      "zero_tol",
-      "near_zero_tol",
-      "near_zero_nonconstant_count",
-      "near_zero_threshold",
-      "near_zero_block_truncated"
-    ) %in%
-      names(res$eigen)
-  ))
   expect_named(
     res$eigen$diagnostics,
-    c(
-      "selected_boundary_gap",
-      "global_gap",
-      "local_gap",
-      "candidate_span_size",
-      "near_zero_nonconstant_count",
-      "near_zero_nonconstant_counts",
-      "near_zero_threshold",
-      "near_zero_thresholds",
-      "near_zero_boundary_gap",
-      "near_zero_boundary_gaps",
-      "near_zero_boundary_observed",
-      "near_zero_boundaries_observed",
-      "near_zero_block_truncated"
-    )
+    "near_zero_block_truncated"
   )
   expect_false(any(c("attempts", "acceptance", "ritz") %in% names(res)))
 })

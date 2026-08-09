@@ -81,9 +81,6 @@ expect_ltsa_public_result <- function(
     "backend",
     "diagnostics"
   )
-  if (normalized) {
-    eigen_fields <- c(eigen_fields, "normalized_details")
-  }
   expect_named(result$eigen, eigen_fields, ignore.order = TRUE)
   expect_identical(result$eigen$method, method)
   expect_identical(result$eigen$normalized, normalized)
@@ -96,28 +93,9 @@ expect_ltsa_public_result <- function(
   expect_true(is.list(result$eigen$backend))
   expect_named(
     result$eigen$diagnostics,
-    c(
-      "selected_boundary_gap",
-      "global_gap",
-      "local_gap",
-      "candidate_span_size",
-      "near_zero_nonconstant_count",
-      "near_zero_nonconstant_counts",
-      "near_zero_threshold",
-      "near_zero_thresholds",
-      "near_zero_boundary_gap",
-      "near_zero_boundary_gaps",
-      "near_zero_boundary_observed",
-      "near_zero_boundaries_observed",
-      "near_zero_block_truncated"
-    ),
+    "near_zero_block_truncated",
     ignore.order = TRUE
   )
-  expect_type(
-    result$eigen$diagnostics$near_zero_nonconstant_count,
-    "integer"
-  )
-  expect_type(result$eigen$diagnostics$near_zero_threshold, "double")
   expect_type(result$eigen$diagnostics$near_zero_block_truncated, "logical")
   expect_false("B" %in% names(result))
   assembly_fields <- c(
@@ -128,18 +106,12 @@ expect_ltsa_public_result <- function(
     "rank_deficient_count",
     "min_local_rank",
     "assembly_route",
-    "local_solver_route",
-    "local_rank_histogram",
-    "rank_deficient_neighborhood_indices",
     "component_count",
     "component_sizes",
     "component_membership",
     "requested_assembly_threads",
     "effective_assembly_threads"
   )
-  if (!normalized) {
-    assembly_fields <- c(assembly_fields, "component_embedding_overlap")
-  }
   expect_named(result$assembly, assembly_fields, ignore.order = TRUE)
   expect_identical(result$assembly$n_neighbors, 8L)
   expect_identical(result$assembly$neighbor_source, "exact")
@@ -147,50 +119,6 @@ expect_ltsa_public_result <- function(
   expect_length(result$assembly$neighbor_elapsed, 1L)
   expect_true(is.finite(result$assembly$neighbor_elapsed))
   expect_gte(result$assembly$neighbor_elapsed, 0)
-
-  if (normalized) {
-    details <- result$eigen$normalized_details
-    expect_named(
-      details,
-      c(
-        "mass",
-        "mass_summary",
-        "symmetric_embedding",
-        "generalized_absolute_residuals",
-        "generalized_residual_scale",
-        "generalized_residuals",
-        "weighted_orthogonality_error",
-        "weighted_centering_error",
-        "map_back_error",
-        "reverse_occurrence",
-        "component_embedding_overlap"
-      ),
-      ignore.order = TRUE
-    )
-    expect_length(details$mass, n)
-    expect_equal(dim(details$symmetric_embedding), c(n, ndim))
-    expect_identical(
-      dimnames(details$symmetric_embedding),
-      coordinate_dimnames
-    )
-    expect_length(details$generalized_absolute_residuals, ndim)
-    expect_length(details$generalized_residuals, ndim)
-    expect_named(
-      details$reverse_occurrence,
-      c("counts", "quantiles", "correlation_with_mass"),
-      ignore.order = TRUE
-    )
-    expect_named(
-      details$component_embedding_overlap,
-      c(
-        "principal_angle_cosines",
-        "projection_energy",
-        "embedding_rank",
-        "component_contrast_rank"
-      ),
-      ignore.order = TRUE
-    )
-  }
 }
 
 test_that("default public return remains an embedding matrix", {
@@ -236,14 +164,7 @@ test_that("public coordinate matrices preserve row names and name dimensions", {
     eig_k = 4L,
     output = "result"
   )
-  normalized_details <- normalized_result$eigen$normalized_details
   expect_identical(dimnames(normalized_result$embedding), expected_dimnames)
-  expect_identical(
-    dimnames(normalized_details$symmetric_embedding),
-    expected_dimnames
-  )
-  expect_null(names(normalized_details$generalized_absolute_residuals))
-  expect_null(names(normalized_details$generalized_residuals))
 
   unnamed_iris <- named_iris
   rownames(unnamed_iris) <- NULL
@@ -345,7 +266,7 @@ test_that("all solver methods support detailed public results", {
   }
 })
 
-test_that("normalized iterative detailed results have consistent diagnostics", {
+test_that("normalized iterative detailed results have consistent shape", {
   methods <- c("rspectra", "irlba", "svdr")
 
   for (method in methods) {
@@ -366,7 +287,5 @@ test_that("normalized iterative detailed results have consistent diagnostics", {
       method = method,
       normalized = TRUE
     )
-    expect_length(result$eigen$normalized_details$generalized_residuals, 2L)
-    expect_false("component_embedding_overlap" %in% names(result$assembly))
   }
 })

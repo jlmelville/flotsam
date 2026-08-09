@@ -306,26 +306,6 @@ test_that("effective components use assembled co-membership neighborhoods", {
     result$assembly$component_membership,
     c(1L, 1L, 1L, 1L, 2L, 2L, 2L, 2L)
   )
-  overlap <- result$assembly$component_embedding_overlap
-  component_contrast <- c(rep(1, 4L), rep(-1, 4L)) / sqrt(8)
-  embedding_basis <- qr.Q(qr(result$embedding))[, 1L, drop = FALSE]
-  expected_cosine <- abs(drop(crossprod(
-    component_contrast,
-    embedding_basis
-  )))
-  expect_equal(
-    overlap$principal_angle_cosines,
-    expected_cosine,
-    tolerance = 1e-10
-  )
-  expect_equal(
-    overlap$projection_energy,
-    expected_cosine^2,
-    tolerance = 1e-10
-  )
-  expect_identical(overlap$embedding_rank, 1L)
-  expect_identical(overlap$component_contrast_rank, 1L)
-
   warning_messages <- character()
   invisible(withCallingHandlers(
     ltsa(

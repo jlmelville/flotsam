@@ -305,7 +305,6 @@ struct ParallelTriangularFillWorker {
   const std::vector<std::size_t>* slot_offsets;
   std::vector<int>* raw_rows;
   std::vector<double>* raw_values;
-  std::vector<int>* local_ranks;
   std::vector<ParallelLocalWeightsWorkspace>* workspaces;
   std::vector<ParallelWorkerDiagnostics>* diagnostics;
 
@@ -323,7 +322,6 @@ struct ParallelTriangularFillWorker {
                                          local_rank) != 0) {
         break;
       }
-      (*local_ranks)[obs] = local_rank;
 
       const std::size_t obs_tri_offset = obs * tri_count;
       for (std::size_t local_col = 0; local_col < n_nbrs; local_col++) {
@@ -602,8 +600,6 @@ void stop_on_parallel_worker_failure(
   const std::size_t raw_count = slot_plan.column_starts[n_obs];
   std::vector<int> raw_rows;
   std::vector<double> raw_values;
-  std::vector<int> local_ranks(
-      checked_vector_size<int>(n_obs, "parallel LTSA local ranks"), 0);
   checked_resize_vector(raw_rows, raw_count, "raw LTSA row buffer");
   checked_resize_vector(raw_values, raw_count, "raw LTSA value buffer");
 
@@ -618,7 +614,6 @@ void stop_on_parallel_worker_failure(
                                       &slot_plan.slot_offsets,
                                       &raw_rows,
                                       &raw_values,
-                                      &local_ranks,
                                       &workspaces,
                                       &worker_diagnostics};
 
@@ -635,7 +630,6 @@ void stop_on_parallel_worker_failure(
   cpp11::sexp r_i(cpp11::as_sexp(components.i));
   cpp11::sexp r_p(cpp11::as_sexp(components.p));
   cpp11::sexp r_x(cpp11::as_sexp(components.x));
-  cpp11::sexp r_local_ranks(cpp11::as_sexp(local_ranks));
 
   return cpp11::writable::list(
       {cpp11::named_arg("i") = r_i, cpp11::named_arg("p") = r_p,
@@ -643,8 +637,6 @@ void stop_on_parallel_worker_failure(
        cpp11::named_arg("rank_deficient_count") =
            diagnostics.rank_deficient_count,
        cpp11::named_arg("min_local_rank") = diagnostics.min_local_rank,
-       cpp11::named_arg("local_ranks") = r_local_ranks,
-       cpp11::named_arg("local_solver_route") = use_svd_route ? "svd" : "gram",
        cpp11::named_arg("assembly_route") = "parallel_triangular_two_pass",
        cpp11::named_arg("requested_assembly_threads") = requested_threads,
        cpp11::named_arg("effective_assembly_threads") =

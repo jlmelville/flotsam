@@ -86,11 +86,9 @@ hence the use of `eig_k` as mentioned above.
 
 If `eigen$diagnostics$near_zero_block_truncated` is `TRUE`, the requested `ndim` cuts through a
 larger near-zero nonconstant eigenspace observed within that span. The selected subspace can still
-be meaningful, but its individual coordinates are not uniquely identifiable. Increasing `eig_k`
-can reveal more of the block; increasing `ndim` or using subspace-based downstream analysis can
-represent more of it. A stricter tolerance does not resolve a genuinely repeated eigenspace, and
-the observed counts are not a completeness certificate beyond the candidate span or evidence of
-data clustering.
+be meaningful, but its individual coordinates are not uniquely identifiable. Inspect the selected
+subspace, increase `ndim`, or use subspace-based downstream analysis. A stricter tolerance does not
+resolve a genuinely repeated eigenspace, and this flag is not evidence of data clustering.
 
 ## Comparison to scikit-learn LTSA
 
@@ -178,14 +176,12 @@ ltsa_result$eigen[c("status", "eig_k", "rank")]
 ltsa_result$eigen$messages
 ```
 
-The detailed result fields are useful for distinguishing convergence,
-identifiability, structural-component, local-rank, and normalization effects;
-the sections below name and interpret them. If `eigen$messages` reports a weak
-Ritz boundary gap, the selected subspace may be poorly separated from the next
+Inspect `eigen$status` and `eigen$messages` first. If they report a weak Ritz
+boundary gap, the selected subspace may be poorly separated from the next
 candidate direction. Stricter convergence criteria can help when the cause is
 solver accuracy, at the cost of longer computation.
 
-## Assembly and normalized diagnostics
+## Assembly diagnostics and normalized LTSA
 
 ### Local rank route
 
@@ -194,9 +190,9 @@ effective neighborhood size, and an eigendecomposition of the centered Gram matr
 The direct route thresholds singular values. The Gram route thresholds squared singular values
 more conservatively because forming a Gram matrix squares the condition number. This is a
 stability tradeoff: near the threshold, the same local geometry can have a lower reported numerical
-rank on the Gram route. Inspect `assembly$local_solver_route` to see which route actually ran;
-`assembly$local_rank_histogram` and `assembly$rank_deficient_neighborhood_indices` report the
-observed ranks.
+rank on the Gram route. A rank-deficiency warning reports the number of affected neighborhoods in
+`assembly$rank_deficient_count` and the minimum numerical rank in `assembly$min_local_rank`.
+Reconsider the neighborhood size or inspect the input for repeated or degenerate observations.
 
 ### Effective-neighborhood components
 
@@ -204,14 +200,9 @@ observed ranks.
 `assembly$component_membership` describe connected components of the
 co-membership graph formed from the effective neighborhoods used in assembly.
 Disconnected components guarantee componentwise constant null directions.
-Connectedness does not rule out other weakly coupled or low-energy structure.
-
-For standard LTSA, `assembly$component_embedding_overlap` compares the selected embedding subspace
-with the nonconstant component-indicator contrast subspace. For normalized LTSA the corresponding
-field is `eigen$normalized_details$component_embedding_overlap`; it uses `sqrt(D)`-weighted
-indicators in symmetric coordinates, equivalently component indicators in the `D` inner product
-for mapped coordinates. The principal-angle cosines and projection energy quantify subspace
-overlap. They are structural diagnostics, not graph-cut objectives or clustering scores.
+Use the sizes and membership to reconnect the effective-neighborhood graph or analyze the
+components separately. Connectedness does not rule out other weakly coupled or low-energy
+structure.
 
 ### Normalized LTSA
 
@@ -226,34 +217,8 @@ coordinates $v = D^{-1/2}u$. Standard LTSA uses ordinary orthogonality and cente
 LTSA uses `D`-weighted constraints. The alignment energy is the same, but this is a different
 generalized problem, not merely a better-conditioned solve for the standard coordinates.
 
-The diagonal `D` is residual leverage rather than ordinary graph degree. A point's mass sums local
-residual-projector diagonal contributions, which combine reverse-neighborhood occurrence with
-local tangent leverage. It therefore reflects both neighborhood participation and local geometry.
-
-Under `output = "result"`, `eigen$normalized_details$mass` is `diag(B)`, and
-`mass_summary` contains `quantiles`, `max_to_min_ratio`, `min_to_median_ratio`,
-`log10_max_to_min_ratio`, `log10_min_to_median_ratio`, `index_limit`,
-`smallest_mass_indices`, and `largest_mass_indices`. The symmetric coordinate
-matrix is `symmetric_embedding`; the top-level `embedding` is the mapped
-coordinate matrix.
-
-For every returned coordinate, `generalized_absolute_residuals` reports
-$\lVert Bv - \lambda Dv \rVert_2$. `generalized_residual_scale` is
-$\sqrt{\max(D)}\max(\lambda_{\max}, 1)$, where $\lambda_{\max}$ is
-`eigen$lambda_max`; `generalized_residuals` is the absolute vector divided by
-that scale. `weighted_orthogonality_error`,
-`weighted_centering_error`, and `map_back_error` are the maximum absolute
-entries of $V^{\mathsf T}DV-I$, $V^{\mathsf T}D\mathbf{1}$, and
-$u-\sqrt{D}v$, respectively.
-
-`reverse_occurrence` contains `counts`, bounded `quantiles`, and
-`correlation_with_mass`, which is `NA` when the correlation is not defined.
-`component_embedding_overlap` contains the normalized component-subspace
-comparison described above. Comparing `embedding` with `symmetric_embedding`
-distinguishes changes in the symmetric operator's eigenspace from the separate
-pointwise amplification in the map back. These quantities do not inherit
-ordinary normalized-graph-Laplacian spectral bounds or graph-cut
-interpretations.
+The diagonal `D` is part of the LTSA generalized estimator, not ordinary graph degree. Normalized
+LTSA is not a graph-cut estimator.
 
 ## Convergence controls
 

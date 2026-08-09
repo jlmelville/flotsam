@@ -90,9 +90,5 @@ accepted only with their explicit backend, and `shift_eps` only with an explicit
 `resid_tol` and `gap_tol` are non-routing diagnostics accepted in every mode; they are the only
 controls accepted by `"eig"`/`"eigen"`. `output = "B"` rejects all eigenanalysis controls in `...`.
 
-The detailed result also reports numerical and structural diagnostics. Near-zero counts apply only
-to the observed candidate span; `eigen$diagnostics$near_zero_block_truncated` means that individual
-coordinates are not uniquely identifiable because `ndim` cuts through a larger observed
-near-zero eigenspace. Effective-neighborhood component membership and embedding-subspace overlap
-describe structural support and identifiability, not graph cuts or data clusters. See the
-[Numerical Diagnostics](numerical-diagnostics.html) article for the field names and interpretation.
+For practical solver and troubleshooting guidance, see the
+[Numerical Diagnostics](numerical-diagnostics.html) article.
