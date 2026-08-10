@@ -310,12 +310,15 @@ ltsa_wider <- ltsa(
 However the default is already quite generous, so usually tighter
 convergence is the answer with default `eig_k`.
 
-Use `output = "B"` to return the assembled unnormalized LTSA matrix
-without final eigenanalysis:
+Use `output = "B"` to skip final eigenanalysis. With
+`normalize = FALSE`, the default, this returns the raw alignment matrix;
+with `normalize = TRUE`, it returns the normalized operator
+$`D^{-1/2} B D^{-1/2}`$ used by eigenanalysis:
 
 ``` r
 
-B <- ltsa(swiss_roll, output = "B")
+raw_B <- ltsa(swiss_roll, output = "B")
+normalized_B <- ltsa(swiss_roll, output = "B", normalize = TRUE)
 ```
 
 If you use `eig_method = "irlba"` or `eig_method = "svdr"` then

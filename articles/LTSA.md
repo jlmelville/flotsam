@@ -33,8 +33,11 @@ be worth modifying in roughly descending order of importance:
 - `ndim`: The number of dimensions to reduce to. Usually 2 for
   visualization.
 - `n_neighbors`: The number of neighbors to use for the local
-  neighborhood. Default is `15`. Usually this is the performance
-  bottleneck, but a value that is too low can leave disconnected
+  neighborhood. When computed neighbors are requested and this is
+  omitted, the default is the smaller of `15` and the maximum permitted
+  by `N` and `include_self` (`N` with self or `N - 1` without self). It
+  must still be at least `ndim + 2`; data too small to meet that minimum
+  produce an error. A value that is too low can leave disconnected
   effective-neighborhood components or poorly separated low-energy
   directions.
 - `nn_method`: The method to use for finding nearest neighbors:
@@ -54,7 +57,10 @@ be worth modifying in roughly descending order of importance:
   the Hessian Locally Linear Embedding (HLLE) method, so setting this to
   `FALSE` may allow emulating HLLE. Default is `TRUE`.
 - `n_threads`: The number of threads to use for the nearest neighbor
-  calculation. Default is `1`.
+  calculation. Default is `1`. The rnndescent backend treats `0` and `1`
+  as serial execution; values greater than `1` request multithreaded
+  execution. Multithreaded approximate searches need not reproduce an
+  identical neighbor graph across runs.
 - `n_assembly_threads`: The number of threads to use when constructing
   the LTSA matrix `B`. Default is `1`, which requests serial assembly
   and generally uses less temporary storage. Values greater than `1`
@@ -103,8 +109,9 @@ be worth modifying in roughly descending order of importance:
   - `"result"`: Return a list containing the embedding, compact
     eigenanalysis diagnostics, assembly diagnostics, and optionally the
     assembled unnormalized LTSA matrix `B`.
-  - `"B"`: Return the assembled unnormalized LTSA matrix and skip final
-    eigenanalysis.
+  - `"B"`: Skip final eigenanalysis and return the raw alignment matrix
+    when `normalize = FALSE`, or the normalized operator
+    $`D^{-1/2} B D^{-1/2}`$ when `normalize = TRUE`.
 - `include_B`: Whether to include the assembled unnormalized LTSA matrix
   `B` in the result. Under `eig_method = "auto"`, dense
   [`base::eigen()`](https://rdrr.io/r/base/eigen.html) is selected when

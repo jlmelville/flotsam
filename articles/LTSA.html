@@ -102,10 +102,14 @@ of importance:</p>
 for visualization.</li>
 <li>
 <code>n_neighbors</code>: The number of neighbors to use for the
-local neighborhood. Default is <code>15</code>. Usually this is the
-performance bottleneck, but a value that is too low can leave
-disconnected effective-neighborhood components or poorly separated
-low-energy directions.</li>
+local neighborhood. When computed neighbors are requested and this is
+omitted, the default is the smaller of <code>15</code> and the maximum
+permitted by <code>N</code> and <code>include_self</code>
+(<code>N</code> with self or <code>N - 1</code> without self). It must
+still be at least <code>ndim + 2</code>; data too small to meet that
+minimum produce an error. A value that is too low can leave disconnected
+effective-neighborhood components or poorly separated low-energy
+directions.</li>
 <li>
 <code>nn_method</code>: The method to use for finding nearest
 neighbors:
@@ -135,7 +139,11 @@ setting this to <code>FALSE</code> may allow emulating HLLE. Default is
 <code>TRUE</code>.</li>
 <li>
 <code>n_threads</code>: The number of threads to use for the nearest
-neighbor calculation. Default is <code>1</code>.</li>
+neighbor calculation. Default is <code>1</code>. The rnndescent backend
+treats <code>0</code> and <code>1</code> as serial execution; values
+greater than <code>1</code> request multithreaded execution.
+Multithreaded approximate searches need not reproduce an identical
+neighbor graph across runs.</li>
 <li>
 <code>n_assembly_threads</code>: The number of threads to use when
 constructing the LTSA matrix <code>B</code>. Default is <code>1</code>,
@@ -202,8 +210,11 @@ default.</li>
 compact eigenanalysis diagnostics, assembly diagnostics, and optionally
 the assembled unnormalized LTSA matrix <code>B</code>.</li>
 <li>
-<code>"B"</code>: Return the assembled unnormalized LTSA matrix and
-skip final eigenanalysis.</li>
+<code>"B"</code>: Skip final eigenanalysis and return the raw
+alignment matrix when <code>normalize = FALSE</code>, or the normalized
+operator
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msup><mi>D</mi><mrow><mi>−</mi><mn>1</mn><mi>/</mi><mn>2</mn></mrow></msup><mi>B</mi><msup><mi>D</mi><mrow><mi>−</mi><mn>1</mn><mi>/</mi><mn>2</mn></mrow></msup></mrow><annotation encoding="application/x-tex">D^{-1/2} B D^{-1/2}</annotation></semantics></math>
+when <code>normalize = TRUE</code>.</li>
 </ul>
 </li>
 <li>

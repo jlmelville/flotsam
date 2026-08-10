@@ -368,10 +368,15 @@ returned before the Rayleigh-Ritz processing):</p>
 <span><span class="op">)</span></span></code></pre></div>
 <p>However the default is already quite generous, so usually tighter
 convergence is the answer with default <code>eig_k</code>.</p>
-<p>Use <code>output = "B"</code> to return the assembled unnormalized
-LTSA matrix without final eigenanalysis:</p>
+<p>Use <code>output = "B"</code> to skip final eigenanalysis. With
+<code>normalize = FALSE</code>, the default, this returns the raw
+alignment matrix; with <code>normalize = TRUE</code>, it returns the
+normalized operator
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msup><mi>D</mi><mrow><mi>−</mi><mn>1</mn><mi>/</mi><mn>2</mn></mrow></msup><mi>B</mi><msup><mi>D</mi><mrow><mi>−</mi><mn>1</mn><mi>/</mi><mn>2</mn></mrow></msup></mrow><annotation encoding="application/x-tex">D^{-1/2} B D^{-1/2}</annotation></semantics></math>
+used by eigenanalysis:</p>
 <div class="sourceCode" id="cb11"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">B</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/ltsa.html">ltsa</a></span><span class="op">(</span><span class="va">swiss_roll</span>, output <span class="op">=</span> <span class="st">"B"</span><span class="op">)</span></span></code></pre></div>
+<code class="sourceCode R"><span><span class="va">raw_B</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/ltsa.html">ltsa</a></span><span class="op">(</span><span class="va">swiss_roll</span>, output <span class="op">=</span> <span class="st">"B"</span><span class="op">)</span></span>
+<span><span class="va">normalized_B</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/ltsa.html">ltsa</a></span><span class="op">(</span><span class="va">swiss_roll</span>, output <span class="op">=</span> <span class="st">"B"</span>, normalize <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span></code></pre></div>
 <p>If you use <code>eig_method = "irlba"</code> or
 <code>eig_method = "svdr"</code> then different functions in irlba will
 be used instead of RSpectra. They do not expose the same convergence

@@ -2,6 +2,15 @@
 
 ## flotsam 0.0.0.9002
 
+- `output = "B"` now honors `normalize`: it returns the raw LTSA
+  alignment matrix by default and the normalized operator supplied to
+  eigenanalysis when `normalize = TRUE`, while still skipping
+  eigenanalysis.
+- When computed neighbors are requested and `n_neighbors` is omitted,
+  the default is now the smaller of 15 and the largest neighborhood
+  permitted by the dataset and `include_self`. Explicit values and
+  precomputed-neighbor inference retain their existing validation and
+  behavior.
 - Assembly resources are now controlled only by `n_assembly_threads`:
   `1` requests serial assembly and larger values request parallel
   assembly. The `copy_max_mib` argument was removed; row-major copying
