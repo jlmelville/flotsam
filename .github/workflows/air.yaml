@@ -26,7 +26,9 @@ jobs:
       # Pinned to a full-length commit SHA for immutability; Dependabot updates this reference.
       - uses: posit-dev/setup-air@cf390573ff4fe0f198f35df3a642b1409328d859
         with:
-          version: "0.4.1"
+          # Upgrade locally with `uv tool upgrade air-formatter`, then update
+          # this pin.
+          version: "0.11.0"
 
       - name: Check formatting
         run: air format . --check
