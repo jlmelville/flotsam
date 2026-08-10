@@ -243,6 +243,88 @@ test_that("ndim plus two is the smallest accepted effective neighborhood", {
   }
 })
 
+test_that("computed-neighbor defaults adapt at both include-self boundaries", {
+  set.seed(103)
+  cases <- data.frame(
+    include_self = c(TRUE, TRUE, TRUE, FALSE, FALSE, FALSE),
+    n_obs = c(4L, 15L, 16L, 5L, 16L, 17L),
+    expected = c(4L, 15L, 15L, 4L, 15L, 15L)
+  )
+
+  for (i in seq_len(nrow(cases))) {
+    case <- cases[i, ]
+    X <- matrix(stats::rnorm(case$n_obs * 4L), nrow = case$n_obs)
+    default <- ltsa(
+      X,
+      ndim = 2L,
+      nn_method = "exact",
+      include_self = case$include_self,
+      output = "B"
+    )
+    explicit <- ltsa(
+      X,
+      ndim = 2L,
+      n_neighbors = case$expected,
+      nn_method = "exact",
+      include_self = case$include_self,
+      output = "B"
+    )
+
+    expect_sparse_equivalent(default, explicit, tolerance = 0)
+  }
+})
+
+test_that("computed-neighbor defaults reject impossible local dimensions", {
+  set.seed(104)
+  cases <- list(
+    list(n_obs = 4L, ndim = 3L, include_self = TRUE),
+    list(n_obs = 5L, ndim = 3L, include_self = FALSE)
+  )
+
+  for (case in cases) {
+    X <- matrix(stats::rnorm(case$n_obs * 4L), nrow = case$n_obs)
+    expect_error(
+      ltsa(
+        X,
+        ndim = case$ndim,
+        nn_method = "exact",
+        include_self = case$include_self,
+        output = "B"
+      ),
+      "at least ndim \\+ 2.*local residual direction"
+    )
+  }
+})
+
+test_that("adaptive defaults do not relax explicit neighbor validation", {
+  X <- matrix(seq_len(10L * 4L), nrow = 10L)
+
+  expect_error(
+    ltsa(X, n_neighbors = 3L, ndim = 2L, nn_method = "exact", output = "B"),
+    "at least ndim \\+ 2"
+  )
+  expect_error(
+    ltsa(
+      X,
+      n_neighbors = 11L,
+      nn_method = "exact",
+      include_self = TRUE,
+      output = "B"
+    ),
+    "too large"
+  )
+  expect_error(
+    ltsa(
+      X,
+      n_neighbors = 10L,
+      nn_method = "exact",
+      include_self = FALSE,
+      output = "B"
+    ),
+    "too large"
+  )
+})
+
 test_that("logical arguments must be scalar TRUE or FALSE", {
   expect_error(
     ltsa(iris[1:10, ], include_self = NA),

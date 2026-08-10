@@ -112,7 +112,8 @@ validate_ltsa_args <- function(
 
   if (is.null(nn_idx)) {
     if (is.null(n_neighbors)) {
-      n_neighbors <- 15L
+      max_neighbors <- if (include_self) nrow(X) else nrow(X) - 1L
+      n_neighbors <- min(15L, max_neighbors)
     }
   } else {
     nn <- validate_precomputed_neighbors(
