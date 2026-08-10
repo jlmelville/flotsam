@@ -156,9 +156,8 @@ is <code>FALSE</code>, which uses the standard LTSA formulation.</p></dd>
 
 <dt id="arg-n-threads">n_threads<a class="anchor" aria-label="anchor" href="#arg-n-threads"></a></dt>
 <dd><p>Nonnegative number of threads for nearest-neighbor
-calculation. The rnndescent backend treats <code>0</code> and <code>1</code> as serial execution;
-values greater than <code>1</code> request multithreaded execution. This does not
-control LTSA matrix assembly.</p></dd>
+calculation. For reproducibility, set <code>n_threads = 1</code> (the default). This
+does not control LTSA matrix assembly.</p></dd>
 
 
 <dt id="arg-n-assembly-threads">n_assembly_threads<a class="anchor" aria-label="anchor" href="#arg-n-assembly-threads"></a></dt>

@@ -64,11 +64,7 @@
 <div class="section level2">
 <h2 id="input-and-neighborhoods">Input and neighborhoods<a class="anchor" aria-label="anchor" href="#input-and-neighborhoods"></a>
 </h2>
-<p><code><a href="reference/ltsa.html">ltsa()</a></code> accepts a numeric matrix or a data frame; non-numeric data-frame columns are ignored. Because neighborhoods use distances, scale variables first when their units are not comparable. <code>n_neighbors</code> controls how local the approximation is and must be at least <code>ndim + 2</code>; when it is omitted for computed neighbors, flotsam uses up to 15 neighbors, limited by the dataset size. Approximate neighbor search can vary between runs, and multithreaded searches need not reproduce an identical neighbor graph.</p>
-</div>
-<div class="section level2">
-<h2 id="example">Example<a class="anchor" aria-label="anchor" href="#example"></a>
-</h2>
+<p><code><a href="reference/ltsa.html">ltsa()</a></code> accepts a numeric matrix or a data frame; non-numeric data-frame columns are ignored. The size of the k-nearest neighbor graph that determines neighborhood size is controlled by <code>n_neighbors</code> and must be at least <code>ndim + 2</code>. Approximate nearest neighbor search is carried out, so for reproducibility use <code>set.seed</code> and set <code>n_threads = 1</code>. ## Example</p>
 <div class="sourceCode" id="cb2"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://jlmelville.github.io/flotsam/">flotsam</a></span><span class="op">)</span></span>
 <span></span>

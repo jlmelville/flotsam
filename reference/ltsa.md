@@ -133,9 +133,8 @@ ltsa(
 
 - n_threads:
 
-  Nonnegative number of threads for nearest-neighbor calculation. The
-  rnndescent backend treats `0` and `1` as serial execution; values
-  greater than `1` request multithreaded execution. This does not
+  Nonnegative number of threads for nearest-neighbor calculation. For
+  reproducibility, set `n_threads = 1` (the default). This does not
   control LTSA matrix assembly.
 
 - n_assembly_threads:

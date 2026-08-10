@@ -23,14 +23,10 @@ pak::pak("jlmelville/flotsam")
 
 [`ltsa()`](https://jlmelville.github.io/flotsam/reference/ltsa.md)
 accepts a numeric matrix or a data frame; non-numeric data-frame columns
-are ignored. Because neighborhoods use distances, scale variables first
-when their units are not comparable. `n_neighbors` controls how local
-the approximation is and must be at least `ndim + 2`; when it is omitted
-for computed neighbors, flotsam uses up to 15 neighbors, limited by the
-dataset size. Approximate neighbor search can vary between runs, and
-multithreaded searches need not reproduce an identical neighbor graph.
-
-## Example
+are ignored. The size of the k-nearest neighbor graph that determines
+neighborhood size is controlled by `n_neighbors` and must be at least
+`ndim + 2`. Approximate nearest neighbor search is carried out, so for
+reproducibility use `set.seed` and set `n_threads = 1`. \## Example
 
 ``` r
 
