@@ -103,9 +103,8 @@
 #'   the "Normalized LTSA" section, including for `output = "B"`. The default
 #'   is `FALSE`, which uses the standard LTSA formulation.
 #' @param n_threads Nonnegative number of threads for nearest-neighbor
-#'   calculation. The rnndescent backend treats `0` and `1` as serial execution;
-#'   values greater than `1` request multithreaded execution. This does not
-#'   control LTSA matrix assembly.
+#'   calculation. For reproducibility, set `n_threads = 1` (the default). This
+#'   does not control LTSA matrix assembly.
 #' @param n_assembly_threads Number of threads to use when constructing the LTSA
 #'   alignment matrix `B` after nearest neighbors are computed. The default
 #'   `1` requests serial assembly. Values greater than `1` request parallel

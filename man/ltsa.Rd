@@ -98,9 +98,8 @@ the "Normalized LTSA" section, including for \code{output = "B"}. The default
 is \code{FALSE}, which uses the standard LTSA formulation.}
 
 \item{n_threads}{Nonnegative number of threads for nearest-neighbor
-calculation. The rnndescent backend treats \code{0} and \code{1} as serial execution;
-values greater than \code{1} request multithreaded execution. This does not
-control LTSA matrix assembly.}
+calculation. For reproducibility, set \code{n_threads = 1} (the default). This
+does not control LTSA matrix assembly.}
 
 \item{n_assembly_threads}{Number of threads to use when constructing the LTSA
 alignment matrix \code{B} after nearest neighbors are computed. The default
