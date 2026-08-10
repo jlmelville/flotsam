@@ -273,10 +273,6 @@ ltsa <-
       )
     }
 
-    if (identical(validated$output, "B")) {
-      return(B)
-    }
-
     B_operator <- B
     null_vector <- ltsa_default_null_vector(nrow(B_operator))
     if (validated$normalize) {
@@ -285,6 +281,10 @@ ltsa <-
       inv_sqrt_diagonal <- normalized$inv_sqrt_diagonal
       null_vector <- normalized$null_vector
       B_operator <- normalized$normalized_operator
+    }
+
+    if (identical(validated$output, "B")) {
+      return(B_operator)
     }
 
     report_progress("Performing eigenanalysis", verbose = validated$verbose)

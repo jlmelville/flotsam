@@ -85,7 +85,7 @@ test_that("normalized embeddings match an independent dense generalized solve", 
   expect_same_subspace(result$embedding, reference, tolerance = 1e-7)
 })
 
-test_that("output B remains the unnormalized alignment operator", {
+test_that("output B returns the operator selected by normalize", {
   args <- list(
     X = iris[1:10, ],
     nn_method = "exact",
@@ -94,12 +94,53 @@ test_that("output B remains the unnormalized alignment operator", {
     output = "B"
   )
 
-  unnormalized <- do.call(ltsa, c(args, list(normalize = FALSE)))
-  normalized_request <- do.call(ltsa, c(args, list(normalize = TRUE)))
+  raw_B <- do.call(ltsa, c(args, list(normalize = FALSE)))
+  normalized_B <- do.call(ltsa, c(args, list(normalize = TRUE)))
+  inv_sqrt_diagonal <- Matrix::Diagonal(x = 1 / sqrt(diag(raw_B)))
+  reference <- inv_sqrt_diagonal %*% raw_B %*% inv_sqrt_diagonal
 
   expect_equal(
-    as.matrix(normalized_request),
-    as.matrix(unnormalized),
+    as.matrix(normalized_B),
+    as.matrix(reference),
+    tolerance = 1e-12
+  )
+  expect_false(isTRUE(all.equal(as.matrix(normalized_B), as.matrix(raw_B))))
+
+  result <- do.call(
+    ltsa,
+    c(
+      args[names(args) != "output"],
+      list(
+        normalize = TRUE,
+        eig_method = "eig",
+        eig_k = 4L,
+        output = "result",
+        include_B = TRUE
+      )
+    )
+  )
+  expect_equal(
+    as.matrix(result$B),
+    as.matrix(raw_B),
     tolerance = 0
+  )
+})
+
+test_that("normalized output B still skips eigenanalysis", {
+  local_mocked_bindings(
+    ltsa_run_eigenanalysis = function(...) {
+      stop("eigenanalysis reached", call. = FALSE)
+    },
+    .package = "flotsam"
+  )
+
+  expect_no_error(
+    ltsa(
+      iris[1:10, ],
+      nn_method = "exact",
+      n_neighbors = 8L,
+      normalize = TRUE,
+      output = "B"
+    )
   )
 })
