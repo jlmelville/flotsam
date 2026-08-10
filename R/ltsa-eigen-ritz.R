@@ -482,7 +482,7 @@ ltsa_ritz_eig <- function(
   )
   lambda_max <- candidate_result$lambda_max %||% NA_real_
   ritz_result <- ltsa_ritz_select(
-    B = candidate_result$matrix,
+    B = B,
     vectors = candidate_result$vectors,
     ndim = ndim,
     null_vector = null_vector,

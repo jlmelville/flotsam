@@ -81,15 +81,12 @@ synthetic_candidate_provider_factory <- function(
     flotsam:::new_ltsa_candidates(
       vectors = problem$basis[, cols_i, drop = FALSE],
       backend = backend,
-      eig_k = eig_k,
-      matrix = B,
       lambda_max = lambda_max_value,
       nconv = nconv_i,
       niter = niter,
       nops = nops,
       mprod = mprod,
       convergence_known = convergence_known,
-      returned_columns = length(cols_i),
       converged_columns = converged_i
     )
   }
@@ -585,11 +582,8 @@ test_that("Ritz driver handles arbitrary normalized-style null vectors", {
     flotsam:::new_ltsa_candidates(
       vectors = candidates[, seq_len(eig_k), drop = FALSE],
       backend = "synthetic",
-      eig_k = eig_k,
-      matrix = B,
       lambda_max = 5,
       convergence_known = TRUE,
-      returned_columns = eig_k,
       converged_columns = eig_k
     )
   }
@@ -624,35 +618,38 @@ test_that("LTSA symmetrization returns a general sparse solver matrix", {
   expect_equal(as.matrix(B_sym), 0.5 * (as.matrix(B) + t(as.matrix(B))))
 })
 
-test_that("automatic dense LTSA route reports small residuals", {
+test_that("automatic dense LTSA route returns the lowest candidate subspace", {
   B <- flotsam:::symmetrize_ltsa_matrix(Matrix::Diagonal(x = seq(0, 11)))
+  reference <- diag(12L)[, seq_len(6L), drop = FALSE]
 
   res <- flotsam:::ltsa_auto_candidate_provider(B, eig_k = 6L)
 
   expect_identical(res$backend, "dense_eigen")
-  expect_identical(res$eig_k, 6L)
   expect_identical(res$nconv, 6L)
-  expect_equal(res$values, seq(0, 5), tolerance = 1e-12)
-  expect_lt(max(res$scaled_residuals), 1e-12)
+  expect_equal(ncol(res$vectors), 6L)
+  expect_same_subspace(res$vectors, reference, tolerance = 1e-12)
 })
 
-test_that("RSpectra path uses shifted largest-algebraic solve with residual metadata", {
+test_that("RSpectra provider reports progress and returns low candidates", {
   B <- flotsam:::symmetrize_ltsa_matrix(Matrix::Diagonal(x = seq(0, 29)))
+  reference <- diag(30L)[, seq_len(6L), drop = FALSE]
 
-  res <- flotsam:::ltsa_rspectra_candidate_provider(
-    B,
-    eig_k = 6L,
-    tol = 1e-10,
-    maxitr = 5000L
+  messages <- capture.output(
+    res <- flotsam:::ltsa_rspectra_candidate_provider(
+      B,
+      eig_k = 6L,
+      tol = 1e-10,
+      maxitr = 5000L,
+      verbose = TRUE
+    ),
+    type = "message"
   )
 
   expect_identical(res$backend, "rspectra")
-  expect_identical(res$solve_which, "LA")
-  expect_identical(res$eig_k, 6L)
   expect_gte(res$nconv, 6L)
-  expect_equal(res$values, seq(0, 5), tolerance = 1e-8)
-  expect_lt(max(res$scaled_residuals), 1e-8)
-  expect_s4_class(res$matrix, "dgCMatrix")
+  expect_same_subspace(res$vectors, reference, tolerance = 1e-7)
+  expect_true(any(grepl("Decomposing shifted matrix", messages, fixed = TRUE)))
+  expect_true(any(grepl("max scaled residual", messages, fixed = TRUE)))
 })
 
 test_that("RSpectra candidate provider returns candidate bundle", {
@@ -666,13 +663,10 @@ test_that("RSpectra candidate provider returns candidate bundle", {
   )
 
   expect_identical(res$backend, "rspectra")
-  expect_identical(res$eig_k, 6L)
   expect_true(res$convergence_known)
   expect_gte(res$nconv, 6L)
   expect_true(is.finite(res$lambda_max))
-  expect_equal(res$values, seq(0, 5), tolerance = 1e-8)
   expect_equal(ncol(res$vectors), 6L)
-  expect_s4_class(res$matrix, "dgCMatrix")
 })
 
 test_that("RSpectra Ritz driver returns diagnostics", {
@@ -726,6 +720,7 @@ test_that("RSpectra Ritz driver returns diagnostics", {
 
 test_that("irlba and svdr candidate providers return candidate bundles", {
   B <- flotsam:::symmetrize_ltsa_matrix(Matrix::Diagonal(x = seq(0, 29)))
+  reference <- diag(30L)[, seq_len(6L), drop = FALSE]
   providers <- list(
     irlba = list(
       provider = flotsam:::ltsa_irlba_candidate_provider,
@@ -745,14 +740,12 @@ test_that("irlba and svdr candidate providers return candidate bundles", {
     )
 
     expect_identical(res$backend, backend)
-    expect_identical(res$eig_k, 6L)
     expect_false(res$convergence_known)
     expect_true(is.na(res$nconv))
     expect_true(is.finite(res$mprod))
     expect_true(is.finite(res$lambda_max))
-    expect_equal(res$values, seq(0, 5), tolerance = 1e-8)
     expect_equal(ncol(res$vectors), 6L)
-    expect_s4_class(res$matrix, "dgCMatrix")
+    expect_same_subspace(res$vectors, reference, tolerance = 1e-6)
   }
 })
 

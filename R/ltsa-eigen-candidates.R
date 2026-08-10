@@ -2,43 +2,24 @@
 # selection step, plus compact backend metadata for diagnostics.
 new_ltsa_candidates <- function(
   vectors,
-  values = NULL,
-  shifted_values = NULL,
   backend,
-  eig_k,
-  matrix,
   lambda_max = NULL,
-  lambda_probe = NULL,
   nconv = NA_integer_,
   niter = NA_integer_,
   nops = NA_integer_,
   mprod = NA_integer_,
-  opts = NULL,
   convergence_known = FALSE,
-  returned_columns = ncol(as.matrix(vectors)),
   converged_columns = ifelse(is.na(nconv), NA_integer_, nconv)
 ) {
-  vectors <- as.matrix(vectors)
-  if (is.null(values)) {
-    values <- ltsa_rayleigh_values(matrix, vectors)
-  }
-
   list(
-    vectors = vectors,
-    values = as.numeric(values),
-    shifted_values = shifted_values,
+    vectors = as.matrix(vectors),
     backend = backend,
-    eig_k = as.integer(eig_k),
-    matrix = matrix,
     lambda_max = lambda_max,
-    lambda_probe = lambda_probe,
     nconv = nconv,
     niter = niter,
     nops = nops,
     mprod = mprod,
-    opts = opts,
     convergence_known = isTRUE(convergence_known),
-    returned_columns = as.integer(returned_columns),
     converged_columns = as.integer(converged_columns)
   )
 }
@@ -142,31 +123,16 @@ ltsa_rspectra_candidate_provider <- function(
     verbose = verbose
   )
 
-  candidate <- new_ltsa_candidates(
+  new_ltsa_candidates(
     vectors = finished$vectors,
-    values = finished$values,
-    shifted_values = finished$shifted_values,
     backend = "rspectra",
-    eig_k = eig_k,
-    matrix = B,
     lambda_max = lambda_max,
-    lambda_probe = lambda_probe,
     nconv = nconv,
     niter = res$niter %||% NA_integer_,
     nops = res$nops %||% NA_integer_,
-    opts = opts,
     convergence_known = TRUE,
-    returned_columns = ncol(res$vectors),
     converged_columns = ifelse(is.na(nconv), eig_k, nconv)
   )
-  candidate$absolute_residuals <- finished$residuals$absolute_residuals
-  candidate$scaled_residuals <- finished$residuals$scaled_residuals
-  candidate$residual_scale <- finished$residuals$residual_scale
-  candidate$shift <- shift
-  candidate$shift_eps <- shift_eps
-  candidate$shift_policy <- "lambda_max_plus_margin"
-  candidate$solve_which <- "LA"
-  candidate
 }
 
 ltsa_irlba_lambda_max_probe <- function(B) {
@@ -239,23 +205,18 @@ ltsa_sort_and_score_candidates <- function(
   )
 }
 
-# Shifted solves are re-valued against the original LTSA matrix. The shifted
-# backend values are retained only as metadata; final selection uses B.
+# Shifted solves are re-valued against the original LTSA matrix before their
+# candidate vectors reach common selection. Final selection uses B.
 new_ltsa_shifted_candidates <- function(
   B,
   vectors,
   eig_k,
   backend,
   lambda_max,
-  lambda_probe,
-  shift,
-  shift_eps,
   shifted_values = NULL,
   niter = NA_integer_,
   nops = NA_integer_,
   mprod = NA_integer_,
-  opts = NULL,
-  returned_columns = ncol(as.matrix(vectors)),
   verbose = FALSE
 ) {
   finished <- ltsa_sort_and_score_candidates(
@@ -275,32 +236,17 @@ new_ltsa_shifted_candidates <- function(
     verbose = verbose
   )
 
-  candidate <- new_ltsa_candidates(
+  new_ltsa_candidates(
     vectors = finished$vectors,
-    values = finished$values,
-    shifted_values = finished$shifted_values,
     backend = backend,
-    eig_k = eig_k,
-    matrix = B,
     lambda_max = lambda_max,
-    lambda_probe = lambda_probe,
     nconv = NA_integer_,
     niter = niter,
     nops = nops,
     mprod = mprod,
-    opts = opts,
     convergence_known = FALSE,
-    returned_columns = returned_columns,
     converged_columns = NA_integer_
   )
-  candidate$absolute_residuals <- finished$residuals$absolute_residuals
-  candidate$scaled_residuals <- finished$residuals$scaled_residuals
-  candidate$residual_scale <- finished$residuals$residual_scale
-  candidate$shift <- shift
-  candidate$shift_eps <- shift_eps
-  candidate$shift_policy <- "lambda_max_plus_margin"
-  candidate$solve_which <- "largest_singular"
-  candidate
 }
 
 # irlba candidate provider. It solves the shifted problem by requesting right
@@ -348,14 +294,9 @@ ltsa_irlba_candidate_provider <- function(
     eig_k = eig_k,
     backend = "irlba",
     lambda_max = lambda_max,
-    lambda_probe = lambda_probe,
-    shift = shift,
-    shift_eps = shift_eps,
     shifted_values = res$d,
     niter = res$iter %||% NA_integer_,
     mprod = res$mprod %||% NA_integer_,
-    opts = args,
-    returned_columns = ncol(res$v),
     verbose = verbose
   )
 }
@@ -404,13 +345,8 @@ ltsa_svdr_candidate_provider <- function(
     eig_k = eig_k,
     backend = "svdr",
     lambda_max = lambda_max,
-    lambda_probe = lambda_probe,
-    shift = shift,
-    shift_eps = shift_eps,
     shifted_values = res$d,
     mprod = res$mprod %||% NA_integer_,
-    opts = args,
-    returned_columns = ncol(res$v),
     verbose = verbose
   )
 }
@@ -425,33 +361,15 @@ dense_ltsa_eig <- function(B, eig_k, backend = "dense_eigen") {
   lambda_max <- max(values_all)
 
   take <- seq_len(eig_k)
-  values <- values_all[take]
   vectors <- vectors_all[, take, drop = FALSE]
-  residuals <- ltsa_ritz_residuals(B, vectors, values, lambda_max)
 
-  candidate <- new_ltsa_candidates(
+  new_ltsa_candidates(
     vectors = vectors,
-    values = values,
     backend = backend,
-    eig_k = eig_k,
-    matrix = B,
     lambda_max = lambda_max,
     nconv = eig_k,
     convergence_known = TRUE,
-    returned_columns = ncol(vectors),
     converged_columns = eig_k
-  )
-  merge_named_lists(
-    candidate,
-    list(
-      absolute_residuals = residuals$absolute_residuals,
-      scaled_residuals = residuals$scaled_residuals,
-      residual_scale = residuals$residual_scale,
-      shift = NA_real_,
-      shift_eps = NA_real_,
-      shift_policy = "dense",
-      solve_which = NA_character_
-    )
   )
 }
 
