@@ -23,6 +23,9 @@
 #' Let `D = diag(B)`. With `normalize = TRUE`, the eigensolve is performed on
 #' `D^(-1/2) B D^(-1/2)` and the selected vectors are mapped back with
 #' `D^(-1/2)`. This solves the generalized eigenproblem `B v = lambda D v`.
+#' With `output = "B"`, this normalized operator is returned directly and
+#' eigenanalysis is skipped. The optional `B` in a detailed result remains the
+#' raw, unnormalized alignment matrix.
 #'
 #' Normalized LTSA is a distinct estimator with `D`-weighted orthogonality and
 #' centering constraints. It is not a graph-cut estimator or merely a
@@ -43,12 +46,14 @@
 #' @param X The input data matrix or data frame with one observation per row. If
 #'   a data frame is supplied, non-numeric columns are ignored. At least one
 #'   numeric column is required.
-#' @param n_neighbors  The size of local neighborhood (in terms of number of
+#' @param n_neighbors The size of local neighborhood (in terms of number of
 #'   neighboring sample points) used for manifold approximation. If `NULL`, the
-#'   default is `15` when neighbors are computed, or inferred when a precomputed
-#'   graph is supplied as `nn_method`. It must be at least `ndim + 2` so each
-#'   local projector has a residual direction beyond the constant and tangent
-#'   subspaces.
+#'   computed-neighbor default is the smaller of `15` and the maximum permitted
+#'   by the number of observations and `include_self`; for a precomputed graph
+#'   supplied as `nn_method`, it is inferred from the graph. It must be at least
+#'   `ndim + 2` so each local projector has a residual direction beyond the
+#'   constant and tangent subspaces. Data too small to meet that minimum produce
+#'   an error.
 #' @param ndim The dimension of the space to embed into.
 #' @param nn_method Method for finding nearest neighbors, or a precomputed
 #'   nearest-neighbor graph. Can be one of:
@@ -83,8 +88,9 @@
 #'   * `"embedding"` Return the embedding matrix. This is the default.
 #'   * `"result"` Return a list containing the embedding, compact eigenanalysis
 #'     diagnostics, assembly diagnostics, and optionally `B`.
-#'   * `"B"` Return the assembled unnormalized LTSA matrix and skip final
-#'     eigenanalysis.
+#'   * `"B"` Skip final eigenanalysis and return the raw alignment matrix when
+#'     `normalize = FALSE`, or the normalized operator described above when
+#'     `normalize = TRUE`.
 #' @param include_B If `TRUE` and `output = "result"`, include the assembled
 #'   unnormalized LTSA matrix `B` in the result object. Ignored for other output
 #'   modes.
@@ -94,10 +100,12 @@
 #'   Hessian Locally Linear Embedding (HLLE) method, so setting this to `FALSE`
 #'   may allow emulating the HLLE method.
 #' @param normalize If `TRUE`, use the normalized LTSA formulation described in
-#'   the "Normalized LTSA" section. The default is `FALSE`, which uses the
-#'   standard LTSA formulation.
-#' @param n_threads Number of threads to use. Applies only to the nearest
-#'   neighbor calculation.
+#'   the "Normalized LTSA" section, including for `output = "B"`. The default
+#'   is `FALSE`, which uses the standard LTSA formulation.
+#' @param n_threads Nonnegative number of threads for nearest-neighbor
+#'   calculation. The rnndescent backend treats `0` and `1` as serial execution;
+#'   values greater than `1` request multithreaded execution. This does not
+#'   control LTSA matrix assembly.
 #' @param n_assembly_threads Number of threads to use when constructing the LTSA
 #'   alignment matrix `B` after nearest neighbors are computed. The default
 #'   `1` requests serial assembly. Values greater than `1` request parallel
@@ -145,10 +153,12 @@
 #' `"svdr"`). `output = "B"` does not accept eigenanalysis controls in `...`.
 #'
 #' @return With `output = "embedding"`, an `n` by `ndim` embedding matrix. With
-#'   `output = "B"`, the assembled unnormalized LTSA alignment operator. With
-#'   `output = "result"`, a list containing `embedding`, compact `eigen` solve
-#'   information, and `assembly` neighbor, rank-deficiency, component, route,
-#'   and thread information; `B` is also included when `include_B = TRUE`.
+#'   `output = "B"`, the raw LTSA alignment matrix when `normalize = FALSE`, or
+#'   the normalized operator supplied to eigenanalysis when `normalize = TRUE`.
+#'   With `output = "result"`, a list containing `embedding`, compact `eigen`
+#'   solve information, and `assembly` neighbor, rank-deficiency, component,
+#'   route, and thread information; the raw, unnormalized `B` is also included
+#'   when `include_B = TRUE`.
 #'
 #' @references
 #' Zhang, Z., & Zha, H. (2004).
@@ -183,7 +193,7 @@
 #' iris_result$eigen$method
 #' iris_result$eigen$backend$name
 #'
-#' # Return the assembled unnormalized LTSA matrix.
+#' # Return the raw LTSA alignment matrix.
 #' iris_B <- ltsa(
 #'   small_iris,
 #'   n_neighbors = 12,

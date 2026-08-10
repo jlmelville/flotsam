@@ -28,10 +28,12 @@ numeric column is required.}
 
 \item{n_neighbors}{The size of local neighborhood (in terms of number of
 neighboring sample points) used for manifold approximation. If \code{NULL}, the
-default is \code{15} when neighbors are computed, or inferred when a precomputed
-graph is supplied as \code{nn_method}. It must be at least \code{ndim + 2} so each
-local projector has a residual direction beyond the constant and tangent
-subspaces.}
+computed-neighbor default is the smaller of \code{15} and the maximum permitted
+by the number of observations and \code{include_self}; for a precomputed graph
+supplied as \code{nn_method}, it is inferred from the graph. It must be at least
+\code{ndim + 2} so each local projector has a residual direction beyond the
+constant and tangent subspaces. Data too small to meet that minimum produce
+an error.}
 
 \item{ndim}{The dimension of the space to embed into.}
 
@@ -76,8 +78,9 @@ eigenanalysis computes the full eigensystem, then retains the lowest
 \item \code{"embedding"} Return the embedding matrix. This is the default.
 \item \code{"result"} Return a list containing the embedding, compact eigenanalysis
 diagnostics, assembly diagnostics, and optionally \code{B}.
-\item \code{"B"} Return the assembled unnormalized LTSA matrix and skip final
-eigenanalysis.
+\item \code{"B"} Skip final eigenanalysis and return the raw alignment matrix when
+\code{normalize = FALSE}, or the normalized operator described above when
+\code{normalize = TRUE}.
 }}
 
 \item{include_B}{If \code{TRUE} and \code{output = "result"}, include the assembled
@@ -91,11 +94,13 @@ Hessian Locally Linear Embedding (HLLE) method, so setting this to \code{FALSE}
 may allow emulating the HLLE method.}
 
 \item{normalize}{If \code{TRUE}, use the normalized LTSA formulation described in
-the "Normalized LTSA" section. The default is \code{FALSE}, which uses the
-standard LTSA formulation.}
+the "Normalized LTSA" section, including for \code{output = "B"}. The default
+is \code{FALSE}, which uses the standard LTSA formulation.}
 
-\item{n_threads}{Number of threads to use. Applies only to the nearest
-neighbor calculation.}
+\item{n_threads}{Nonnegative number of threads for nearest-neighbor
+calculation. The rnndescent backend treats \code{0} and \code{1} as serial execution;
+values greater than \code{1} request multithreaded execution. This does not
+control LTSA matrix assembly.}
 
 \item{n_assembly_threads}{Number of threads to use when constructing the LTSA
 alignment matrix \code{B} after nearest neighbors are computed. The default
@@ -111,10 +116,12 @@ about avoiding oversubscription when BLAS is also multithreaded.}
 }
 \value{
 With \code{output = "embedding"}, an \code{n} by \code{ndim} embedding matrix. With
-\code{output = "B"}, the assembled unnormalized LTSA alignment operator. With
-\code{output = "result"}, a list containing \code{embedding}, compact \code{eigen} solve
-information, and \code{assembly} neighbor, rank-deficiency, component, route,
-and thread information; \code{B} is also included when \code{include_B = TRUE}.
+\code{output = "B"}, the raw LTSA alignment matrix when \code{normalize = FALSE}, or
+the normalized operator supplied to eigenanalysis when \code{normalize = TRUE}.
+With \code{output = "result"}, a list containing \code{embedding}, compact \code{eigen}
+solve information, and \code{assembly} neighbor, rank-deficiency, component,
+route, and thread information; the raw, unnormalized \code{B} is also included
+when \code{include_B = TRUE}.
 }
 \description{
 Apply the Local Tangent Space Alignment (LTSA) method (Zhang and Zha, 2004)
@@ -141,6 +148,9 @@ the effective-neighborhood graph or analyze its components separately.
 Let \code{D = diag(B)}. With \code{normalize = TRUE}, the eigensolve is performed on
 \verb{D^(-1/2) B D^(-1/2)} and the selected vectors are mapped back with
 \code{D^(-1/2)}. This solves the generalized eigenproblem \verb{B v = lambda D v}.
+With \code{output = "B"}, this normalized operator is returned directly and
+eigenanalysis is skipped. The optional \code{B} in a detailed result remains the
+raw, unnormalized alignment matrix.
 
 Normalized LTSA is a distinct estimator with \code{D}-weighted orthogonality and
 centering constraints. It is not a graph-cut estimator or merely a
@@ -225,7 +235,7 @@ iris_result$eigen$messages
 iris_result$eigen$method
 iris_result$eigen$backend$name
 
-# Return the assembled unnormalized LTSA matrix.
+# Return the raw LTSA alignment matrix.
 iris_B <- ltsa(
   small_iris,
   n_neighbors = 12,

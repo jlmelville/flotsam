@@ -21,6 +21,15 @@ large datasets.
 pak::pak("jlmelville/flotsam")
 ```
 
+## Input and neighborhoods
+
+`ltsa()` accepts a numeric matrix or a data frame; non-numeric data-frame columns are ignored.
+Because neighborhoods use distances, scale variables first when their units are not comparable.
+`n_neighbors` controls how local the approximation is and must be at least `ndim + 2`; when it is
+omitted for computed neighbors, flotsam uses up to 15 neighbors, limited by the dataset size.
+Approximate neighbor search can vary between runs, and multithreaded searches need not reproduce an
+identical neighbor graph.
+
 ## Example
 
 ``` r
