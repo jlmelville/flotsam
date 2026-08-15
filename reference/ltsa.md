@@ -272,7 +272,7 @@ LTSA. *IEEE transactions on cybernetics*, *48*(2), 742-753.
 ``` r
 # The default return is the embedding matrix.
 small_iris <- iris[1:75, 1:4]
-iris_ltsa <- ltsa(
+iris_embedding <- ltsa(
   small_iris,
   n_neighbors = 12,
   nn_method = "exact"
