@@ -46,7 +46,7 @@ test_that("normalized iris10 backends match the dense reference subspace", {
   )
 })
 
-expect_ltsa_public_result <- function(
+expect_public_result <- function(
   result,
   method,
   normalized = FALSE,
@@ -122,17 +122,17 @@ expect_ltsa_public_result <- function(
 }
 
 test_that("default public return remains an embedding matrix", {
-  iris10_ltsa <- ltsa(
+  iris10_embedding <- ltsa(
     iris[1:10, ],
     nn_method = "exact",
     n_neighbors = 8,
     include_self = FALSE
   )
 
-  expect_true(is.matrix(iris10_ltsa))
-  expect_equal(dim(iris10_ltsa), c(10L, 2L))
+  expect_true(is.matrix(iris10_embedding))
+  expect_equal(dim(iris10_embedding), c(10L, 2L))
   expect_identical(
-    dimnames(iris10_ltsa),
+    dimnames(iris10_embedding),
     list(as.character(seq_len(10L)), c("LTSA1", "LTSA2"))
   )
 })
@@ -259,7 +259,7 @@ test_that("all solver methods support detailed public results", {
       output = "result"
     )
 
-    expect_ltsa_public_result(
+    expect_public_result(
       result,
       method = if (identical(method, "eigen")) "eig" else method
     )
@@ -282,7 +282,7 @@ test_that("normalized iterative detailed results have consistent shape", {
       output = "result"
     )
 
-    expect_ltsa_public_result(
+    expect_public_result(
       result,
       method = method,
       normalized = TRUE

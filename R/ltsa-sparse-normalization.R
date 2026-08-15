@@ -1,5 +1,5 @@
-ltsa_normalize_sparse_operator <- function(L) {
-  diagonal <- diag(L)
+normalize_sparse_operator <- function(B) {
+  diagonal <- diag(B)
   if (any(!is.finite(diagonal) | diagonal <= 0)) {
     stop(
       "Cannot normalize the LTSA matrix because its diagonal contains ",
@@ -10,14 +10,14 @@ ltsa_normalize_sparse_operator <- function(L) {
   }
 
   inv_sqrt_diagonal <- sqrt(1 / diagonal)
-  L_scaled <- L
-  L_scaled@x <- scale_csc_columns(
-    L_scaled@p,
-    L_scaled@x,
+  scaled <- B
+  scaled@x <- scale_csc_columns(
+    scaled@p,
+    scaled@x,
     inv_sqrt_diagonal
   )
   list(
-    normalized_operator = inv_sqrt_diagonal * L_scaled,
+    normalized_operator = inv_sqrt_diagonal * scaled,
     inv_sqrt_diagonal = inv_sqrt_diagonal,
     null_vector = 1 / inv_sqrt_diagonal
   )

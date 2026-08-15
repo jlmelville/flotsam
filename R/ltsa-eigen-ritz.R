@@ -4,15 +4,15 @@
 # own Ritz extraction internally, but this step answers the LTSA-specific
 # question: within the returned candidate span, which vectors best diagonalize
 # the original LTSA matrix after the known constant null direction is removed?
-ltsa_ritz_select <- function(
+select_ritz_vectors <- function(
   B,
   vectors,
   ndim,
-  null_vector = ltsa_default_null_vector(nrow(B)),
+  null_vector = default_null_vector(nrow(B)),
   lambda_max = NULL,
   drop_tol = 1e-8,
   rank_tol = 1e-10,
-  near_zero_tol = ltsa_near_zero_tol(lambda_max)
+  near_zero_tol = near_zero_tolerance(lambda_max)
 ) {
   vectors <- as.matrix(vectors)
   n <- nrow(B)
@@ -40,7 +40,7 @@ ltsa_ritz_select <- function(
   }
 
   # Remove the known null direction and rank-check the remaining span.
-  null_vector <- ltsa_normalize_null_vector(null_vector, n)
+  null_vector <- normalize_null_vector(null_vector, n)
   projected <- vectors - null_vector %*% crossprod(null_vector, vectors)
   original_norms <- sqrt(colSums(vectors * vectors))
   projected_norms <- sqrt(colSums(projected * projected))
@@ -76,11 +76,11 @@ ltsa_ritz_select <- function(
   vectors_all <- Q %*% coef_all
 
   # Residual, gap, and near-zero diagnostics
-  residuals_all <- ltsa_ritz_residuals(B, vectors_all, values_all, lambda_max)
+  residuals_all <- ritz_residuals(B, vectors_all, values_all, lambda_max)
 
   if (length(values_all) > ndim) {
     boundary_gap <- values_all[[ndim + 1L]] - values_all[[ndim]]
-    global_gap <- boundary_gap / ltsa_residual_scale(lambda_max)
+    global_gap <- boundary_gap / residual_scale(lambda_max)
   } else {
     global_gap <- NA_real_
   }
@@ -99,7 +99,7 @@ ltsa_ritz_select <- function(
   )
 }
 
-ltsa_backend_metadata <- function(candidate_result) {
+backend_metadata <- function(candidate_result) {
   backend <- candidate_result$backend %||% "unknown"
   backend <- as.character(backend[[1L]])
   exact_dense <- backend %in%
@@ -135,7 +135,7 @@ ltsa_backend_metadata <- function(candidate_result) {
   out
 }
 
-ltsa_backend_failure_messages <- function(candidate_result, eig_k) {
+backend_failure_messages <- function(candidate_result, eig_k) {
   backend <- candidate_result$backend %||% "unknown"
   backend <- as.character(backend[[1L]])
   nconv <- as.integer(candidate_result$nconv %||% NA_integer_)
@@ -170,7 +170,7 @@ ltsa_backend_failure_messages <- function(candidate_result, eig_k) {
   character()
 }
 
-ltsa_diagnose_ritz <- function(
+diagnose_ritz <- function(
   candidate_result,
   ritz_result,
   eig_k,
@@ -178,7 +178,7 @@ ltsa_diagnose_ritz <- function(
   resid_tol,
   gap_tol
 ) {
-  backend <- ltsa_backend_metadata(candidate_result)
+  backend <- backend_metadata(candidate_result)
   lambda_max <- candidate_result$lambda_max %||% NA_real_
   values <- as.numeric(ritz_result$values)
   residuals <- as.numeric(ritz_result$residuals)
@@ -227,7 +227,7 @@ ltsa_diagnose_ritz <- function(
   }
   invalid_messages <- c(
     invalid_messages,
-    ltsa_backend_failure_messages(candidate_result, eig_k)
+    backend_failure_messages(candidate_result, eig_k)
   )
 
   warning_messages <- character()
@@ -409,7 +409,7 @@ check_positive_finite <- function(x, name) {
   as.numeric(x)
 }
 
-ltsa_run_eigenanalysis <- function(
+run_eigenanalysis <- function(
   B,
   ndim,
   eig_method,
@@ -420,28 +420,28 @@ ltsa_run_eigenanalysis <- function(
 ) {
   provider <- switch(
     eig_method,
-    auto = ltsa_auto_candidate_provider,
+    auto = auto_candidate_provider,
     rspectra = {
       report_progress("Calling rspectra", verbose = verbose)
-      ltsa_rspectra_candidate_provider
+      rspectra_candidate_provider
     },
     irlba = {
       report_progress("Calling irlba", verbose = verbose)
-      ltsa_irlba_candidate_provider
+      irlba_candidate_provider
     },
     svdr = {
       report_progress("Calling irlba svdr", verbose = verbose)
-      ltsa_svdr_candidate_provider
+      svdr_candidate_provider
     },
     eig = {
       report_progress("Using full eigenvalue decomposition", verbose = verbose)
-      ltsa_eig_candidate_provider
+      dense_candidate_provider
     }
   )
 
   provider_args <- eigen_args$provider_args
 
-  ltsa_ritz_eig(
+  solve_with_ritz(
     B = B,
     ndim = ndim,
     provider = provider,
@@ -454,19 +454,19 @@ ltsa_run_eigenanalysis <- function(
   )
 }
 
-ltsa_ritz_eig <- function(
+solve_with_ritz <- function(
   B,
   ndim,
   provider,
   provider_args = list(),
-  null_vector = ltsa_default_null_vector(nrow(B)),
+  null_vector = default_null_vector(nrow(B)),
   eig_k = NULL,
   resid_tol = 1e-5,
   gap_tol = 1e-4,
   verbose = FALSE
 ) {
-  eig_k <- ltsa_validate_eig_k(eig_k = eig_k, ndim = ndim, n = nrow(B))
-  B <- symmetrize_ltsa_matrix(B)
+  eig_k <- validate_eig_k(eig_k = eig_k, ndim = ndim, n = nrow(B))
+  B <- symmetrize_operator(B)
   provider_args <- provider_args %||% list()
   candidate_result <- do.call(
     provider,
@@ -481,14 +481,14 @@ ltsa_ritz_eig <- function(
     )
   )
   lambda_max <- candidate_result$lambda_max %||% NA_real_
-  ritz_result <- ltsa_ritz_select(
+  ritz_result <- select_ritz_vectors(
     B = B,
     vectors = candidate_result$vectors,
     ndim = ndim,
     null_vector = null_vector,
     lambda_max = lambda_max
   )
-  eigen <- ltsa_diagnose_ritz(
+  eigen <- diagnose_ritz(
     candidate_result = candidate_result,
     ritz_result = ritz_result,
     eig_k = eig_k,

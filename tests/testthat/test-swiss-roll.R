@@ -8,9 +8,9 @@ test_that("explicit RSpectra path unfolds a swiss roll", {
     z = stats::runif(n, max = 10)
   )
 
-  swiss_ltsa <- NULL
+  swiss_embedding <- NULL
   expect_warning(
-    swiss_ltsa <- ltsa(
+    swiss_embedding <- ltsa(
       swiss_roll,
       nn_method = "exact",
       eig_method = "rspectra",
@@ -20,7 +20,7 @@ test_that("explicit RSpectra path unfolds a swiss roll", {
   )
 
   truth <- scale(cbind(phi = phi, z = swiss_roll$z))
-  agreement <- stats::cancor(scale(swiss_ltsa), truth)$cor
+  agreement <- stats::cancor(scale(swiss_embedding), truth)$cor
 
   expect_gt(min(agreement), 0.95)
 })

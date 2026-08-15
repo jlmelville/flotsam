@@ -215,7 +215,7 @@ backend actually used (\code{"dense_eigen"}, \code{"rspectra"}, \code{"irlba"}, 
 \examples{
 # The default return is the embedding matrix.
 small_iris <- iris[1:75, 1:4]
-iris_ltsa <- ltsa(
+iris_embedding <- ltsa(
   small_iris,
   n_neighbors = 12,
   nn_method = "exact"

@@ -35,7 +35,7 @@ struct LocalWeights {
   int rank = 0;
 };
 
-constexpr std::size_t LTSA_ROW_MAJOR_COPY_MAX_BYTES =
+constexpr std::size_t ROW_MAJOR_COPY_LIMIT_BYTES =
     static_cast<std::size_t>(256) * 1024 * 1024;
 
 template <typename T>
@@ -153,9 +153,9 @@ std::size_t triangular_pair_count(std::size_t n_nbrs);
 std::size_t triangular_pair_offset(std::size_t local_col,
                                    std::size_t local_row);
 
-class LtsaTripletAssemblyBuilder {
+class TripletAssemblyBuilder {
 public:
-  LtsaTripletAssemblyBuilder(const cpp11::integers& transposed_neighbor_indices,
+  TripletAssemblyBuilder(const cpp11::integers& transposed_neighbor_indices,
                              std::size_t n_neighbors, std::size_t n_obs,
                              std::size_t max_int);
 

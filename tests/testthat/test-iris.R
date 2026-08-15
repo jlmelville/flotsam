@@ -1,5 +1,5 @@
 test_that("iris", {
-  irisnn50_ltsa <-
+  iris_nn50_embedding <-
     ltsa(
       iris,
       nn_method = "exact",
@@ -8,8 +8,8 @@ test_that("iris", {
       eig_method = "eig"
     )
   expect_same_subspace(
-    irisnn50_ltsa,
-    irisnn50_ltsa_expected,
+    iris_nn50_embedding,
+    iris_nn50_embedding_expected,
     tolerance = 1e-2
   )
 })

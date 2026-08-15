@@ -1,6 +1,6 @@
 # Eigensolver backends return candidate vectors for the final Rayleigh-Ritz
 # selection step, plus compact backend metadata for diagnostics.
-new_ltsa_candidates <- function(
+new_eigen_candidates <- function(
   vectors,
   backend,
   lambda_max = NULL,
@@ -26,7 +26,7 @@ new_ltsa_candidates <- function(
 
 # Automatic selection preserves the dense threshold policy while keeping an
 # explicit RSpectra request literal.
-ltsa_auto_candidate_provider <- function(
+auto_candidate_provider <- function(
   B,
   eig_k,
   lambda_max = NULL,
@@ -37,7 +37,7 @@ ltsa_auto_candidate_provider <- function(
   n <- ncol(B)
 
   if (
-    ltsa_use_dense_eig(
+    use_dense_eigensolver(
       n,
       eig_k,
       dense_n = dense_n,
@@ -45,11 +45,11 @@ ltsa_auto_candidate_provider <- function(
     )
   ) {
     report_progress("Using dense eigenvalue decomposition", verbose = verbose)
-    return(dense_ltsa_eig(B, eig_k))
+    return(dense_candidate_provider(B, eig_k))
   }
 
   report_progress("Calling rspectra", verbose = verbose)
-  ltsa_rspectra_candidate_provider(
+  rspectra_candidate_provider(
     B = B,
     eig_k = eig_k,
     lambda_max = lambda_max,
@@ -59,7 +59,7 @@ ltsa_auto_candidate_provider <- function(
 
 # RSpectra uses a shifted largest-algebraic formulation and treats nconv as a
 # hard convergence gate before shared LTSA postprocessing sees the candidates.
-ltsa_rspectra_candidate_provider <- function(
+rspectra_candidate_provider <- function(
   B,
   eig_k,
   ...,
@@ -73,20 +73,20 @@ ltsa_rspectra_candidate_provider <- function(
   lambda_probe <- NULL
   if (is.null(lambda_max)) {
     report_progress("Finding largest eigenvalue", verbose = verbose)
-    lambda_probe <- ltsa_lambda_max_probe(B, varargs)
+    lambda_probe <- rspectra_lambda_max_probe(B, varargs)
     lambda_max <- lambda_probe$value
   } else {
-    lambda_max <- ltsa_validate_backend_lambda_max(
+    lambda_max <- validate_backend_lambda_max(
       lambda_max,
       B,
       backend = "RSpectra"
     )
   }
-  shift <- lambda_max + ltsa_shift_margin(lambda_max, shift_eps)
-  shifted_operator <- ltsa_shift_for_smallest(B, shift)
+  shift <- lambda_max + shift_margin(lambda_max, shift_eps)
+  shifted_operator <- shift_for_smallest(B, shift)
 
   report_progress("Decomposing shifted matrix", verbose = verbose)
-  opts <- ltsa_rspectra_opts(eig_k = eig_k, n = n)
+  opts <- rspectra_options(eig_k = eig_k, n = n)
   opts <- merge_named_lists(opts, varargs)
   args <- list(
     A = shifted_operator,
@@ -105,7 +105,7 @@ ltsa_rspectra_candidate_provider <- function(
       call. = FALSE
     )
   }
-  finished <- ltsa_sort_and_score_candidates(
+  scored_candidates <- sort_and_score_candidates(
     B = B,
     vectors = res$vectors,
     eig_k = eig_k,
@@ -119,12 +119,12 @@ ltsa_rspectra_candidate_provider <- function(
     " / ",
     eig_k,
     " LTSA candidate vectors; max scaled residual = ",
-    signif(max(finished$residuals$scaled_residuals), 4),
+    signif(max(scored_candidates$residuals$scaled_residuals), 4),
     verbose = verbose
   )
 
-  new_ltsa_candidates(
-    vectors = finished$vectors,
+  new_eigen_candidates(
+    vectors = scored_candidates$vectors,
     backend = "rspectra",
     lambda_max = lambda_max,
     nconv = nconv,
@@ -135,14 +135,14 @@ ltsa_rspectra_candidate_provider <- function(
   )
 }
 
-ltsa_irlba_lambda_max_probe <- function(B) {
+irlba_lambda_max_probe <- function(B) {
   args <- list(
     A = B,
     nv = 1L,
     nu = 0L
   )
   probe <- do.call(irlba::irlba, args)
-  lambda_max <- ltsa_validate_backend_lambda_max(
+  lambda_max <- validate_backend_lambda_max(
     probe$d,
     B,
     backend = "irlba"
@@ -156,13 +156,13 @@ ltsa_irlba_lambda_max_probe <- function(B) {
   )
 }
 
-ltsa_svdr_lambda_max_probe <- function(B) {
+svdr_lambda_max_probe <- function(B) {
   args <- list(
     x = B,
     k = 1L
   )
   probe <- do.call(irlba::svdr, args)
-  lambda_max <- ltsa_validate_backend_lambda_max(probe$d, B, backend = "svdr")
+  lambda_max <- validate_backend_lambda_max(probe$d, B, backend = "svdr")
 
   list(
     value = lambda_max,
@@ -171,7 +171,7 @@ ltsa_svdr_lambda_max_probe <- function(B) {
   )
 }
 
-ltsa_sort_and_score_candidates <- function(
+sort_and_score_candidates <- function(
   B,
   vectors,
   eig_k,
@@ -188,14 +188,14 @@ ltsa_sort_and_score_candidates <- function(
   }
 
   vectors <- as.matrix(vectors[, seq_len(eig_k), drop = FALSE])
-  values <- ltsa_rayleigh_values(B, vectors)
+  values <- rayleigh_values(B, vectors)
   ord <- order(values)
   values <- values[ord]
   vectors <- vectors[, ord, drop = FALSE]
   if (!is.null(shifted_values) && length(shifted_values) >= eig_k) {
     shifted_values <- shifted_values[seq_len(eig_k)][ord]
   }
-  residuals <- ltsa_ritz_residuals(B, vectors, values, lambda_max)
+  residuals <- ritz_residuals(B, vectors, values, lambda_max)
 
   list(
     vectors = vectors,
@@ -207,7 +207,7 @@ ltsa_sort_and_score_candidates <- function(
 
 # Shifted solves are re-valued against the original LTSA matrix before their
 # candidate vectors reach common selection. Final selection uses B.
-new_ltsa_shifted_candidates <- function(
+new_shifted_candidates <- function(
   B,
   vectors,
   eig_k,
@@ -219,7 +219,7 @@ new_ltsa_shifted_candidates <- function(
   mprod = NA_integer_,
   verbose = FALSE
 ) {
-  finished <- ltsa_sort_and_score_candidates(
+  scored_candidates <- sort_and_score_candidates(
     B = B,
     vectors = vectors,
     eig_k = eig_k,
@@ -232,12 +232,12 @@ new_ltsa_shifted_candidates <- function(
     " returned ",
     eig_k,
     " LTSA candidate vectors; max scaled residual = ",
-    signif(max(finished$residuals$scaled_residuals), 4),
+    signif(max(scored_candidates$residuals$scaled_residuals), 4),
     verbose = verbose
   )
 
-  new_ltsa_candidates(
-    vectors = finished$vectors,
+  new_eigen_candidates(
+    vectors = scored_candidates$vectors,
     backend = backend,
     lambda_max = lambda_max,
     nconv = NA_integer_,
@@ -252,7 +252,7 @@ new_ltsa_shifted_candidates <- function(
 # irlba candidate provider. It solves the shifted problem by requesting right
 # singular vectors, then all final ordering is recomputed by Rayleigh values of
 # the original LTSA matrix.
-ltsa_irlba_candidate_provider <- function(
+irlba_candidate_provider <- function(
   B,
   eig_k,
   ...,
@@ -265,17 +265,17 @@ ltsa_irlba_candidate_provider <- function(
   lambda_probe <- NULL
   if (is.null(lambda_max)) {
     report_progress("Finding largest eigenvalue", verbose = verbose)
-    lambda_probe <- ltsa_irlba_lambda_max_probe(B)
+    lambda_probe <- irlba_lambda_max_probe(B)
     lambda_max <- lambda_probe$value
   } else {
-    lambda_max <- ltsa_validate_backend_lambda_max(
+    lambda_max <- validate_backend_lambda_max(
       lambda_max,
       B,
       backend = "irlba"
     )
   }
-  shift <- lambda_max + ltsa_shift_margin(lambda_max, shift_eps)
-  shifted_operator <- ltsa_shift_for_smallest(B, shift)
+  shift <- lambda_max + shift_margin(lambda_max, shift_eps)
+  shifted_operator <- shift_for_smallest(B, shift)
 
   report_progress("Decomposing shifted matrix", verbose = verbose)
   args <- merge_named_lists(
@@ -288,7 +288,7 @@ ltsa_irlba_candidate_provider <- function(
   )
   res <- do.call(irlba::irlba, args)
 
-  new_ltsa_shifted_candidates(
+  new_shifted_candidates(
     B = B,
     vectors = res$v,
     eig_k = eig_k,
@@ -304,7 +304,7 @@ ltsa_irlba_candidate_provider <- function(
 # svdr candidate provider. Like irlba, this produces a candidate subspace only;
 # the common Rayleigh-Ritz selector decides which nonconstant directions to
 # return.
-ltsa_svdr_candidate_provider <- function(
+svdr_candidate_provider <- function(
   B,
   eig_k,
   ...,
@@ -317,17 +317,17 @@ ltsa_svdr_candidate_provider <- function(
   lambda_probe <- NULL
   if (is.null(lambda_max)) {
     report_progress("Finding largest eigenvalue", verbose = verbose)
-    lambda_probe <- ltsa_svdr_lambda_max_probe(B)
+    lambda_probe <- svdr_lambda_max_probe(B)
     lambda_max <- lambda_probe$value
   } else {
-    lambda_max <- ltsa_validate_backend_lambda_max(
+    lambda_max <- validate_backend_lambda_max(
       lambda_max,
       B,
       backend = "svdr"
     )
   }
-  shift <- lambda_max + ltsa_shift_margin(lambda_max, shift_eps)
-  shifted_operator <- ltsa_shift_for_smallest(B, shift)
+  shift <- lambda_max + shift_margin(lambda_max, shift_eps)
+  shifted_operator <- shift_for_smallest(B, shift)
 
   report_progress("Decomposing shifted matrix", verbose = verbose)
   args <- merge_named_lists(
@@ -339,7 +339,7 @@ ltsa_svdr_candidate_provider <- function(
   )
   res <- do.call(irlba::svdr, args)
 
-  new_ltsa_shifted_candidates(
+  new_shifted_candidates(
     B = B,
     vectors = res$v,
     eig_k = eig_k,
@@ -351,8 +351,15 @@ ltsa_svdr_candidate_provider <- function(
   )
 }
 
-# Dense path used by automatic selection and explicit dense requests.
-dense_ltsa_eig <- function(B, eig_k, backend = "dense_eigen") {
+# Dense path used by automatic selection and explicit dense requests. The
+# unused controls keep the provider interface uniform across backends.
+dense_candidate_provider <- function(
+  B,
+  eig_k,
+  lambda_max = NULL,
+  verbose = FALSE,
+  backend = "dense_eigen"
+) {
   dense <- as.matrix(B)
   eig <- eigen(dense, symmetric = TRUE)
   ord <- order(eig$values)
@@ -363,7 +370,7 @@ dense_ltsa_eig <- function(B, eig_k, backend = "dense_eigen") {
   take <- seq_len(eig_k)
   vectors <- vectors_all[, take, drop = FALSE]
 
-  new_ltsa_candidates(
+  new_eigen_candidates(
     vectors = vectors,
     backend = backend,
     lambda_max = lambda_max,
@@ -371,14 +378,4 @@ dense_ltsa_eig <- function(B, eig_k, backend = "dense_eigen") {
     convergence_known = TRUE,
     converged_columns = eig_k
   )
-}
-
-ltsa_eig_candidate_provider <- function(
-  B,
-  eig_k,
-  ...,
-  lambda_max = NULL,
-  verbose = FALSE
-) {
-  dense_ltsa_eig(B, eig_k)
 }

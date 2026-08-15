@@ -50,7 +50,7 @@ prepare_input_matrix <- function(X) {
   m
 }
 
-validate_ltsa_args <- function(
+validate_arguments <- function(
   X,
   n_neighbors,
   ndim,
@@ -108,7 +108,7 @@ validate_ltsa_args <- function(
   if (ndim >= nrow(X)) {
     stop("ndim must be less than the number of observations", call. = FALSE)
   }
-  eig_k <- ltsa_validate_eig_k(eig_k, ndim = ndim, n = nrow(X))
+  eig_k <- validate_eig_k(eig_k, ndim = ndim, n = nrow(X))
 
   if (is.null(nn_idx)) {
     if (is.null(n_neighbors)) {

@@ -13,7 +13,7 @@ canonical_exact_neighbor_indices <- function(X, n_neighbors, include_self) {
   )
 }
 
-capture_ltsa_messages <- function(...) {
+capture_progress_messages <- function(...) {
   capture.output(invisible(ltsa(...)), type = "message")
 }
 
@@ -175,7 +175,7 @@ test_that("precomputed graph supplied as nn_method skips nearest-neighbor search
   X <- matrix(rnorm(8L * 10L), nrow = 8L)
   nn_idx <- make_precomputed_neighbor_indices(8L, 4L, include_self = TRUE)
 
-  reference <- flotsam:::assemble_ltsa_B(
+  reference <- flotsam:::assemble_alignment_matrix(
     X = X,
     nn_idx = nn_idx,
     ndim = 2L,
@@ -341,7 +341,7 @@ test_that("exact search canonicalizes identical observation neighborhoods", {
   X <- matrix(0, nrow = 8L, ncol = 4L)
 
   for (include_self in c(TRUE, FALSE)) {
-    neighbors <- flotsam:::prepare_ltsa_neighbors(
+    neighbors <- flotsam:::prepare_neighbors(
       X = X,
       n_neighbors = 4L,
       nn_method = "exact",
@@ -502,7 +502,7 @@ test_that("verbose output describes computed and precomputed neighbor handling",
   )
 
   expect_length(
-    capture_ltsa_messages(
+    capture_progress_messages(
       X,
       n_neighbors = 6L,
       ndim = 2L,
@@ -513,7 +513,7 @@ test_that("verbose output describes computed and precomputed neighbor handling",
     0L
   )
   expect_length(
-    capture_ltsa_messages(
+    capture_progress_messages(
       X,
       ndim = 2L,
       nn_method = nn_idx,
@@ -523,7 +523,7 @@ test_that("verbose output describes computed and precomputed neighbor handling",
     0L
   )
 
-  computed_messages <- capture_ltsa_messages(
+  computed_messages <- capture_progress_messages(
     X,
     n_neighbors = 6L,
     ndim = 2L,
@@ -539,7 +539,7 @@ test_that("verbose output describes computed and precomputed neighbor handling",
     fixed = TRUE
   )))
 
-  default_precomputed_messages <- capture_ltsa_messages(
+  default_precomputed_messages <- capture_progress_messages(
     X,
     ndim = 2L,
     nn_method = nn_idx,
@@ -558,7 +558,7 @@ test_that("verbose output describes computed and precomputed neighbor handling",
     fixed = TRUE
   )))
 
-  precomputed_messages <- capture_ltsa_messages(
+  precomputed_messages <- capture_progress_messages(
     X,
     ndim = 2L,
     nn_method = nn_idx,

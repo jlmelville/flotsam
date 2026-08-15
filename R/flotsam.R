@@ -173,7 +173,7 @@
 #' @examples
 #' # The default return is the embedding matrix.
 #' small_iris <- iris[1:75, 1:4]
-#' iris_ltsa <- ltsa(
+#' iris_embedding <- ltsa(
 #'   small_iris,
 #'   n_neighbors = 12,
 #'   nn_method = "exact"
@@ -226,7 +226,7 @@ ltsa <-
     nn_method <- neighbor_args$nn_method
     nn_idx <- neighbor_args$nn_idx
 
-    validated <- validate_ltsa_args(
+    validated <- validate_arguments(
       X = X,
       n_neighbors = n_neighbors,
       ndim = ndim,
@@ -249,7 +249,7 @@ ltsa <-
       output = validated$output
     )
 
-    neighbors <- prepare_ltsa_neighbors(
+    neighbors <- prepare_neighbors(
       X = X,
       n_neighbors = validated$n_neighbors,
       nn_method = validated$nn_method,
@@ -260,7 +260,7 @@ ltsa <-
     )
 
     report_progress("Assembling LTSA matrix", verbose = validated$verbose)
-    assembly <- assemble_ltsa_B(
+    assembly <- assemble_alignment_matrix(
       X = X,
       nn_idx = neighbors$nn_idx,
       ndim = validated$ndim,
@@ -282,26 +282,26 @@ ltsa <-
       )
     }
 
-    B_operator <- B
-    null_vector <- ltsa_default_null_vector(nrow(B_operator))
+    operator <- B
+    null_vector <- default_null_vector(nrow(operator))
     if (validated$normalize) {
       report_progress("Forming normalized Bsym", verbose = validated$verbose)
-      normalized <- ltsa_normalize_sparse_operator(B_operator)
-      inv_sqrt_diagonal <- normalized$inv_sqrt_diagonal
-      null_vector <- normalized$null_vector
-      B_operator <- normalized$normalized_operator
+      normalization <- normalize_sparse_operator(operator)
+      inv_sqrt_diagonal <- normalization$inv_sqrt_diagonal
+      null_vector <- normalization$null_vector
+      operator <- normalization$normalized_operator
     }
 
     if (identical(validated$output, "B")) {
-      return(B_operator)
+      return(operator)
     }
 
     report_progress("Performing eigenanalysis", verbose = validated$verbose)
 
-    eigenanalysis_result <- tryCatch(
+    eigenanalysis <- tryCatch(
       {
-        ltsa_run_eigenanalysis(
-          B = B_operator,
+        run_eigenanalysis(
+          B = operator,
           ndim = validated$ndim,
           eig_method = validated$eig_method,
           eig_k = validated$eig_k,
@@ -318,14 +318,14 @@ ltsa <-
       rownames(X),
       paste0("LTSA", seq_len(validated$ndim))
     )
-    embedding <- eigenanalysis_result$vectors
+    embedding <- eigenanalysis$vectors
     if (validated$normalize) {
       embedding <- inv_sqrt_diagonal * embedding
     }
     dimnames(embedding) <- embedding_dimnames
 
     if (identical(validated$output, "embedding")) {
-      signal_eigen_status(eigenanalysis_result$eigen)
+      signal_eigen_status(eigenanalysis$eigen)
       signal_effective_component_status(assembly$diagnostics)
     }
 
@@ -336,23 +336,23 @@ ltsa <-
 
     assembly_diagnostics <- assembly$diagnostics %||% list()
 
-    eigen_result <- list(
+    eigen_summary <- list(
       method = validated$eig_method,
       normalized = isTRUE(validated$normalize),
-      eig_k = eigenanalysis_result$eigen$eig_k,
-      values = eigenanalysis_result$eigen$values,
-      ritz_values = eigenanalysis_result$eigen$ritz_values,
-      residuals = eigenanalysis_result$eigen$residuals,
-      rank = eigenanalysis_result$eigen$rank,
-      lambda_max = eigenanalysis_result$eigen$lambda_max,
-      status = eigenanalysis_result$eigen$status,
-      messages = eigenanalysis_result$eigen$messages,
-      backend = eigenanalysis_result$eigen$backend,
-      diagnostics = eigenanalysis_result$eigen$diagnostics
+      eig_k = eigenanalysis$eigen$eig_k,
+      values = eigenanalysis$eigen$values,
+      ritz_values = eigenanalysis$eigen$ritz_values,
+      residuals = eigenanalysis$eigen$residuals,
+      rank = eigenanalysis$eigen$rank,
+      lambda_max = eigenanalysis$eigen$lambda_max,
+      status = eigenanalysis$eigen$status,
+      messages = eigenanalysis$eigen$messages,
+      backend = eigenanalysis$eigen$backend,
+      diagnostics = eigenanalysis$eigen$diagnostics
     )
     result <- list(
       embedding = embedding,
-      eigen = eigen_result,
+      eigen = eigen_summary,
       assembly = merge_named_lists(
         list(
           n_neighbors = as.integer(validated$n_neighbors),

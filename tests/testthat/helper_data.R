@@ -1,6 +1,6 @@
 # fmt: skip file
 
-irisnn50_ltsa_expected <- matrix(c(
+iris_nn50_embedding_expected <- matrix(c(
   -1.04768242e-01, -6.35727032e-02,
   -1.09960584e-01, 5.10243616e-02,
   -1.17478663e-01, 4.35652251e-02,

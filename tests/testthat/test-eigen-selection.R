@@ -22,14 +22,14 @@ expect_selected_basis <- function(selected, expected) {
 
 make_centered_test_basis <- function(n, rank) {
   set.seed(123)
-  nullvec <- rep(1, n) / sqrt(n)
+  null_vector <- rep(1, n) / sqrt(n)
   Z <- matrix(stats::rnorm(n * rank * 2L), nrow = n)
-  Z <- Z - nullvec %*% crossprod(nullvec, Z)
+  Z <- Z - null_vector %*% crossprod(null_vector, Z)
   Q <- orthonormalize_test_basis(Z)
   Q[, seq_len(rank), drop = FALSE]
 }
 
-synthetic_ltsa_problem <- function(values) {
+synthetic_eigenproblem <- function(values) {
   n <- length(values)
   basis <- cbind(rep(1, n) / sqrt(n), make_centered_test_basis(n, n - 1L))
   list(
@@ -38,8 +38,8 @@ synthetic_ltsa_problem <- function(values) {
   )
 }
 
-synthetic_ltsa_matrix <- function(values) {
-  synthetic_ltsa_problem(values)$matrix
+synthetic_operator <- function(values) {
+  synthetic_eigenproblem(values)$matrix
 }
 
 synthetic_candidate_provider_factory <- function(
@@ -78,7 +78,7 @@ synthetic_candidate_provider_factory <- function(
       converged_columns
     }
 
-    flotsam:::new_ltsa_candidates(
+    flotsam:::new_eigen_candidates(
       vectors = problem$basis[, cols_i, drop = FALSE],
       backend = backend,
       lambda_max = lambda_max_value,
@@ -102,7 +102,7 @@ test_that("embedding vector selection drops a returned trivial vector", {
   B <- make_selection_test_matrix(basis)
   candidates <- cbind(basis$v2, basis$u, basis$v3, basis$v1)
 
-  selected <- flotsam:::ltsa_ritz_select(
+  selected <- flotsam:::select_ritz_vectors(
     B,
     candidates,
     ndim = 2L,
@@ -117,7 +117,7 @@ test_that("embedding vector selection keeps smallest vectors when trivial vector
   B <- make_selection_test_matrix(basis)
   candidates <- cbind(basis$v2, basis$v3, basis$v1)
 
-  selected <- flotsam:::ltsa_ritz_select(
+  selected <- flotsam:::select_ritz_vectors(
     B,
     candidates,
     ndim = 2L,
@@ -141,19 +141,19 @@ test_that("Ritz selection is invariant to rotations in the candidate subspace", 
   ), nrow = 4L)))
   candidates <- candidate_space %*% rotation
 
-  rr <- flotsam:::ltsa_ritz_select(
+  ritz_result <- flotsam:::select_ritz_vectors(
     B,
     candidates,
     ndim = 2L,
     lambda_max = 3
   )
 
-  expect_same_subspace(rr$vectors, target)
-  expect_equal(rr$values, c(1, 2), tolerance = 1e-12)
-  expect_lt(max(rr$residuals), 1e-12)
-  expect_identical(rr$rank_after_null, 3L)
+  expect_same_subspace(ritz_result$vectors, target)
+  expect_equal(ritz_result$values, c(1, 2), tolerance = 1e-12)
+  expect_lt(max(ritz_result$residuals), 1e-12)
+  expect_identical(ritz_result$rank_after_null, 3L)
   expect_equal(
-    rr$ritz_values[[3L]] - rr$ritz_values[[2L]],
+    ritz_result$ritz_values[[3L]] - ritz_result$ritz_values[[2L]],
     1,
     tolerance = 1e-12
   )
@@ -171,18 +171,18 @@ test_that("clustered low-eigenvalue subspaces are compared by projector", {
     basis$v3
   )
 
-  rr <- flotsam:::ltsa_ritz_select(
+  ritz_result <- flotsam:::select_ritz_vectors(
     B,
     candidates,
     ndim = 2L,
     lambda_max = 4
   )
 
-  expect_same_subspace(rr$vectors, target)
-  expect_equal(rr$values, c(1, 1), tolerance = 1e-12)
-  expect_lt(max(rr$residuals), 1e-12)
+  expect_same_subspace(ritz_result$vectors, target)
+  expect_equal(ritz_result$values, c(1, 1), tolerance = 1e-12)
+  expect_lt(max(ritz_result$residuals), 1e-12)
   expect_equal(
-    rr$ritz_values[[3L]] - rr$ritz_values[[2L]],
+    ritz_result$ritz_values[[3L]] - ritz_result$ritz_values[[2L]],
     3,
     tolerance = 1e-12
   )
@@ -194,7 +194,7 @@ test_that("rank loss after null projection fails clearly", {
   candidates <- cbind(basis$u, 2 * basis$u, basis$v1)
 
   expect_error(
-    flotsam:::ltsa_ritz_select(
+    flotsam:::select_ritz_vectors(
       B,
       candidates,
       ndim = 2L,
@@ -205,23 +205,28 @@ test_that("rank loss after null projection fails clearly", {
 })
 
 test_that("Ritz residual diagnostics use the scaled residual convention", {
-  B <- synthetic_ltsa_matrix(c(0, 0.25, 0.5, 2, 8))
+  B <- synthetic_operator(c(0, 0.25, 0.5, 2, 8))
   dense <- eigen(B, symmetric = TRUE)
   ord <- order(dense$values)
   candidates <- dense$vectors[, ord[seq_len(4L)], drop = FALSE]
 
-  rr <- flotsam:::ltsa_ritz_select(
+  ritz_result <- flotsam:::select_ritz_vectors(
     B,
     candidates,
     ndim = 2L,
     lambda_max = 8
   )
 
-  expect_equal(rr$values, c(0.25, 0.5), tolerance = 1e-12)
-  residuals <- flotsam:::ltsa_ritz_residuals(B, rr$vectors, rr$values, 8)
+  expect_equal(ritz_result$values, c(0.25, 0.5), tolerance = 1e-12)
+  residuals <- flotsam:::ritz_residuals(
+    B,
+    ritz_result$vectors,
+    ritz_result$values,
+    8
+  )
   expect_lt(max(residuals$absolute_residuals), 1e-12)
   expect_equal(
-    rr$residuals,
+    ritz_result$residuals,
     residuals$absolute_residuals / 8,
     tolerance = 1e-15
   )
@@ -229,7 +234,7 @@ test_that("Ritz residual diagnostics use the scaled residual convention", {
 
 test_that("near-zero truncation uses the observed candidate span", {
   ndim <- 2L
-  threshold <- flotsam:::ltsa_near_zero_tol(4)
+  threshold <- flotsam:::near_zero_tolerance(4)
   cases <- list(
     below = list(
       values = c(0, threshold / 2, 0.1, 1, 2, 3, 4),
@@ -266,9 +271,9 @@ test_that("near-zero truncation uses the observed candidate span", {
   )
 
   for (case in cases) {
-    problem <- synthetic_ltsa_problem(case$values)
+    problem <- synthetic_eigenproblem(case$values)
     fixture <- synthetic_candidate_provider_factory(problem)
-    result <- flotsam:::ltsa_ritz_eig(
+    result <- flotsam:::solve_with_ritz(
       problem$matrix,
       ndim = ndim,
       provider = fixture$provider,
@@ -284,7 +289,7 @@ test_that("near-zero truncation uses the observed candidate span", {
 })
 
 test_that("small Ritz-selected cases agree with dense eigen reference subspaces", {
-  B <- synthetic_ltsa_matrix(c(0, 0.1, 0.2, 0.8, 1.5, 3))
+  B <- synthetic_operator(c(0, 0.1, 0.2, 0.8, 1.5, 3))
   dense <- eigen(B, symmetric = TRUE)
   ord <- order(dense$values)
   lambda_max <- max(dense$values)
@@ -299,30 +304,30 @@ test_that("small Ritz-selected cases agree with dense eigen reference subspaces"
     0, 2, 0, 1, -1
   ), nrow = 5L)))
 
-  rr <- flotsam:::ltsa_ritz_select(
+  ritz_result <- flotsam:::select_ritz_vectors(
     B,
     candidates,
     ndim = 2L,
     lambda_max = lambda_max
   )
 
-  expect_equal(rr$values, dense$values[ord[2:3]], tolerance = 1e-12)
-  expect_same_subspace(rr$vectors, reference, tolerance = 1e-7)
-  expect_lt(max(rr$residuals), 1e-12)
+  expect_equal(ritz_result$values, dense$values[ord[2:3]], tolerance = 1e-12)
+  expect_same_subspace(ritz_result$vectors, reference, tolerance = 1e-7)
+  expect_lt(max(ritz_result$residuals), 1e-12)
 })
 
 test_that("default eig_k follows the public rule", {
-  expect_identical(flotsam:::ltsa_default_eig_k(ndim = 2L, n = 50L), 12L)
-  expect_identical(flotsam:::ltsa_default_eig_k(ndim = 15L, n = 50L), 17L)
-  expect_identical(flotsam:::ltsa_default_eig_k(ndim = 2L, n = 8L), 7L)
-  expect_identical(flotsam:::ltsa_validate_eig_k(NULL, ndim = 2L, n = 50L), 12L)
+  expect_identical(flotsam:::default_eig_k(ndim = 2L, n = 50L), 12L)
+  expect_identical(flotsam:::default_eig_k(ndim = 15L, n = 50L), 17L)
+  expect_identical(flotsam:::default_eig_k(ndim = 2L, n = 8L), 7L)
+  expect_identical(flotsam:::validate_eig_k(NULL, ndim = 2L, n = 50L), 12L)
 })
 
 test_that("Ritz driver accepts minimum eig_k equal to ndim plus one", {
-  problem <- synthetic_ltsa_problem(c(0, 0.1, 0.2, 1, 2, 3))
+  problem <- synthetic_eigenproblem(c(0, 0.1, 0.2, 1, 2, 3))
   fixture <- synthetic_candidate_provider_factory(problem)
 
-  res <- flotsam:::ltsa_ritz_eig(
+  res <- flotsam:::solve_with_ritz(
     problem$matrix,
     ndim = 2L,
     provider = fixture$provider,
@@ -340,20 +345,20 @@ test_that("Ritz driver accepts minimum eig_k equal to ndim plus one", {
 
 test_that("eig_k validation rejects values below ndim plus one", {
   expect_error(
-    flotsam:::ltsa_validate_eig_k(2L, ndim = 2L, n = 6L),
+    flotsam:::validate_eig_k(2L, ndim = 2L, n = 6L),
     "ndim \\+ 1 <= eig_k < n"
   )
 })
 
 test_that("eig_k validation rejects values at least n", {
   expect_error(
-    flotsam:::ltsa_validate_eig_k(6L, ndim = 2L, n = 6L),
+    flotsam:::validate_eig_k(6L, ndim = 2L, n = 6L),
     "ndim \\+ 1 <= eig_k < n"
   )
 })
 
 test_that("Ritz driver calls the provider exactly once", {
-  problem <- synthetic_ltsa_problem(c(
+  problem <- synthetic_eigenproblem(c(
     0,
     0.1,
     0.2,
@@ -373,7 +378,7 @@ test_that("Ritz driver calls the provider exactly once", {
   ))
   fixture <- synthetic_candidate_provider_factory(problem)
 
-  res <- flotsam:::ltsa_ritz_eig(
+  res <- flotsam:::solve_with_ritz(
     problem$matrix,
     ndim = 2L,
     provider = fixture$provider
@@ -410,10 +415,10 @@ test_that("public iterative LTSA honors explicit eig_k", {
 })
 
 test_that("Ritz diagnostics use compact solver-neutral shape", {
-  problem <- synthetic_ltsa_problem(c(0, 0.1, 0.2, 1, 2, 3))
+  problem <- synthetic_eigenproblem(c(0, 0.1, 0.2, 1, 2, 3))
   fixture <- synthetic_candidate_provider_factory(problem)
 
-  res <- flotsam:::ltsa_ritz_eig(
+  res <- flotsam:::solve_with_ritz(
     problem$matrix,
     ndim = 2L,
     provider = fixture$provider,
@@ -448,7 +453,7 @@ test_that("Ritz diagnostics use compact solver-neutral shape", {
 })
 
 test_that("Ritz diagnostics mark RSpectra nconv shortfall invalid", {
-  problem <- synthetic_ltsa_problem(c(0, 0.1, 0.2, 1, 2, 3))
+  problem <- synthetic_eigenproblem(c(0, 0.1, 0.2, 1, 2, 3))
   fixture <- synthetic_candidate_provider_factory(
     problem,
     backend = "rspectra",
@@ -459,7 +464,7 @@ test_that("Ritz diagnostics mark RSpectra nconv shortfall invalid", {
     nops = 101L
   )
 
-  res <- flotsam:::ltsa_ritz_eig(
+  res <- flotsam:::solve_with_ritz(
     problem$matrix,
     ndim = 2L,
     provider = fixture$provider,
@@ -474,7 +479,7 @@ test_that("Ritz diagnostics mark RSpectra nconv shortfall invalid", {
 })
 
 test_that("Ritz diagnostics report generic shortfalls and weak gaps", {
-  problem <- synthetic_ltsa_problem(c(0, 0.1, 0.2, 0.20001, 1, 2))
+  problem <- synthetic_eigenproblem(c(0, 0.1, 0.2, 0.20001, 1, 2))
   fixture <- synthetic_candidate_provider_factory(
     problem,
     backend = "synthetic_backend",
@@ -482,7 +487,7 @@ test_that("Ritz diagnostics report generic shortfalls and weak gaps", {
     converged_columns = function(eig_k) eig_k - 1L
   )
 
-  res <- flotsam:::ltsa_ritz_eig(
+  res <- flotsam:::solve_with_ritz(
     problem$matrix,
     ndim = 2L,
     provider = fixture$provider,
@@ -503,7 +508,7 @@ test_that("Ritz diagnostics report generic shortfalls and weak gaps", {
 })
 
 test_that("Ritz diagnostics do not invent non-RSpectra convergence", {
-  problem <- synthetic_ltsa_problem(c(0, 0.1, 0.2, 1, 2, 3))
+  problem <- synthetic_eigenproblem(c(0, 0.1, 0.2, 1, 2, 3))
   fixture <- synthetic_candidate_provider_factory(
     problem,
     backend = "irlba",
@@ -513,7 +518,7 @@ test_that("Ritz diagnostics do not invent non-RSpectra convergence", {
     mprod = 31L
   )
 
-  res <- flotsam:::ltsa_ritz_eig(
+  res <- flotsam:::solve_with_ritz(
     problem$matrix,
     ndim = 2L,
     provider = fixture$provider,
@@ -530,10 +535,10 @@ test_that("Ritz diagnostics do not invent non-RSpectra convergence", {
 })
 
 test_that("Ritz diagnostics give near-zero truncation guidance", {
-  problem <- synthetic_ltsa_problem(c(0, 1e-10, 1e-10, 1e-10, 0.002, 1))
+  problem <- synthetic_eigenproblem(c(0, 1e-10, 1e-10, 1e-10, 0.002, 1))
   fixture <- synthetic_candidate_provider_factory(problem)
 
-  res <- flotsam:::ltsa_ritz_eig(
+  res <- flotsam:::solve_with_ritz(
     problem$matrix,
     ndim = 2L,
     provider = fixture$provider,
@@ -556,8 +561,8 @@ test_that("Ritz diagnostics give near-zero truncation guidance", {
 })
 
 test_that("Ritz driver handles arbitrary normalized-style null vectors", {
-  nullvec <- c(1, 2, 3, 2, 1, 4)
-  nullvec <- nullvec / sqrt(sum(nullvec * nullvec))
+  null_vector <- c(1, 2, 3, 2, 1, 4)
+  null_vector <- null_vector / sqrt(sum(null_vector * null_vector))
   Z <- cbind(
     c(1, -1, 0, 0, 0, 0),
     c(0, 1, -1, 0, 0, 0),
@@ -565,8 +570,8 @@ test_that("Ritz driver handles arbitrary normalized-style null vectors", {
     c(0, 0, 0, 1, -1, 0),
     c(0, 0, 0, 0, 1, -1)
   )
-  Z <- Z - nullvec %*% crossprod(nullvec, Z)
-  Q <- qr.Q(qr(cbind(nullvec, Z)))
+  Z <- Z - null_vector %*% crossprod(null_vector, Z)
+  Q <- qr.Q(qr(cbind(null_vector, Z)))
   basis <- Q[, seq_len(6L), drop = FALSE]
   B <- basis %*% diag(c(0, 0.1, 0.2, 1, 3, 5)) %*% t(basis)
   candidates <- basis[, c(3L, 1L, 4L, 2L, 5L), drop = FALSE]
@@ -579,7 +584,7 @@ test_that("Ritz driver handles arbitrary normalized-style null vectors", {
     0, 2, 0, 1, -1
   ), nrow = 5L)))
   provider <- function(B, eig_k, lambda_max = NULL, verbose = FALSE) {
-    flotsam:::new_ltsa_candidates(
+    flotsam:::new_eigen_candidates(
       vectors = candidates[, seq_len(eig_k), drop = FALSE],
       backend = "synthetic",
       lambda_max = 5,
@@ -588,11 +593,11 @@ test_that("Ritz driver handles arbitrary normalized-style null vectors", {
     )
   }
 
-  res <- flotsam:::ltsa_ritz_eig(
+  res <- flotsam:::solve_with_ritz(
     B,
     ndim = 2L,
     provider = provider,
-    null_vector = nullvec,
+    null_vector = null_vector,
     eig_k = 5L
   )
 
@@ -610,7 +615,7 @@ test_that("LTSA symmetrization returns a general sparse solver matrix", {
     dims = c(3L, 3L)
   )
 
-  B_sym <- flotsam:::symmetrize_ltsa_matrix(B)
+  B_sym <- flotsam:::symmetrize_operator(B)
 
   expect_s4_class(B_sym, "dgCMatrix")
   expect_false(methods::is(B_sym, "dsCMatrix"))
@@ -619,10 +624,10 @@ test_that("LTSA symmetrization returns a general sparse solver matrix", {
 })
 
 test_that("automatic dense LTSA route returns the lowest candidate subspace", {
-  B <- flotsam:::symmetrize_ltsa_matrix(Matrix::Diagonal(x = seq(0, 11)))
+  B <- flotsam:::symmetrize_operator(Matrix::Diagonal(x = seq(0, 11)))
   reference <- diag(12L)[, seq_len(6L), drop = FALSE]
 
-  res <- flotsam:::ltsa_auto_candidate_provider(B, eig_k = 6L)
+  res <- flotsam:::auto_candidate_provider(B, eig_k = 6L)
 
   expect_identical(res$backend, "dense_eigen")
   expect_identical(res$nconv, 6L)
@@ -631,11 +636,11 @@ test_that("automatic dense LTSA route returns the lowest candidate subspace", {
 })
 
 test_that("RSpectra provider reports progress and returns low candidates", {
-  B <- flotsam:::symmetrize_ltsa_matrix(Matrix::Diagonal(x = seq(0, 29)))
+  B <- flotsam:::symmetrize_operator(Matrix::Diagonal(x = seq(0, 29)))
   reference <- diag(30L)[, seq_len(6L), drop = FALSE]
 
   messages <- capture.output(
-    res <- flotsam:::ltsa_rspectra_candidate_provider(
+    res <- flotsam:::rspectra_candidate_provider(
       B,
       eig_k = 6L,
       tol = 1e-10,
@@ -653,9 +658,9 @@ test_that("RSpectra provider reports progress and returns low candidates", {
 })
 
 test_that("RSpectra candidate provider returns candidate bundle", {
-  B <- flotsam:::symmetrize_ltsa_matrix(Matrix::Diagonal(x = seq(0, 29)))
+  B <- flotsam:::symmetrize_operator(Matrix::Diagonal(x = seq(0, 29)))
 
-  res <- flotsam:::ltsa_rspectra_candidate_provider(
+  res <- flotsam:::rspectra_candidate_provider(
     B,
     eig_k = 6L,
     tol = 1e-10,
@@ -670,7 +675,7 @@ test_that("RSpectra candidate provider returns candidate bundle", {
 })
 
 test_that("RSpectra Ritz driver returns diagnostics", {
-  B <- synthetic_ltsa_matrix(c(
+  B <- synthetic_operator(c(
     0,
     0.1,
     0.2,
@@ -696,10 +701,10 @@ test_that("RSpectra Ritz driver returns diagnostics", {
   ord <- order(dense$values)
   reference <- dense$vectors[, ord[2:3], drop = FALSE]
 
-  res <- flotsam:::ltsa_ritz_eig(
+  res <- flotsam:::solve_with_ritz(
     Matrix::Matrix(B, sparse = TRUE),
     ndim = 2L,
-    provider = flotsam:::ltsa_rspectra_candidate_provider,
+    provider = flotsam:::rspectra_candidate_provider,
     provider_args = list(
       tol = 1e-8,
       ncv = 18L,
@@ -719,15 +724,15 @@ test_that("RSpectra Ritz driver returns diagnostics", {
 })
 
 test_that("irlba and svdr candidate providers return candidate bundles", {
-  B <- flotsam:::symmetrize_ltsa_matrix(Matrix::Diagonal(x = seq(0, 29)))
+  B <- flotsam:::symmetrize_operator(Matrix::Diagonal(x = seq(0, 29)))
   reference <- diag(30L)[, seq_len(6L), drop = FALSE]
   providers <- list(
     irlba = list(
-      provider = flotsam:::ltsa_irlba_candidate_provider,
+      provider = flotsam:::irlba_candidate_provider,
       args = list(tol = 1e-10, maxit = 1000L)
     ),
     svdr = list(
-      provider = flotsam:::ltsa_svdr_candidate_provider,
+      provider = flotsam:::svdr_candidate_provider,
       args = list(tol = 1e-10, it = 1000L)
     )
   )
@@ -751,7 +756,7 @@ test_that("irlba and svdr candidate providers return candidate bundles", {
 
 test_that("irlba and svdr Ritz drivers agree with dense reference subspaces", {
   # fmt: skip
-  B <- synthetic_ltsa_matrix(c(
+  B <- synthetic_operator(c(
     0, 0.1, 0.2, 1, 3, 5, 8, 13, 21, 34,
     55, 89, 144, 233, 377, 610, 987, 1597, 2584, 4181
   ))
@@ -760,18 +765,18 @@ test_that("irlba and svdr Ritz drivers agree with dense reference subspaces", {
   reference <- dense$vectors[, ord[2:3], drop = FALSE]
   backends <- list(
     irlba = list(
-      provider = flotsam:::ltsa_irlba_candidate_provider,
+      provider = flotsam:::irlba_candidate_provider,
       args = list(tol = 1e-10, maxit = 5000L)
     ),
     svdr = list(
-      provider = flotsam:::ltsa_svdr_candidate_provider,
+      provider = flotsam:::svdr_candidate_provider,
       args = list(tol = 1e-10, it = 5000L, extra = 12L)
     )
   )
 
   for (backend in names(backends)) {
     set.seed(42)
-    res <- flotsam:::ltsa_ritz_eig(
+    res <- flotsam:::solve_with_ritz(
       B = Matrix::Matrix(B, sparse = TRUE),
       ndim = 2L,
       provider = backends[[backend]]$provider,
@@ -791,12 +796,12 @@ test_that("irlba and svdr Ritz drivers agree with dense reference subspaces", {
 test_that("RSpectra partial convergence is a hard LTSA error", {
   set.seed(1)
   A <- crossprod(matrix(stats::rnorm(80L * 80L), nrow = 80L))
-  B <- flotsam:::symmetrize_ltsa_matrix(Matrix::Matrix(A, sparse = TRUE))
+  B <- flotsam:::symmetrize_operator(Matrix::Matrix(A, sparse = TRUE))
   lambda_max <- max(eigen(A, symmetric = TRUE, only.values = TRUE)$values)
 
   expect_error(
     suppressWarnings(
-      flotsam:::ltsa_rspectra_candidate_provider(
+      flotsam:::rspectra_candidate_provider(
         B,
         eig_k = 20L,
         lambda_max = lambda_max,

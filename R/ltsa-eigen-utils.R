@@ -1,16 +1,16 @@
 # Matrix, scaling, residual, near-zero, and lambda-probe helpers shared by all
 # LTSA iterative eigenanalysis backends.
 
-ltsa_default_eig_k <- function(ndim, n) {
+default_eig_k <- function(ndim, n) {
   ndim <- check_whole_number(ndim, "ndim", min = 1)
   n <- check_whole_number(n, "n", min = 2)
 
   min(n - 1L, max(12L, ndim + 2L))
 }
 
-ltsa_validate_eig_k <- function(eig_k, ndim, n) {
+validate_eig_k <- function(eig_k, ndim, n) {
   if (is.null(eig_k)) {
-    return(ltsa_default_eig_k(ndim = ndim, n = n))
+    return(default_eig_k(ndim = ndim, n = n))
   }
 
   ndim <- check_whole_number(ndim, "ndim", min = 1)
@@ -30,7 +30,7 @@ ltsa_validate_eig_k <- function(eig_k, ndim, n) {
   as.integer(eig_k)
 }
 
-symmetrize_ltsa_matrix <- function(B) {
+symmetrize_operator <- function(B) {
   B <- 0.5 * (B + Matrix::t(B))
 
   if (methods::is(B, "sparseMatrix")) {
@@ -43,7 +43,7 @@ symmetrize_ltsa_matrix <- function(B) {
   }
 }
 
-ltsa_matrix_max_abs <- function(B) {
+matrix_max_abs <- function(B) {
   if (methods::is(B, "sparseMatrix")) {
     if (length(B@x) == 0L) {
       return(0)
@@ -53,32 +53,37 @@ ltsa_matrix_max_abs <- function(B) {
   max(abs(B))
 }
 
-ltsa_matrix_is_effectively_zero <- function(B) {
-  ltsa_matrix_max_abs(B) <= sqrt(.Machine$double.eps)
+matrix_is_effectively_zero <- function(B) {
+  matrix_max_abs(B) <= sqrt(.Machine$double.eps)
 }
 
-ltsa_default_ncv <- function(n, eig_k) {
+default_ncv <- function(n, eig_k) {
   min(n, max(20L, 4L * eig_k + 10L))
 }
 
-ltsa_rspectra_opts <- function(eig_k = NULL, n = NULL) {
+rspectra_options <- function(eig_k = NULL, n = NULL) {
   opts <- list(tol = 1e-6)
   if (!is.null(eig_k) && !is.null(n)) {
-    opts$ncv <- ltsa_default_ncv(n, eig_k)
+    opts$ncv <- default_ncv(n, eig_k)
   }
   opts
 }
 
-ltsa_use_dense_eig <- function(n, eig_k, dense_n = 100L, dense_fraction = 0.5) {
+use_dense_eigensolver <- function(
+  n,
+  eig_k,
+  dense_n = 100L,
+  dense_fraction = 0.5
+) {
   n <= dense_n || eig_k >= dense_fraction * n
 }
 
-ltsa_shift_margin <- function(lambda_max, shift_eps = 1e-6) {
+shift_margin <- function(lambda_max, shift_eps = 1e-6) {
   scale <- max(1, abs(lambda_max))
   max(shift_eps * scale, 100 * .Machine$double.eps * scale)
 }
 
-ltsa_shift_for_smallest <- function(B, shift) {
+shift_for_smallest <- function(B, shift) {
   shifted <- shift * Matrix::Diagonal(nrow(B)) - B
   if (methods::is(shifted, "sparseMatrix")) {
     shifted <- methods::as(shifted, "generalMatrix")
@@ -90,21 +95,21 @@ ltsa_shift_for_smallest <- function(B, shift) {
   }
 }
 
-ltsa_normalize_columns <- function(V) {
+normalize_columns <- function(V) {
   V <- as.matrix(V)
   norms <- sqrt(colSums(V * V))
   sweep(V, 2L, ifelse(norms == 0, 1, norms), "/")
 }
 
-ltsa_rayleigh_values <- function(B, vectors) {
+rayleigh_values <- function(B, vectors) {
   vectors <- as.matrix(vectors)
   BV <- as.matrix(B %*% vectors)
   denom <- colSums(vectors * vectors)
   colSums(vectors * BV) / denom
 }
 
-ltsa_ritz_residuals <- function(B, vectors, values, lambda_max) {
-  vectors <- ltsa_normalize_columns(vectors)
+ritz_residuals <- function(B, vectors, values, lambda_max) {
+  vectors <- normalize_columns(vectors)
   if (length(values) != ncol(vectors)) {
     stop(
       "internal error: residual value/vector length mismatch",
@@ -114,16 +119,16 @@ ltsa_ritz_residuals <- function(B, vectors, values, lambda_max) {
   BV <- as.matrix(B %*% vectors)
   residual <- BV - sweep(vectors, 2L, values, "*")
   absolute_residual <- sqrt(colSums(residual * residual))
-  residual_scale <- ltsa_residual_scale(lambda_max)
+  scale <- residual_scale(lambda_max)
 
   list(
     absolute_residuals = absolute_residual,
-    scaled_residuals = absolute_residual / residual_scale,
-    residual_scale = residual_scale
+    scaled_residuals = absolute_residual / scale,
+    residual_scale = scale
   )
 }
 
-ltsa_residual_scale <- function(lambda_max) {
+residual_scale <- function(lambda_max) {
   if (
     is.null(lambda_max) ||
       length(lambda_max) < 1L ||
@@ -135,11 +140,11 @@ ltsa_residual_scale <- function(lambda_max) {
   max(as.numeric(lambda_max[[1L]]), 1)
 }
 
-ltsa_default_null_vector <- function(n) {
+default_null_vector <- function(n) {
   rep(1, n)
 }
 
-ltsa_normalize_null_vector <- function(null_vector, n) {
+normalize_null_vector <- function(null_vector, n) {
   if (length(null_vector) != n || any(!is.finite(null_vector))) {
     stop(
       "LTSA null vector must be finite and match the matrix dimension",
@@ -155,11 +160,11 @@ ltsa_normalize_null_vector <- function(null_vector, n) {
   null_vector / null_norm
 }
 
-ltsa_near_zero_tol <- function(lambda_max, tol = sqrt(.Machine$double.eps)) {
-  tol * ltsa_residual_scale(lambda_max)
+near_zero_tolerance <- function(lambda_max, tol = sqrt(.Machine$double.eps)) {
+  tol * residual_scale(lambda_max)
 }
 
-ltsa_validate_backend_lambda_max <- function(lambda_max, B, backend) {
+validate_backend_lambda_max <- function(lambda_max, B, backend) {
   if (length(lambda_max) < 1L || !is.finite(lambda_max[[1L]])) {
     stop(
       backend,
@@ -169,7 +174,7 @@ ltsa_validate_backend_lambda_max <- function(lambda_max, B, backend) {
   }
 
   lambda_max <- max(0, as.numeric(lambda_max[[1L]]))
-  if (lambda_max <= 0 && !ltsa_matrix_is_effectively_zero(B)) {
+  if (lambda_max <= 0 && !matrix_is_effectively_zero(B)) {
     stop(
       backend,
       " largest-eigenvalue probe returned a non-positive value for ",
@@ -180,17 +185,17 @@ ltsa_validate_backend_lambda_max <- function(lambda_max, B, backend) {
   lambda_max
 }
 
-ltsa_validate_lambda_probe <- function(probe, B) {
+validate_lambda_probe <- function(probe, B) {
   nconv <- probe$nconv
   if (!is.null(nconv) && length(nconv) > 0L && nconv < 1L) {
     stop("RSpectra largest-eigenvalue probe did not converge", call. = FALSE)
   }
 
-  ltsa_validate_backend_lambda_max(probe$values, B, backend = "RSpectra")
+  validate_backend_lambda_max(probe$values, B, backend = "RSpectra")
 }
 
-ltsa_lambda_max_probe <- function(B, varargs) {
-  opts <- ltsa_rspectra_opts(eig_k = 1L, n = nrow(B))
+rspectra_lambda_max_probe <- function(B, varargs) {
+  opts <- rspectra_options(eig_k = 1L, n = nrow(B))
   opts <- merge_named_lists(opts, varargs)
   opts$retvec <- FALSE
 
@@ -201,7 +206,7 @@ ltsa_lambda_max_probe <- function(B, varargs) {
     opts = opts
   )
   probe <- do.call(RSpectra::eigs_sym, args)
-  lambda_max <- ltsa_validate_lambda_probe(probe, B)
+  lambda_max <- validate_lambda_probe(probe, B)
 
   list(
     value = lambda_max,

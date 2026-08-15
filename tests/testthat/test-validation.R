@@ -678,10 +678,10 @@ test_that("output B rejects all eigenanalysis controls before assembly", {
 
 test_that("contradictory controls fail before neighbor search or assembly", {
   local_mocked_bindings(
-    prepare_ltsa_neighbors = function(...) {
+    prepare_neighbors = function(...) {
       stop("neighbor search reached", call. = FALSE)
     },
-    assemble_ltsa_B = function(...) {
+    assemble_alignment_matrix = function(...) {
       stop("assembly reached", call. = FALSE)
     },
     .package = "flotsam"

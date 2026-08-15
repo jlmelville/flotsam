@@ -10,7 +10,7 @@ resolve_neighbor_input <- function(nn_method) {
   list(nn_method = nn_method, nn_idx = NULL)
 }
 
-prepare_ltsa_neighbors <- function(
+prepare_neighbors <- function(
   X,
   n_neighbors,
   nn_method,

@@ -1,4 +1,4 @@
-assemble_ltsa_B <- function(
+assemble_alignment_matrix <- function(
   X,
   nn_idx,
   ndim,
@@ -23,9 +23,9 @@ assemble_ltsa_B <- function(
   }
   transposed_neighbor_indices <- t(weight_idx)
   components <- if (n_assembly_threads == 1L) {
-    ltsa_assemble_local_weights(X, transposed_neighbor_indices, k, ndim)
+    assemble_local_weights(X, transposed_neighbor_indices, k, ndim)
   } else {
-    ltsa_assemble_local_weights_parallel(
+    assemble_local_weights_parallel(
       X,
       transposed_neighbor_indices,
       k,
@@ -37,8 +37,8 @@ assemble_ltsa_B <- function(
     components,
     compute_effective_components(weight_idx, n)
   )
-  log_ltsa_assembly_diagnostics(components, verbose)
-  B <- ltsa_components_to_dgCMatrix(components, n)
+  log_assembly_diagnostics(components, verbose)
+  B <- components_to_dgCMatrix(components, n)
 
   list(
     B = B,
@@ -123,7 +123,7 @@ compute_effective_components <- function(weight_idx, n) {
   )
 }
 
-log_ltsa_assembly_diagnostics <- function(components, verbose) {
+log_assembly_diagnostics <- function(components, verbose) {
   if (!verbose) {
     return(invisible(NULL))
   }
@@ -141,7 +141,7 @@ log_ltsa_assembly_diagnostics <- function(components, verbose) {
   invisible(NULL)
 }
 
-ltsa_components_to_dgCMatrix <- function(components, n) {
+components_to_dgCMatrix <- function(components, n) {
   n <- check_whole_number(n, "n", min = 0)
   if (n >= .Machine$integer.max) {
     stop("n is too large for a dgCMatrix", call. = FALSE)

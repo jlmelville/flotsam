@@ -535,7 +535,7 @@ void stop_on_parallel_worker_failure(
 
 } // namespace
 
-[[cpp11::register]] cpp11::list ltsa_assemble_local_weights_parallel(
+[[cpp11::register]] cpp11::list assemble_local_weights_parallel(
     const cpp11::doubles_matrix<>& x,
     const cpp11::integers& transposed_neighbor_indices, std::size_t n_neighbors,
     int ndim, int requested_threads) {
@@ -580,7 +580,7 @@ void stop_on_parallel_worker_failure(
   const std::vector<double>* row_major_ptr = nullptr;
   if (!use_svd_route) {
     if (row_major_copy_within_limit(n_obs, static_cast<std::size_t>(x.ncol()),
-                                    LTSA_ROW_MAJOR_COPY_MAX_BYTES)) {
+                                    ROW_MAJOR_COPY_LIMIT_BYTES)) {
       try {
         make_row_major_copy(x_data, n_obs, static_cast<std::size_t>(x.ncol()),
                             row_major_x);

@@ -1,6 +1,6 @@
 #include "ltsa_internal.h"
 
-LtsaTripletAssemblyBuilder::LtsaTripletAssemblyBuilder(
+TripletAssemblyBuilder::TripletAssemblyBuilder(
     const cpp11::integers& transposed_neighbor_indices, std::size_t n_neighbors,
     std::size_t n_obs, std::size_t max_int)
     : n_obs_(n_obs), n_neighbors_(n_neighbors), max_int_(max_int),
@@ -42,7 +42,7 @@ LtsaTripletAssemblyBuilder::LtsaTripletAssemblyBuilder(
   }
 }
 
-void LtsaTripletAssemblyBuilder::append_prechecked_neighborhood(
+void TripletAssemblyBuilder::append_prechecked_neighborhood(
     const std::vector<int>& neighbor_indices,
     const std::vector<double>& weights) {
   if (finalized_) {
@@ -65,7 +65,7 @@ void LtsaTripletAssemblyBuilder::append_prechecked_neighborhood(
   n_appended_++;
 }
 
-SparseComponents LtsaTripletAssemblyBuilder::finalize_sparse_components() {
+SparseComponents TripletAssemblyBuilder::finalize_sparse_components() {
   if (finalized_) {
     cpp11::stop("LTSA triplet builder has already been finalized");
   }
@@ -121,7 +121,7 @@ SparseComponents LtsaTripletAssemblyBuilder::finalize_sparse_components() {
   return out;
 }
 
-void LtsaTripletAssemblyBuilder::append_triangular_prechecked(
+void TripletAssemblyBuilder::append_triangular_prechecked(
     const std::vector<int>& neighbor_indices,
     const std::vector<double>& weights) {
   for (std::size_t local_col = 0; local_col < n_neighbors_; local_col++) {
@@ -136,7 +136,7 @@ void LtsaTripletAssemblyBuilder::append_triangular_prechecked(
   }
 }
 
-void LtsaTripletAssemblyBuilder::expand_canonical_to_full(
+void TripletAssemblyBuilder::expand_canonical_to_full(
     std::vector<double>& row_sums, std::vector<int>& row_seen,
     std::vector<int>& touched_rows) {
   for (std::size_t col = 0; col < n_obs_; col++) {

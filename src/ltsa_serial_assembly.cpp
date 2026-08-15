@@ -1,7 +1,7 @@
 #include "ltsa_internal.h"
 
 [[cpp11::register]] cpp11::list
-ltsa_assemble_local_weights(const cpp11::doubles_matrix<>& x,
+assemble_local_weights(const cpp11::doubles_matrix<>& x,
                             const cpp11::integers& transposed_neighbor_indices,
                             std::size_t n_neighbors, int ndim) {
   checked_ndim(ndim);
@@ -23,7 +23,7 @@ ltsa_assemble_local_weights(const cpp11::doubles_matrix<>& x,
     cpp11::stop("Too many observations for a dgCMatrix");
   }
 
-  LtsaTripletAssemblyBuilder builder(transposed_neighbor_indices, n_neighbors,
+  TripletAssemblyBuilder builder(transposed_neighbor_indices, n_neighbors,
                                      n_obs, max_int);
 
   int rank_deficient_count = 0;
@@ -36,7 +36,7 @@ ltsa_assemble_local_weights(const cpp11::doubles_matrix<>& x,
   std::unique_ptr<GramLocalWeightsWorkspace> gram_workspace;
   if (use_gram_workspace) {
     if (row_major_copy_within_limit(n_obs, static_cast<std::size_t>(x.ncol()),
-                                    LTSA_ROW_MAJOR_COPY_MAX_BYTES)) {
+                                    ROW_MAJOR_COPY_LIMIT_BYTES)) {
       try {
         make_row_major_copy(x_data, n_obs, static_cast<std::size_t>(x.ncol()),
                             row_major_x);

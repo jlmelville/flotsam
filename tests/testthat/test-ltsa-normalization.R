@@ -1,6 +1,6 @@
 test_that("sparse normalization implements Jacobi scaling", {
   # Protects the algebra behind the public normalize = TRUE path.
-  L <- Matrix::sparseMatrix(
+  B <- Matrix::sparseMatrix(
     i = c(1L, 2L, 1L, 2L, 2L, 3L, 3L),
     j = c(1L, 1L, 2L, 2L, 3L, 2L, 3L),
     x = c(4, 2, 2, 9, 3, 3, 16),
@@ -8,16 +8,19 @@ test_that("sparse normalization implements Jacobi scaling", {
     repr = "C"
   )
 
-  normalized <- flotsam:::ltsa_normalize_sparse_operator(L)
-  diagonal <- diag(L)
-  Dinvs <- sqrt(1 / diagonal)
-  reference <- Matrix::Diagonal(x = Dinvs) %*%
-    L %*%
-    Matrix::Diagonal(x = Dinvs)
+  normalization <- flotsam:::normalize_sparse_operator(B)
+  diagonal <- diag(B)
+  inv_sqrt_diagonal <- sqrt(1 / diagonal)
+  reference <- Matrix::Diagonal(x = inv_sqrt_diagonal) %*%
+    B %*%
+    Matrix::Diagonal(x = inv_sqrt_diagonal)
 
-  expect_equal(as.matrix(normalized$normalized_operator), as.matrix(reference))
-  expect_equal(normalized$inv_sqrt_diagonal, Dinvs)
-  expect_equal(normalized$null_vector, sqrt(diagonal))
+  expect_equal(
+    as.matrix(normalization$normalized_operator),
+    as.matrix(reference)
+  )
+  expect_equal(normalization$inv_sqrt_diagonal, inv_sqrt_diagonal)
+  expect_equal(normalization$null_vector, sqrt(diagonal))
 })
 
 test_that("normalized public path rejects an isolated effective observation", {
@@ -113,14 +116,16 @@ test_that("normalized embeddings match an independent dense generalized solve", 
 
   B <- result$B
   D <- diag(B)
-  Dinvs <- sqrt(1 / D)
-  symmetric_operator <- Dinvs * sweep(as.matrix(B), 2L, Dinvs, "*")
+  inv_sqrt_diagonal <- sqrt(1 / D)
+  symmetric_operator <- inv_sqrt_diagonal *
+    sweep(as.matrix(B), 2L, inv_sqrt_diagonal, "*")
   dense <- eigen(symmetric_operator, symmetric = TRUE)
   order <- order(dense$values)
   null_direction <- sqrt(D / sum(D))
   null_index <- which.max(abs(crossprod(null_direction, dense$vectors)))
   nonconstant <- order[order != null_index]
-  reference <- Dinvs * dense$vectors[, nonconstant[seq_len(2L)], drop = FALSE]
+  reference <- inv_sqrt_diagonal *
+    dense$vectors[, nonconstant[seq_len(2L)], drop = FALSE]
 
   expect_equal(
     result$eigen$values,
@@ -173,7 +178,7 @@ test_that("output B returns the operator selected by normalize", {
 
 test_that("normalized output B still skips eigenanalysis", {
   local_mocked_bindings(
-    ltsa_run_eigenanalysis = function(...) {
+    run_eigenanalysis = function(...) {
       stop("eigenanalysis reached", call. = FALSE)
     },
     .package = "flotsam"
