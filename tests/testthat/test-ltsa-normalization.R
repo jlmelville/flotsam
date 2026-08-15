@@ -20,6 +20,51 @@ test_that("sparse normalization implements Jacobi scaling", {
   expect_equal(normalized$null_vector, sqrt(diagonal))
 })
 
+test_that("normalized public path rejects an isolated effective observation", {
+  # fmt: skip
+  X <- matrix(
+    c(
+      0, 0, 0, 0,
+      1, 0, 0, 1,
+      0, 1, 0, 1,
+      0, 0, 1, 1,
+      1, 1, 0, 2,
+      1, 0, 1, 2
+    ),
+    nrow = 6L,
+    byrow = TRUE
+  )
+  # Observation 6 appears only in the self column that include_self = FALSE
+  # removes, leaving a zero diagonal entry in the assembled operator.
+  # fmt: skip
+  nn_idx <- matrix(
+    c(
+      1L, 2L, 3L, 4L, 5L,
+      2L, 1L, 3L, 4L, 5L,
+      3L, 1L, 2L, 4L, 5L,
+      4L, 1L, 2L, 3L, 5L,
+      5L, 1L, 2L, 3L, 4L,
+      6L, 1L, 2L, 3L, 4L
+    ),
+    nrow = 6L,
+    byrow = TRUE
+  )
+  args <- list(
+    X = X,
+    ndim = 2L,
+    nn_method = nn_idx,
+    include_self = FALSE,
+    output = "B"
+  )
+
+  raw_B <- do.call(ltsa, args)
+  expect_identical(diag(raw_B)[[6L]], 0)
+  expect_error(
+    do.call(ltsa, c(args, list(normalize = TRUE))),
+    "Cannot normalize the LTSA matrix because its diagonal contains non-positive"
+  )
+})
+
 test_that("normalized public embeddings satisfy the generalized problem", {
   result <- ltsa(
     iris[1:10, ],
