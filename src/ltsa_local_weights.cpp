@@ -1,7 +1,7 @@
 #include "ltsa_internal.h"
 
-int query_dsyev_workspace(int n, std::vector<double>& gram,
-                          std::vector<double>& values) {
+int query_dsyev_workspace(int n, std::vector<double> &gram,
+                          std::vector<double> &values) {
   char jobz = 'V';
   char uplo = 'U';
   int lwork = -1;
@@ -21,9 +21,9 @@ int query_dsyev_workspace(int n, std::vector<double>& gram,
 }
 
 int query_dgesdd_workspace(int n_nbrs, int n_features, int min_dim,
-                           std::vector<double>& a, std::vector<double>& d,
-                           std::vector<double>& u, std::vector<double>& vt,
-                           std::vector<int>& iwork) {
+                           std::vector<double> &a, std::vector<double> &d,
+                           std::vector<double> &u, std::vector<double> &vt,
+                           std::vector<int> &iwork) {
   char jobz = 'S';
   int m = n_nbrs;
   int n = n_features;
@@ -81,7 +81,7 @@ GramLocalWeightsWorkspace::GramLocalWeightsWorkspace(std::size_t n_nbrs,
 }
 
 std::vector<int>
-flat_neighbors_zero_based(const cpp11::integers& transposed_neighbor_indices,
+flat_neighbors_zero_based(const cpp11::integers &transposed_neighbor_indices,
                           std::size_t offset, std::size_t n_nbrs) {
   std::vector<int> out(
       checked_vector_size<int>(n_nbrs, "LTSA neighborhood indices"));
@@ -91,8 +91,8 @@ flat_neighbors_zero_based(const cpp11::integers& transposed_neighbor_indices,
 }
 
 void fill_flat_neighbors_zero_based(
-    const cpp11::integers& transposed_neighbor_indices, std::size_t offset,
-    std::size_t n_nbrs, std::vector<int>& out) {
+    const cpp11::integers &transposed_neighbor_indices, std::size_t offset,
+    std::size_t n_nbrs, std::vector<int> &out) {
   out.resize(checked_vector_size<int>(n_nbrs, "LTSA neighborhood indices"));
   for (std::size_t local = 0; local < n_nbrs; local++) {
     out[local] = transposed_neighbor_indices[offset + local] - 1;
@@ -101,9 +101,9 @@ void fill_flat_neighbors_zero_based(
 
 namespace {
 
-void fill_centered_neighborhood(const cpp11::doubles_matrix<>& x,
-                                const std::vector<int>& neighbor_indices,
-                                std::vector<double>& centered) {
+void fill_centered_neighborhood(const cpp11::doubles_matrix<> &x,
+                                const std::vector<int> &neighbor_indices,
+                                std::vector<double> &centered) {
   const std::size_t n_nbrs = neighbor_indices.size();
   const std::size_t n_features = x.ncol();
   const std::size_t n_values = checked_vector_size_mul<double>(
@@ -128,20 +128,20 @@ void fill_centered_neighborhood(const cpp11::doubles_matrix<>& x,
 } // namespace
 
 void fill_centered_neighborhood_column_major(
-    const double* x_data, std::size_t n_obs,
-    const std::vector<int>& neighbor_indices, std::vector<double>& centered,
+    const double *x_data, std::size_t n_obs,
+    const std::vector<int> &neighbor_indices, std::vector<double> &centered,
     std::size_t n_features) {
   const std::size_t n_nbrs = neighbor_indices.size();
 
   for (std::size_t col = 0; col < n_features; col++) {
-    const double* col_ptr = x_data + col * n_obs;
+    const double *col_ptr = x_data + col * n_obs;
     double mean = 0.0;
     for (std::size_t row = 0; row < n_nbrs; row++) {
       mean += col_ptr[neighbor_indices[row]];
     }
     mean /= static_cast<double>(n_nbrs);
 
-    double* centered_col = centered.data() + col * n_nbrs;
+    double *centered_col = centered.data() + col * n_nbrs;
     for (std::size_t row = 0; row < n_nbrs; row++) {
       centered_col[row] = col_ptr[neighbor_indices[row]] - mean;
     }
@@ -160,13 +160,13 @@ bool row_major_copy_within_limit(std::size_t n_obs, std::size_t n_features,
   return n_values * sizeof(double) <= max_bytes;
 }
 
-void make_row_major_copy(const double* x_data, std::size_t n_obs,
+void make_row_major_copy(const double *x_data, std::size_t n_obs,
                          std::size_t n_features,
-                         std::vector<double>& row_major) {
+                         std::vector<double> &row_major) {
   row_major.resize(checked_vector_size_mul<double>(
       n_obs, n_features, "LTSA row-major input copy"));
   for (std::size_t col = 0; col < n_features; col++) {
-    const double* col_ptr = x_data + col * n_obs;
+    const double *col_ptr = x_data + col * n_obs;
     for (std::size_t row = 0; row < n_obs; row++) {
       row_major[row * n_features + col] = col_ptr[row];
     }
@@ -174,23 +174,23 @@ void make_row_major_copy(const double* x_data, std::size_t n_obs,
 }
 
 void fill_centered_neighborhood_row_major(
-    const std::vector<double>& row_major,
-    const std::vector<int>& neighbor_indices, std::vector<double>& row_buffer,
-    std::vector<double>& col_means, std::vector<double>& centered,
+    const std::vector<double> &row_major,
+    const std::vector<int> &neighbor_indices, std::vector<double> &row_buffer,
+    std::vector<double> &col_means, std::vector<double> &centered,
     std::size_t n_features) {
   const std::size_t n_nbrs = neighbor_indices.size();
 
   for (std::size_t row = 0; row < n_nbrs; row++) {
-    const double* src =
+    const double *src =
         row_major.data() +
         static_cast<std::size_t>(neighbor_indices[row]) * n_features;
-    double* dst = row_buffer.data() + row * n_features;
+    double *dst = row_buffer.data() + row * n_features;
     std::copy(src, src + n_features, dst);
   }
 
   std::fill(col_means.begin(), col_means.end(), 0.0);
   for (std::size_t row = 0; row < n_nbrs; row++) {
-    const double* src = row_buffer.data() + row * n_features;
+    const double *src = row_buffer.data() + row * n_features;
     for (std::size_t col = 0; col < n_features; col++) {
       col_means[col] += src[col];
     }
@@ -200,7 +200,7 @@ void fill_centered_neighborhood_row_major(
   }
 
   for (std::size_t row = 0; row < n_nbrs; row++) {
-    const double* src = row_buffer.data() + row * n_features;
+    const double *src = row_buffer.data() + row * n_features;
     for (std::size_t col = 0; col < n_features; col++) {
       centered[col * n_nbrs + row] = src[col] - col_means[col];
     }
@@ -208,9 +208,9 @@ void fill_centered_neighborhood_row_major(
 }
 
 void fill_weights_from_basis(std::size_t n_nbrs,
-                             const std::vector<int>& basis_columns,
-                             const std::vector<double>& basis,
-                             std::vector<double>& weights) {
+                             const std::vector<int> &basis_columns,
+                             const std::vector<double> &basis,
+                             std::vector<double> &weights) {
   const std::size_t n_weights =
       checked_vector_size_mul<double>(n_nbrs, n_nbrs, "LTSA local weights");
   if (weights.size() != n_weights) {
@@ -234,10 +234,10 @@ void fill_weights_from_basis(std::size_t n_nbrs,
   }
 }
 
-int select_local_basis_columns(const std::vector<double>& values, int n_values,
+int select_local_basis_columns(const std::vector<double> &values, int n_values,
                                int n_nbrs, int n_features,
                                int requested_basis_size, bool values_ascending,
-                               std::vector<int>& basis_columns) {
+                               std::vector<int> &basis_columns) {
   double max_value = 0.0;
   for (int i = 0; i < n_values; i++) {
     max_value = std::max(max_value, values[i]);
@@ -269,8 +269,8 @@ int select_local_basis_columns(const std::vector<double>& values, int n_values,
 
 namespace {
 
-LocalWeights compute_local_weights_svd(const cpp11::doubles_matrix<>& x,
-                                       const std::vector<int>& neighbor_indices,
+LocalWeights compute_local_weights_svd(const cpp11::doubles_matrix<> &x,
+                                       const std::vector<int> &neighbor_indices,
                                        int ndim) {
   const std::size_t n_nbrs_size = neighbor_indices.size();
   const std::size_t n_features_size = x.ncol();
@@ -338,8 +338,8 @@ LocalWeights compute_local_weights_svd(const cpp11::doubles_matrix<>& x,
 }
 
 LocalWeights
-compute_local_weights_gram(const cpp11::doubles_matrix<>& x,
-                           const std::vector<int>& neighbor_indices, int ndim) {
+compute_local_weights_gram(const cpp11::doubles_matrix<> &x,
+                           const std::vector<int> &neighbor_indices, int ndim) {
   const std::size_t n_nbrs_size = neighbor_indices.size();
   const std::size_t n_features_size = x.ncol();
   const int n_nbrs = checked_lapack_dim(n_nbrs_size, "n_neighbors");
@@ -403,10 +403,10 @@ compute_local_weights_gram(const cpp11::doubles_matrix<>& x,
 
 } // namespace
 
-int compute_local_weights_gram_workspace(const double* x_data,
+int compute_local_weights_gram_workspace(const double *x_data,
                                          std::size_t n_obs,
-                                         GramLocalWeightsWorkspace& workspace,
-                                         const std::vector<double>* row_major) {
+                                         GramLocalWeightsWorkspace &workspace,
+                                         const std::vector<double> *row_major) {
   if (row_major != nullptr) {
     fill_centered_neighborhood_row_major(
         *row_major, workspace.neighbor_indices, workspace.row_buffer,
@@ -449,8 +449,8 @@ int compute_local_weights_gram_workspace(const double* x_data,
 }
 
 LocalWeights
-compute_local_weights_by_shape(const cpp11::doubles_matrix<>& x,
-                               const std::vector<int>& neighbor_indices,
+compute_local_weights_by_shape(const cpp11::doubles_matrix<> &x,
+                               const std::vector<int> &neighbor_indices,
                                int ndim) {
   if (x.ncol() == 0) {
     cpp11::stop("X must contain at least one column");

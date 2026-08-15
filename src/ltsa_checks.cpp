@@ -1,7 +1,7 @@
 #include "ltsa_internal.h"
 
 std::size_t checked_triplet_count(std::size_t n_obs, std::size_t n_nbrs,
-                                  const char* name) {
+                                  const char *name) {
   if (n_nbrs == 0) {
     cpp11::stop("%s must be positive", name);
   }
@@ -19,8 +19,8 @@ int checked_zero_based_neighbor_index(int idx, std::size_t n_obs) {
   return idx - 1;
 }
 
-void checked_append_output(int row, double value, std::vector<int>& out_i,
-                           std::vector<double>& out_x, std::size_t max_int) {
+void checked_append_output(int row, double value, std::vector<int> &out_i,
+                           std::vector<double> &out_x, std::size_t max_int) {
   const std::size_t max_slots =
       std::min(max_int, std::min(out_i.max_size(), out_x.max_size()));
   if (out_i.size() >= max_slots) {
@@ -36,7 +36,7 @@ void checked_ndim(int ndim) {
   }
 }
 
-int checked_lapack_dim(std::size_t value, const char* name) {
+int checked_lapack_dim(std::size_t value, const char *name) {
   const auto max_int =
       static_cast<std::size_t>(std::numeric_limits<int>::max());
   if (value > max_int) {

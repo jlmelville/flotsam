@@ -114,16 +114,16 @@ struct ReduceWorkspace {
   std::vector<int> touched_rows;
 };
 
-void fill_flat_neighbors_zero_based_ptr(const int* value_ptr,
+void fill_flat_neighbors_zero_based_ptr(const int *value_ptr,
                                         std::size_t offset, std::size_t n_nbrs,
-                                        std::vector<int>& out) {
+                                        std::vector<int> &out) {
   for (std::size_t local = 0; local < n_nbrs; local++) {
     out[local] = value_ptr[offset + local] - 1;
   }
 }
 
-int compute_svd_weights_workspace(ParallelLocalWeightsWorkspace& workspace,
-                                  int& rank) {
+int compute_svd_weights_workspace(ParallelLocalWeightsWorkspace &workspace,
+                                  int &rank) {
   std::copy(workspace.centered.begin(), workspace.centered.end(),
             workspace.svd_a.begin());
 
@@ -154,9 +154,9 @@ int compute_svd_weights_workspace(ParallelLocalWeightsWorkspace& workspace,
 }
 
 int compute_gram_weights_workspace_info(
-    const double* x_data, std::size_t n_obs,
-    ParallelLocalWeightsWorkspace& workspace,
-    const std::vector<double>* row_major, int& rank) {
+    const double *x_data, std::size_t n_obs,
+    ParallelLocalWeightsWorkspace &workspace,
+    const std::vector<double> *row_major, int &rank) {
   if (row_major != nullptr) {
     fill_centered_neighborhood_row_major(
         *row_major, workspace.neighbor_indices, workspace.row_buffer,
@@ -198,12 +198,12 @@ int compute_gram_weights_workspace_info(
   return 0;
 }
 
-int compute_parallel_local_weights(const double* x_data, std::size_t n_obs,
-                                   ParallelLocalWeightsWorkspace& workspace,
-                                   const std::vector<double>* row_major,
+int compute_parallel_local_weights(const double *x_data, std::size_t n_obs,
+                                   ParallelLocalWeightsWorkspace &workspace,
+                                   const std::vector<double> *row_major,
                                    int ndim,
-                                   ParallelWorkerDiagnostics& diagnostics,
-                                   std::size_t obs, int& rank) {
+                                   ParallelWorkerDiagnostics &diagnostics,
+                                   std::size_t obs, int &rank) {
   rank = 0;
   int info = 0;
   if (workspace.route_svd) {
@@ -231,19 +231,19 @@ int compute_parallel_local_weights(const double* x_data, std::size_t n_obs,
 }
 
 template <typename T>
-void checked_resize_vector(std::vector<T>& out, std::size_t n,
-                           const char* name) {
+void checked_resize_vector(std::vector<T> &out, std::size_t n,
+                           const char *name) {
   checked_vector_size<T>(n, name);
   try {
     out.resize(n);
-  } catch (const std::bad_alloc&) {
+  } catch (const std::bad_alloc &) {
     cpp11::stop("Unable to allocate %s", name);
-  } catch (const std::length_error&) {
+  } catch (const std::length_error &) {
     cpp11::stop("%s is too large", name);
   }
 }
 
-TriangularSlotPlan assign_triangular_two_pass_slots_flat(const int* value_ptr,
+TriangularSlotPlan assign_triangular_two_pass_slots_flat(const int *value_ptr,
                                                          std::size_t n_obs,
                                                          std::size_t n_nbrs) {
   checked_triplet_count(n_obs, n_nbrs, "value_n_nbrs");
@@ -300,23 +300,23 @@ TriangularSlotPlan assign_triangular_two_pass_slots_flat(const int* value_ptr,
 }
 
 struct ParallelTriangularFillWorker {
-  const double* x_data;
-  const std::vector<double>* row_major;
-  const int* value_ptr;
+  const double *x_data;
+  const std::vector<double> *row_major;
+  const int *value_ptr;
   std::size_t n_obs;
   std::size_t n_nbrs;
   std::size_t tri_count;
   int ndim;
-  const std::vector<std::size_t>* column_starts;
-  const std::vector<std::size_t>* slot_offsets;
-  std::vector<int>* raw_rows;
-  std::vector<double>* raw_values;
-  std::vector<ParallelLocalWeightsWorkspace>* workspaces;
-  std::vector<ParallelWorkerDiagnostics>* diagnostics;
+  const std::vector<std::size_t> *column_starts;
+  const std::vector<std::size_t> *slot_offsets;
+  std::vector<int> *raw_rows;
+  std::vector<double> *raw_values;
+  std::vector<ParallelLocalWeightsWorkspace> *workspaces;
+  std::vector<ParallelWorkerDiagnostics> *diagnostics;
 
   void operator()(std::size_t begin, std::size_t end, std::size_t chunk_id) {
-    ParallelLocalWeightsWorkspace& workspace = (*workspaces)[chunk_id];
-    ParallelWorkerDiagnostics& worker_diagnostics = (*diagnostics)[chunk_id];
+    ParallelLocalWeightsWorkspace &workspace = (*workspaces)[chunk_id];
+    ParallelWorkerDiagnostics &worker_diagnostics = (*diagnostics)[chunk_id];
 
     for (std::size_t obs = begin; obs < end; obs++) {
       const std::size_t offset = obs * n_nbrs;
@@ -350,15 +350,15 @@ struct ParallelTriangularFillWorker {
 };
 
 struct ColumnReduceWorker {
-  const std::vector<std::size_t>* column_starts;
-  const std::vector<std::size_t>* column_counts;
-  const std::vector<int>* raw_rows;
-  const std::vector<double>* raw_values;
-  std::vector<std::vector<CompactEntry>>* reduced_columns;
-  std::vector<ReduceWorkspace>* workspaces;
+  const std::vector<std::size_t> *column_starts;
+  const std::vector<std::size_t> *column_counts;
+  const std::vector<int> *raw_rows;
+  const std::vector<double> *raw_values;
+  std::vector<std::vector<CompactEntry>> *reduced_columns;
+  std::vector<ReduceWorkspace> *workspaces;
 
   void operator()(std::size_t begin, std::size_t end, std::size_t chunk_id) {
-    ReduceWorkspace& workspace = (*workspaces)[chunk_id];
+    ReduceWorkspace &workspace = (*workspaces)[chunk_id];
 
     for (std::size_t col = begin; col < end; col++) {
       const int marker = static_cast<int>(col);
@@ -376,7 +376,7 @@ struct ColumnReduceWorker {
       }
 
       std::sort(workspace.touched_rows.begin(), workspace.touched_rows.end());
-      std::vector<CompactEntry>& out = (*reduced_columns)[col];
+      std::vector<CompactEntry> &out = (*reduced_columns)[col];
       out.reserve(workspace.touched_rows.size());
       for (const int row : workspace.touched_rows) {
         const double value = workspace.row_sums[row];
@@ -389,10 +389,10 @@ struct ColumnReduceWorker {
 };
 
 std::vector<std::vector<CompactEntry>>
-reduce_raw_columns_parallel(const std::vector<std::size_t>& column_starts,
-                            const std::vector<std::size_t>& column_counts,
-                            const std::vector<int>& raw_rows,
-                            const std::vector<double>& raw_values,
+reduce_raw_columns_parallel(const std::vector<std::size_t> &column_starts,
+                            const std::vector<std::size_t> &column_counts,
+                            const std::vector<int> &raw_rows,
+                            const std::vector<double> &raw_values,
                             std::size_t n_obs, std::size_t n_threads) {
   checked_vector_size<CompactEntry>(n_obs, "parallel LTSA reduced column");
   std::vector<pforr::IndexRange> ranges =
@@ -414,14 +414,14 @@ reduce_raw_columns_parallel(const std::vector<std::size_t>& column_starts,
 }
 
 void expand_canonical_columns_to_full(
-    const std::vector<std::vector<CompactEntry>>& canonical_columns,
-    std::vector<std::vector<CompactEntry>>& full_columns) {
+    const std::vector<std::vector<CompactEntry>> &canonical_columns,
+    std::vector<std::vector<CompactEntry>> &full_columns) {
   std::vector<std::size_t> full_column_counts(
       checked_vector_size<std::size_t>(canonical_columns.size(),
                                        "parallel LTSA full column counts"),
       0);
   for (std::size_t col = 0; col < canonical_columns.size(); col++) {
-    for (const CompactEntry& entry : canonical_columns[col]) {
+    for (const CompactEntry &entry : canonical_columns[col]) {
       full_column_counts[col] =
           checked_size_add(full_column_counts[col], 1,
                            "Too many parallel LTSA compact column entries");
@@ -438,7 +438,7 @@ void expand_canonical_columns_to_full(
   }
 
   for (std::size_t col = 0; col < canonical_columns.size(); col++) {
-    for (const CompactEntry& entry : canonical_columns[col]) {
+    for (const CompactEntry &entry : canonical_columns[col]) {
       full_columns[col].push_back(entry);
       if (entry.row != static_cast<int>(col)) {
         full_columns[entry.row].push_back(
@@ -449,7 +449,7 @@ void expand_canonical_columns_to_full(
 }
 
 SparseComponents
-finalize_compact_columns(const std::vector<std::vector<CompactEntry>>& columns,
+finalize_compact_columns(const std::vector<std::vector<CompactEntry>> &columns,
                          std::size_t n_obs, std::size_t max_int) {
   SparseComponents out;
   out.p.resize(
@@ -468,7 +468,7 @@ finalize_compact_columns(const std::vector<std::vector<CompactEntry>>& columns,
   for (std::size_t col = 0; col < n_obs; col++) {
     const int marker = static_cast<int>(col);
     touched_rows.clear();
-    for (const CompactEntry& entry : columns[col]) {
+    for (const CompactEntry &entry : columns[col]) {
       if (row_seen[entry.row] != marker) {
         row_seen[entry.row] = marker;
         row_sums[entry.row] = 0.0;
@@ -491,8 +491,8 @@ finalize_compact_columns(const std::vector<std::vector<CompactEntry>>& columns,
 }
 
 SparseComponents finalize_triangular_two_pass_raw(
-    const TriangularSlotPlan& plan, const std::vector<int>& raw_rows,
-    const std::vector<double>& raw_values, std::size_t n_obs,
+    const TriangularSlotPlan &plan, const std::vector<int> &raw_rows,
+    const std::vector<double> &raw_values, std::size_t n_obs,
     std::size_t n_threads, std::size_t max_int) {
   std::vector<std::vector<CompactEntry>> triangular_columns =
       reduce_raw_columns_parallel(plan.column_starts, plan.column_counts,
@@ -507,9 +507,9 @@ SparseComponents finalize_triangular_two_pass_raw(
 }
 
 ParallelWorkerDiagnostics combine_worker_diagnostics(
-    const std::vector<ParallelWorkerDiagnostics>& diagnostics, int ndim) {
+    const std::vector<ParallelWorkerDiagnostics> &diagnostics, int ndim) {
   ParallelWorkerDiagnostics out;
-  for (const ParallelWorkerDiagnostics& worker : diagnostics) {
+  for (const ParallelWorkerDiagnostics &worker : diagnostics) {
     out.rank_deficient_count += worker.rank_deficient_count;
     out.min_local_rank = std::min(out.min_local_rank, worker.min_local_rank);
   }
@@ -520,11 +520,11 @@ ParallelWorkerDiagnostics combine_worker_diagnostics(
 }
 
 void stop_on_parallel_worker_failure(
-    const std::vector<ParallelWorkerDiagnostics>& diagnostics) {
+    const std::vector<ParallelWorkerDiagnostics> &diagnostics) {
   for (std::size_t worker = 0; worker < diagnostics.size(); worker++) {
-    const ParallelWorkerDiagnostics& current = diagnostics[worker];
+    const ParallelWorkerDiagnostics &current = diagnostics[worker];
     if (current.failed_step != 0) {
-      const char* routine = current.failed_step == 1 ? "dgesdd" : "dsyev";
+      const char *routine = current.failed_step == 1 ? "dgesdd" : "dsyev";
       cpp11::stop("LAPACK %s failed in LTSA assembly worker %d at neighborhood "
                   "%d with info = %d",
                   routine, static_cast<int>(worker + 1), current.failed_obs,
@@ -536,8 +536,8 @@ void stop_on_parallel_worker_failure(
 } // namespace
 
 [[cpp11::register]] cpp11::list assemble_local_weights_parallel(
-    const cpp11::doubles_matrix<>& x,
-    const cpp11::integers& transposed_neighbor_indices, std::size_t n_neighbors,
+    const cpp11::doubles_matrix<> &x,
+    const cpp11::integers &transposed_neighbor_indices, std::size_t n_neighbors,
     int ndim, int requested_threads) {
   checked_ndim(ndim);
   if (requested_threads < 1) {
@@ -564,7 +564,7 @@ void stop_on_parallel_worker_failure(
     cpp11::stop("Too many observations for a dgCMatrix");
   }
 
-  const int* value_ptr = INTEGER(transposed_neighbor_indices.data());
+  const int *value_ptr = INTEGER(transposed_neighbor_indices.data());
   TriangularSlotPlan slot_plan =
       assign_triangular_two_pass_slots_flat(value_ptr, n_obs, n_neighbors);
 
@@ -575,9 +575,9 @@ void stop_on_parallel_worker_failure(
   const std::size_t effective_threads = obs_ranges.size();
 
   const bool use_svd_route = static_cast<std::size_t>(x.ncol()) <= n_neighbors;
-  const double* x_data = REAL(x.data());
+  const double *x_data = REAL(x.data());
   std::vector<double> row_major_x;
-  const std::vector<double>* row_major_ptr = nullptr;
+  const std::vector<double> *row_major_ptr = nullptr;
   if (!use_svd_route) {
     if (row_major_copy_within_limit(n_obs, static_cast<std::size_t>(x.ncol()),
                                     ROW_MAJOR_COPY_LIMIT_BYTES)) {
@@ -585,9 +585,9 @@ void stop_on_parallel_worker_failure(
         make_row_major_copy(x_data, n_obs, static_cast<std::size_t>(x.ncol()),
                             row_major_x);
         row_major_ptr = &row_major_x;
-      } catch (const std::bad_alloc&) {
+      } catch (const std::bad_alloc &) {
         row_major_x.clear();
-      } catch (const std::length_error&) {
+      } catch (const std::length_error &) {
         row_major_x.clear();
       }
     }

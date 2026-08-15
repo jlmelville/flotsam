@@ -1,7 +1,7 @@
 #include "ltsa_internal.h"
 
 TripletAssemblyBuilder::TripletAssemblyBuilder(
-    const cpp11::integers& transposed_neighbor_indices, std::size_t n_neighbors,
+    const cpp11::integers &transposed_neighbor_indices, std::size_t n_neighbors,
     std::size_t n_obs, std::size_t max_int)
     : n_obs_(n_obs), n_neighbors_(n_neighbors), max_int_(max_int),
       canonical_columns_(checked_vector_size<std::vector<CompactEntry>>(
@@ -43,8 +43,8 @@ TripletAssemblyBuilder::TripletAssemblyBuilder(
 }
 
 void TripletAssemblyBuilder::append_prechecked_neighborhood(
-    const std::vector<int>& neighbor_indices,
-    const std::vector<double>& weights) {
+    const std::vector<int> &neighbor_indices,
+    const std::vector<double> &weights) {
   if (finalized_) {
     cpp11::stop("LTSA triplet builder has already been finalized");
   }
@@ -90,10 +90,10 @@ SparseComponents TripletAssemblyBuilder::finalize_sparse_components() {
   std::fill(row_seen.begin(), row_seen.end(), -1);
 
   for (std::size_t col = 0; col < n_obs_; col++) {
-    auto& entries = full_columns_[col];
+    auto &entries = full_columns_[col];
     int col_marker = static_cast<int>(col);
     touched_rows.clear();
-    for (const auto& entry : entries) {
+    for (const auto &entry : entries) {
       if (row_seen[entry.row] != col_marker) {
         row_seen[entry.row] = col_marker;
         row_sums[entry.row] = 0.0;
@@ -103,7 +103,7 @@ SparseComponents TripletAssemblyBuilder::finalize_sparse_components() {
     }
 
     std::sort(touched_rows.begin(), touched_rows.end());
-    for (const auto& row : touched_rows) {
+    for (const auto &row : touched_rows) {
       double value = row_sums[row];
       if (value != 0.0) {
         checked_append_output(row, value, out.i, out.x, max_int_);
@@ -122,8 +122,8 @@ SparseComponents TripletAssemblyBuilder::finalize_sparse_components() {
 }
 
 void TripletAssemblyBuilder::append_triangular_prechecked(
-    const std::vector<int>& neighbor_indices,
-    const std::vector<double>& weights) {
+    const std::vector<int> &neighbor_indices,
+    const std::vector<double> &weights) {
   for (std::size_t local_col = 0; local_col < n_neighbors_; local_col++) {
     for (std::size_t local_row = 0; local_row <= local_col; local_row++) {
       const int global_row = neighbor_indices[local_row];
@@ -137,14 +137,14 @@ void TripletAssemblyBuilder::append_triangular_prechecked(
 }
 
 void TripletAssemblyBuilder::expand_canonical_to_full(
-    std::vector<double>& row_sums, std::vector<int>& row_seen,
-    std::vector<int>& touched_rows) {
+    std::vector<double> &row_sums, std::vector<int> &row_seen,
+    std::vector<int> &touched_rows) {
   for (std::size_t col = 0; col < n_obs_; col++) {
-    auto& entries = canonical_columns_[col];
+    auto &entries = canonical_columns_[col];
     const int col_marker = static_cast<int>(col);
     touched_rows.clear();
 
-    for (const auto& entry : entries) {
+    for (const auto &entry : entries) {
       if (row_seen[entry.row] != col_marker) {
         row_seen[entry.row] = col_marker;
         row_sums[entry.row] = 0.0;

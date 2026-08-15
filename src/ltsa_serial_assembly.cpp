@@ -1,9 +1,9 @@
 #include "ltsa_internal.h"
 
 [[cpp11::register]] cpp11::list
-assemble_local_weights(const cpp11::doubles_matrix<>& x,
-                            const cpp11::integers& transposed_neighbor_indices,
-                            std::size_t n_neighbors, int ndim) {
+assemble_local_weights(const cpp11::doubles_matrix<> &x,
+                       const cpp11::integers &transposed_neighbor_indices,
+                       std::size_t n_neighbors, int ndim) {
   checked_ndim(ndim);
   if (transposed_neighbor_indices.size() == 0 || n_neighbors == 0) {
     cpp11::stop("Value neighborhoods must not be empty");
@@ -24,13 +24,13 @@ assemble_local_weights(const cpp11::doubles_matrix<>& x,
   }
 
   TripletAssemblyBuilder builder(transposed_neighbor_indices, n_neighbors,
-                                     n_obs, max_int);
+                                 n_obs, max_int);
 
   int rank_deficient_count = 0;
   int min_local_rank = ndim;
   const bool use_gram_workspace =
       x.ncol() != 0 && static_cast<std::size_t>(x.ncol()) > n_neighbors;
-  const double* x_data = use_gram_workspace ? REAL(x.data()) : nullptr;
+  const double *x_data = use_gram_workspace ? REAL(x.data()) : nullptr;
   std::vector<double> row_major_x;
   bool use_row_major_gram = false;
   std::unique_ptr<GramLocalWeightsWorkspace> gram_workspace;
@@ -41,9 +41,9 @@ assemble_local_weights(const cpp11::doubles_matrix<>& x,
         make_row_major_copy(x_data, n_obs, static_cast<std::size_t>(x.ncol()),
                             row_major_x);
         use_row_major_gram = true;
-      } catch (const std::bad_alloc&) {
+      } catch (const std::bad_alloc &) {
         row_major_x.clear();
-      } catch (const std::length_error&) {
+      } catch (const std::length_error &) {
         row_major_x.clear();
       }
     }

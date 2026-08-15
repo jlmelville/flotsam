@@ -1,7 +1,7 @@
 #include "ltsa_internal.h"
 
 std::size_t checked_size_add(std::size_t lhs, std::size_t rhs,
-                             const char* message) {
+                             const char *message) {
   if (lhs > std::numeric_limits<std::size_t>::max() - rhs) {
     cpp11::stop("%s", message);
   }
@@ -9,7 +9,7 @@ std::size_t checked_size_add(std::size_t lhs, std::size_t rhs,
 }
 
 std::size_t checked_size_mul(std::size_t lhs, std::size_t rhs,
-                             const char* message) {
+                             const char *message) {
   if (lhs != 0 && rhs > std::numeric_limits<std::size_t>::max() / lhs) {
     cpp11::stop("%s", message);
   }

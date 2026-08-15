@@ -6,24 +6,24 @@
 #include <R_ext/Visibility.h>
 
 // ltsa_parallel_assembly.cpp
-cpp11::list assemble_local_weights_parallel(const cpp11::doubles_matrix<>& x, const cpp11::integers& transposed_neighbor_indices, std::size_t n_neighbors, int ndim, int requested_threads);
+cpp11::list assemble_local_weights_parallel(const cpp11::doubles_matrix<> & x, const cpp11::integers & transposed_neighbor_indices, std::size_t n_neighbors, int ndim, int requested_threads);
 extern "C" SEXP _flotsam_assemble_local_weights_parallel(SEXP x, SEXP transposed_neighbor_indices, SEXP n_neighbors, SEXP ndim, SEXP requested_threads) {
   BEGIN_CPP11
-    return cpp11::as_sexp(assemble_local_weights_parallel(cpp11::as_cpp<cpp11::decay_t<const cpp11::doubles_matrix<>&>>(x), cpp11::as_cpp<cpp11::decay_t<const cpp11::integers&>>(transposed_neighbor_indices), cpp11::as_cpp<cpp11::decay_t<std::size_t>>(n_neighbors), cpp11::as_cpp<cpp11::decay_t<int>>(ndim), cpp11::as_cpp<cpp11::decay_t<int>>(requested_threads)));
+    return cpp11::as_sexp(assemble_local_weights_parallel(cpp11::as_cpp<cpp11::decay_t<const cpp11::doubles_matrix<> &>>(x), cpp11::as_cpp<cpp11::decay_t<const cpp11::integers &>>(transposed_neighbor_indices), cpp11::as_cpp<cpp11::decay_t<std::size_t>>(n_neighbors), cpp11::as_cpp<cpp11::decay_t<int>>(ndim), cpp11::as_cpp<cpp11::decay_t<int>>(requested_threads)));
   END_CPP11
 }
 // ltsa_serial_assembly.cpp
-cpp11::list assemble_local_weights(const cpp11::doubles_matrix<>& x, const cpp11::integers& transposed_neighbor_indices, std::size_t n_neighbors, int ndim);
+cpp11::list assemble_local_weights(const cpp11::doubles_matrix<> & x, const cpp11::integers & transposed_neighbor_indices, std::size_t n_neighbors, int ndim);
 extern "C" SEXP _flotsam_assemble_local_weights(SEXP x, SEXP transposed_neighbor_indices, SEXP n_neighbors, SEXP ndim) {
   BEGIN_CPP11
-    return cpp11::as_sexp(assemble_local_weights(cpp11::as_cpp<cpp11::decay_t<const cpp11::doubles_matrix<>&>>(x), cpp11::as_cpp<cpp11::decay_t<const cpp11::integers&>>(transposed_neighbor_indices), cpp11::as_cpp<cpp11::decay_t<std::size_t>>(n_neighbors), cpp11::as_cpp<cpp11::decay_t<int>>(ndim)));
+    return cpp11::as_sexp(assemble_local_weights(cpp11::as_cpp<cpp11::decay_t<const cpp11::doubles_matrix<> &>>(x), cpp11::as_cpp<cpp11::decay_t<const cpp11::integers &>>(transposed_neighbor_indices), cpp11::as_cpp<cpp11::decay_t<std::size_t>>(n_neighbors), cpp11::as_cpp<cpp11::decay_t<int>>(ndim)));
   END_CPP11
 }
 // ltsa_sparse_normalization.cpp
-cpp11::doubles scale_csc_columns(const cpp11::integers& ps, const cpp11::doubles& xs, const cpp11::doubles& ds);
+cpp11::doubles scale_csc_columns(const cpp11::integers & ps, const cpp11::doubles & xs, const cpp11::doubles & ds);
 extern "C" SEXP _flotsam_scale_csc_columns(SEXP ps, SEXP xs, SEXP ds) {
   BEGIN_CPP11
-    return cpp11::as_sexp(scale_csc_columns(cpp11::as_cpp<cpp11::decay_t<const cpp11::integers&>>(ps), cpp11::as_cpp<cpp11::decay_t<const cpp11::doubles&>>(xs), cpp11::as_cpp<cpp11::decay_t<const cpp11::doubles&>>(ds)));
+    return cpp11::as_sexp(scale_csc_columns(cpp11::as_cpp<cpp11::decay_t<const cpp11::integers &>>(ps), cpp11::as_cpp<cpp11::decay_t<const cpp11::doubles &>>(xs), cpp11::as_cpp<cpp11::decay_t<const cpp11::doubles &>>(ds)));
   END_CPP11
 }
 
