@@ -35,7 +35,11 @@ assemble_alignment_matrix <- function(
   }
   components <- merge_named_lists(
     components,
-    compute_effective_components(weight_idx, n)
+    compute_effective_components_cpp(
+      transposed_neighbor_indices,
+      as.integer(n),
+      as.integer(k)
+    )
   )
   log_assembly_diagnostics(components, verbose)
   B <- components_to_dgCMatrix(components, n)

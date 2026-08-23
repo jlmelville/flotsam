@@ -1,5 +1,8 @@
 # flotsam 0.0.0.9002
 
+* Connected-component diagnostics now use a compiled union-find scan, avoiding
+  substantial transient R allocation when assembling larger neighborhood
+  graphs.
 * `output = "B"` now honors `normalize`: it returns the raw LTSA alignment
   matrix by default and the normalized operator supplied to eigenanalysis when
   `normalize = TRUE`, while still skipping eigenanalysis.

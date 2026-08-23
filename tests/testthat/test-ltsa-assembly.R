@@ -64,6 +64,106 @@ expect_parallel_assembly_matches <- function(
   invisible(parallel)
 }
 
+test_that("compiled effective components match the pure-R oracle", {
+  connected <- t(vapply(
+    seq_len(8L),
+    function(i) as.integer((i - 1L + 0:2) %% 8L + 1L),
+    integer(3L)
+  ))
+  # Queries are intentionally absent from some rows. Components follow only
+  # assembled neighborhood co-membership, including isolated observations.
+  # fmt: skip
+  isolated <- matrix(
+    c(
+      1L, 2L,
+      1L, 2L,
+      1L, 2L,
+      4L, 5L,
+      4L, 5L,
+      4L, 5L
+    ),
+    nrow = 6L,
+    byrow = TRUE
+  )
+  # fmt: skip
+  disconnected <- matrix(
+    c(
+      3L, 1L, 2L,
+      2L, 3L, 1L,
+      1L, 2L, 3L,
+      6L, 4L, 5L,
+      5L, 6L, 4L,
+      4L, 5L, 6L
+    ),
+    nrow = 6L,
+    byrow = TRUE
+  )
+
+  for (indices in list(connected, isolated, disconnected)) {
+    reference <- flotsam:::compute_effective_components(
+      indices,
+      nrow(indices)
+    )
+    compiled <- flotsam:::compute_effective_components_cpp(
+      t(indices),
+      nrow(indices),
+      ncol(indices)
+    )
+    expect_identical(compiled, reference)
+  }
+
+  expect_identical(
+    flotsam:::compute_effective_components_cpp(t(isolated), 6L, 2L),
+    list(
+      component_count = 4L,
+      component_sizes = c(2L, 1L, 2L, 1L),
+      component_membership = c(1L, 1L, 2L, 3L, 3L, 4L)
+    )
+  )
+})
+
+test_that("compiled effective components reject invalid native inputs", {
+  expect_error(
+    flotsam:::compute_effective_components_cpp(1:3, 2L, 2L),
+    "Inconsistent component graph dimensions"
+  )
+  expect_error(
+    flotsam:::compute_effective_components_cpp(c(1L, 3L), 2L, 1L),
+    "outside the sparse matrix dimensions"
+  )
+  expect_error(
+    flotsam:::compute_effective_components_cpp(integer(), 0L, 1L),
+    "n_obs must be positive"
+  )
+  expect_error(
+    flotsam:::compute_effective_components_cpp(integer(), 1L, 0L),
+    "n_neighbors must be positive"
+  )
+})
+
+test_that("production assembly bypasses the pure-R component oracle", {
+  set.seed(20260828)
+  X <- matrix(stats::rnorm(12L * 5L), nrow = 12L)
+  nn_idx <- t(vapply(
+    seq_len(nrow(X)),
+    function(i) as.integer((i - 1L + 0:3) %% nrow(X) + 1L),
+    integer(4L)
+  ))
+  local_mocked_bindings(
+    compute_effective_components = function(...) {
+      stop("pure-R component oracle reached", call. = FALSE)
+    },
+    .package = "flotsam"
+  )
+
+  expect_no_error(flotsam:::assemble_alignment_matrix(
+    X,
+    nn_idx,
+    ndim = 2L,
+    include_self = TRUE
+  ))
+})
+
 raw_exact_neighbor_indices <- function(X, n_neighbors, include_self) {
   nn <- rnndescent::brute_force_knn(
     data = X,

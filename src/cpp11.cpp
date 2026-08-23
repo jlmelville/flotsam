@@ -5,6 +5,13 @@
 #include "cpp11/declarations.hpp"
 #include <R_ext/Visibility.h>
 
+// effective_components.cpp
+cpp11::list compute_effective_components_cpp(const cpp11::integers & transposed_neighbor_indices, int n_obs, int n_neighbors);
+extern "C" SEXP _flotsam_compute_effective_components_cpp(SEXP transposed_neighbor_indices, SEXP n_obs, SEXP n_neighbors) {
+  BEGIN_CPP11
+    return cpp11::as_sexp(compute_effective_components_cpp(cpp11::as_cpp<cpp11::decay_t<const cpp11::integers &>>(transposed_neighbor_indices), cpp11::as_cpp<cpp11::decay_t<int>>(n_obs), cpp11::as_cpp<cpp11::decay_t<int>>(n_neighbors)));
+  END_CPP11
+}
 // ltsa_parallel_assembly.cpp
 cpp11::list assemble_local_weights_parallel(const cpp11::doubles_matrix<> & x, const cpp11::integers & transposed_neighbor_indices, std::size_t n_neighbors, int ndim, int requested_threads);
 extern "C" SEXP _flotsam_assemble_local_weights_parallel(SEXP x, SEXP transposed_neighbor_indices, SEXP n_neighbors, SEXP ndim, SEXP requested_threads) {
@@ -29,9 +36,10 @@ extern "C" SEXP _flotsam_scale_csc_columns(SEXP ps, SEXP xs, SEXP ds) {
 
 extern "C" {
 static const R_CallMethodDef CallEntries[] = {
-    {"_flotsam_assemble_local_weights",          (DL_FUNC) &_flotsam_assemble_local_weights,          4},
-    {"_flotsam_assemble_local_weights_parallel", (DL_FUNC) &_flotsam_assemble_local_weights_parallel, 5},
-    {"_flotsam_scale_csc_columns",               (DL_FUNC) &_flotsam_scale_csc_columns,               3},
+    {"_flotsam_assemble_local_weights",           (DL_FUNC) &_flotsam_assemble_local_weights,           4},
+    {"_flotsam_assemble_local_weights_parallel",  (DL_FUNC) &_flotsam_assemble_local_weights_parallel,  5},
+    {"_flotsam_compute_effective_components_cpp", (DL_FUNC) &_flotsam_compute_effective_components_cpp, 3},
+    {"_flotsam_scale_csc_columns",                (DL_FUNC) &_flotsam_scale_csc_columns,                3},
     {NULL, NULL, 0}
 };
 }
