@@ -681,6 +681,39 @@ test_that("serial assembly matches R triplet reference", {
   }
 })
 
+test_that("serial finalizer matches one-worker two-pass LTSA output", {
+  for (seed in seq_len(50L)) {
+    set.seed(seed)
+    n <- 25L
+    n_neighbors <- 6L
+    X <- matrix(stats::rnorm(n * 8L), nrow = n)
+    nn_idx <- t(vapply(
+      seq_len(n),
+      function(i) sample.int(n, n_neighbors),
+      integer(n_neighbors)
+    ))
+    transposed_nn_idx <- t(nn_idx)
+
+    serial <- flotsam:::assemble_local_weights(
+      X,
+      transposed_nn_idx,
+      n_neighbors,
+      2L
+    )
+    two_pass <- flotsam:::assemble_local_weights_parallel(
+      X,
+      transposed_nn_idx,
+      n_neighbors,
+      2L,
+      1L
+    )
+
+    expect_identical(serial$i, two_pass$i)
+    expect_identical(serial$p, two_pass$p)
+    expect_identical(serial$x, two_pass$x)
+  }
+})
+
 test_that("serial assembly Gram path matches R triplet reference", {
   set.seed(2)
   X <- matrix(rnorm(18L * 12L), nrow = 18L)

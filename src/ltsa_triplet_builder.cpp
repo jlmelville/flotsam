@@ -87,26 +87,19 @@ SparseComponents TripletAssemblyBuilder::finalize_sparse_components() {
   std::vector<int> touched_rows;
 
   expand_canonical_to_full(row_sums, row_seen, touched_rows);
-  std::fill(row_seen.begin(), row_seen.end(), -1);
 
   for (std::size_t col = 0; col < n_obs_; col++) {
     auto &entries = full_columns_[col];
-    int col_marker = static_cast<int>(col);
-    touched_rows.clear();
+    // Canonical collapse emits at most one row <= col entry per pair.
+    // Symmetric expansion adds at most one distinct row > col entry, so the
+    // full column is already unique and only needs CSC row ordering.
+    std::sort(entries.begin(), entries.end(),
+              [](const CompactEntry &lhs, const CompactEntry &rhs) {
+                return lhs.row < rhs.row;
+              });
     for (const auto &entry : entries) {
-      if (row_seen[entry.row] != col_marker) {
-        row_seen[entry.row] = col_marker;
-        row_sums[entry.row] = 0.0;
-        touched_rows.push_back(entry.row);
-      }
-      row_sums[entry.row] += entry.value;
-    }
-
-    std::sort(touched_rows.begin(), touched_rows.end());
-    for (const auto &row : touched_rows) {
-      double value = row_sums[row];
-      if (value != 0.0) {
-        checked_append_output(row, value, out.i, out.x, max_int_);
+      if (entry.value != 0.0) {
+        checked_append_output(entry.row, entry.value, out.i, out.x, max_int_);
       }
     }
     out.p[col + 1] = static_cast<int>(out.i.size());

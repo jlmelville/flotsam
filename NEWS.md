@@ -3,6 +3,8 @@
 * Connected-component diagnostics now use a compiled union-find scan, avoiding
   substantial transient R allocation when assembling larger neighborhood
   graphs.
+* Serial sparse-matrix finalization now avoids a redundant aggregation pass
+  while preserving the exact LTSA matrix construction.
 * `output = "B"` now honors `normalize`: it returns the raw LTSA alignment
   matrix by default and the normalized operator supplied to eigenanalysis when
   `normalize = TRUE`, while still skipping eigenanalysis.
