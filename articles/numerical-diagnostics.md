@@ -102,10 +102,11 @@ If `eigen$diagnostics$near_zero_block_truncated` is `TRUE`, the
 requested `ndim` cuts through a larger near-zero nonconstant eigenspace
 observed within that span. The selected subspace can still be
 meaningful, but its individual coordinates are not uniquely
-identifiable. Inspect the selected subspace, increase `ndim`, or use
-subspace-based downstream analysis. A stricter tolerance does not
-resolve a genuinely repeated eigenspace, and this flag is not evidence
-of data clustering.
+identifiable. To inspect more modes of the same operator, use
+`output = "result"` and set `spectral_dim` above `ndim`; increasing
+`ndim` instead changes the local tangent dimension and rebuilds the
+operator. A stricter tolerance does not resolve a genuinely repeated
+eigenspace, and this flag is not evidence of data clustering.
 
 ## Comparison to scikit-learn LTSA
 
@@ -208,8 +209,33 @@ ltsa_result$eigen$messages
 
 Inspect `eigen$status` and `eigen$messages` first. If they report a weak
 Ritz boundary gap, the selected subspace may be poorly separated from
-the next candidate direction. Stricter convergence criteria can help
-when the cause is solver accuracy, at the cost of longer computation.
+the next candidate direction. Retain a larger block from the same
+operator when you want to inspect that ambiguity directly:
+
+``` r
+
+ltsa_block <- ltsa(
+  swiss_roll,
+  ndim = 2,
+  spectral_dim = 4,
+  eig_k = 16,
+  output = "result"
+)
+
+dim(ltsa_block$spectral_embedding)
+ltsa_block$eigen$diagnostics$scaled_boundary_gap
+ltsa_block$eigen$spectral$diagnostics$scaled_boundary_gap
+```
+
+The first status and gap describe the displayed `ndim` prefix; the
+nested `eigen$spectral` fields describe the retained `spectral_dim`
+block. Stricter convergence criteria can help when the cause is solver
+accuracy, at the cost of longer computation.
+
+For examples of when an extra same-operator mode reveals useful periodic
+or morphological structure—and when it instead remains localized—see
+[When the first LTSA coordinates are not the whole
+story](https://jlmelville.github.io/flotsam/articles/spectral-blocks.md).
 
 ## Assembly diagnostics and normalized LTSA
 

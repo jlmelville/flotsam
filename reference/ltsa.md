@@ -20,7 +20,8 @@ ltsa(
   n_threads = 1,
   n_assembly_threads = 1,
   verbose = FALSE,
-  ...
+  ...,
+  spectral_dim = ndim
 )
 ```
 
@@ -93,11 +94,16 @@ ltsa(
 - eig_k:
 
   Number of candidate vectors requested from the final eigensolver. If
-  `NULL`, the default is `min(n - 1L, max(12L, ndim + 2L))`, where `n`
-  is the number of observations. Must satisfy `ndim + 1 <= eig_k < n`.
-  Larger values give the Rayleigh-Ritz postprocessing a wider candidate
-  span. Dense eigenanalysis computes the full eigensystem, then retains
-  the lowest `eig_k` candidate vectors for that postprocessing.
+  `NULL`, the default is `min(n - 1L, max(12L, spectral_dim + 2L))`,
+  where `n` is the number of observations. With the default
+  `spectral_dim = ndim`, it must satisfy `ndim + 1 <= eig_k < n`; the
+  minimum can report that no spare boundary direction is available. When
+  `spectral_dim > ndim`, it must instead satisfy
+  `spectral_dim + 2 <= eig_k < n`, leaving room for both the known null
+  direction and a boundary mode after the retained block. Larger values
+  give the Rayleigh-Ritz postprocessing a wider candidate span. Dense
+  eigenanalysis computes the full eigensystem, then retains the lowest
+  `eig_k` candidate vectors for that postprocessing.
 
 - output:
 
@@ -107,6 +113,8 @@ ltsa(
 
   - `"result"` Return a list containing the embedding, compact
     eigenanalysis diagnostics, assembly diagnostics, and optionally `B`.
+    When `spectral_dim > ndim`, it also contains `spectral_embedding`
+    and retained block diagnostics in `eigen$spectral`.
 
   - `"B"` Skip final eigenanalysis and return the raw alignment matrix
     when `normalize = FALSE`, or the normalized operator described above
@@ -156,6 +164,16 @@ ltsa(
   Optional eigensolver and diagnostic controls. See the
   `Eigensolver controls` section.
 
+- spectral_dim:
+
+  Number of nonconstant modes to retain from the fixed LTSA operator. It
+  defaults to `ndim`. A value greater than `ndim` requires
+  `output = "result"`; the displayed `embedding` remains
+  `ndim`-dimensional and the larger block is returned as
+  `spectral_embedding`. An expanded block can contain at most `n - 3`
+  modes so the candidate span can include the known null direction and a
+  retained-boundary mode.
+
 ## Value
 
 With `output = "embedding"`, an `n` by `ndim` embedding matrix. With
@@ -163,8 +181,12 @@ With `output = "embedding"`, an `n` by `ndim` embedding matrix. With
 or the normalized operator supplied to eigenanalysis when
 `normalize = TRUE`. With `output = "result"`, a list containing
 `embedding`, compact `eigen` solve information, and `assembly` neighbor,
-rank-deficiency, component, route, and thread information; the raw,
-unnormalized `B` is also included when `include_B = TRUE`.
+rank-deficiency, component, route, and thread information. When
+`spectral_dim > ndim`, `spectral_embedding` contains the retained `n` by
+`spectral_dim` block, `eigen` continues to describe the displayed
+prefix, and `eigen$spectral` describes the retained block. Both scopes
+report a scaled boundary gap. The raw, unnormalized `B` is also included
+when `include_B = TRUE`.
 
 ## Details
 
@@ -176,13 +198,16 @@ although the nullspace can contain other directions.
 With `output = "result"`, `eigen$status` and `eigen$messages` report
 solve problems. If `eigen$diagnostics$near_zero_block_truncated` is
 `TRUE`, the requested dimensions cut through an observed near-zero
-eigenspace, so individual coordinates may not be identifiable; inspect
-the selected subspace or increase `ndim`. A positive
-`assembly$rank_deficient_count` and its `assembly$min_local_rank`
-suggest reconsidering the neighborhoods or input. If
-`assembly$component_count` exceeds one, use `assembly$component_sizes`
-and `assembly$component_membership` to reconnect the
-effective-neighborhood graph or analyze its components separately.
+eigenspace, so individual coordinates may not be identifiable. With
+`output = "result"`, set `spectral_dim` above `ndim` to retain more
+modes from the same operator for subspace-based inspection. Increasing
+`ndim` instead changes the local tangent dimension and rebuilds the
+operator. A positive `assembly$rank_deficient_count` and its
+`assembly$min_local_rank` suggest reconsidering the neighborhoods or
+input. If `assembly$component_count` exceeds one, use
+`assembly$component_sizes` and `assembly$component_membership` to
+reconnect the effective-neighborhood graph or analyze its components
+separately.
 
 ## Normalized LTSA
 
@@ -295,6 +320,23 @@ iris_result$eigen$method
 #> [1] "auto"
 iris_result$eigen$backend$name
 #> [1] "dense_eigen"
+
+# Retain extra modes without changing the local tangent dimension.
+iris_block <- ltsa(
+  small_iris,
+  n_neighbors = 12,
+  nn_method = "exact",
+  eig_method = "eig",
+  eig_k = 6,
+  output = "result",
+  spectral_dim = 4
+)
+dim(iris_block$spectral_embedding)
+#> [1] 75  4
+iris_block$eigen$diagnostics$scaled_boundary_gap
+#> [1] 0.0004569672
+iris_block$eigen$spectral$diagnostics$scaled_boundary_gap
+#> [1] 0.003888995
 
 # Return the raw LTSA alignment matrix.
 iris_B <- ltsa(

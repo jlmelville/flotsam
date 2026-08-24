@@ -101,6 +101,15 @@ of importance:</p>
 <code>ndim</code>: The number of dimensions to reduce to. Usually 2
 for visualization.</li>
 <li>
+<code>spectral_dim</code>: The number of nonconstant modes to retain
+from the same LTSA operator. It defaults to <code>ndim</code>. Set it
+above <code>ndim</code> together with <code>output = "result"</code>
+when you want to inspect a larger low-frequency block without changing
+the local tangent dimension or rebuilding the operator. An expanded
+block can contain at most <code>N - 3</code> modes so the candidate span
+can also include the known null direction and one retained-boundary
+mode.</li>
+<li>
 <code>n_neighbors</code>: The number of neighbors to use for the
 local neighborhood. When computed neighbors are requested and this is
 omitted, the default is the smaller of <code>15</code> and the maximum
@@ -178,16 +187,18 @@ small datasets, but it is useful as a diagnostic reference.</li>
 </ul>
 </li>
 <li>
-<code>eig_k</code>: The number of eigenvectors to return before a
-post-processing step and final <code>ndim</code> return. If
-<code>NULL</code>, the default is
-<code>min(N - 1L, max(12, ndim + 2))</code>. Must satisfy
-<code>ndim + 1 &lt;= eig_k &lt; n</code>. Asking for more eigenvectors
-than necessary seems to improve the reliability of the final result:
-RSpectra may otherwise miss eigenvectors that are close to zero, or fail
-to converge if the tolerance is tightened. The default seems
-sufficiently generous for most cases. Dense eigenanalysis still uses
-<code>eig_k</code> to limit the candidate span passed to the
+<code>eig_k</code>: The number of eigenvectors to return before
+Rayleigh–Ritz postprocessing and the final <code>spectral_dim</code>
+retention. If <code>NULL</code>, the default is
+<code>min(N - 1L, max(12, spectral_dim + 2))</code>. With
+<code>spectral_dim = ndim</code>, it must satisfy
+<code>ndim + 1 &lt;= eig_k &lt; N</code>; with an expanded block it must
+satisfy <code>spectral_dim + 2 &lt;= eig_k &lt; N</code>. Asking for
+more eigenvectors than necessary seems to improve the reliability of the
+final result: RSpectra may otherwise miss eigenvectors that are close to
+zero, or fail to converge if the tolerance is tightened. The default
+seems sufficiently generous for most cases. Dense eigenanalysis still
+uses <code>eig_k</code> to limit the candidate span passed to the
 postprocessing step. The “Numerical Diagnostics” article has more
 details.</li>
 <li>
@@ -208,7 +219,11 @@ default.</li>
 <li>
 <code>"result"</code>: Return a list containing the embedding,
 compact eigenanalysis diagnostics, assembly diagnostics, and optionally
-the assembled unnormalized LTSA matrix <code>B</code>.</li>
+the assembled unnormalized LTSA matrix <code>B</code>. When
+<code>spectral_dim &gt; ndim</code>, <code>spectral_embedding</code>
+contains the larger fixed-operator block; <code>eigen$status</code>
+describes the displayed prefix and <code>eigen$spectral$status</code>
+describes the retained block.</li>
 <li>
 <code>"B"</code>: Skip final eigenanalysis and return the raw
 alignment matrix when <code>normalize = FALSE</code>, or the normalized
@@ -242,7 +257,10 @@ an explicit iterative method. <code>resid_tol</code> and
 they are the only controls accepted by
 <code>"eig"</code>/<code>"eigen"</code>. <code>output = "B"</code>
 rejects all eigenanalysis controls in <code>...</code>.</p>
-<p>For practical solver and troubleshooting guidance, see the <a href="numerical-diagnostics.html">Numerical Diagnostics</a> article.</p>
+<p>For practical solver and troubleshooting guidance, see the <a href="numerical-diagnostics.html">Numerical Diagnostics</a> article. For
+worked synthetic and real-image examples of inspecting extra modes from
+one fixed operator, see <a href="spectral-blocks.html">When the first
+LTSA coordinates are not the whole story</a>.</p>
 </div>
 </div>
   </main><aside class="col-md-3"><nav id="toc" aria-label="Table of contents"><h2>On this page</h2>

@@ -57,7 +57,8 @@ for dimensionality reduction.</p>
 <span>  n_threads <span class="op">=</span> <span class="fl">1</span>,</span>
 <span>  n_assembly_threads <span class="op">=</span> <span class="fl">1</span>,</span>
 <span>  verbose <span class="op">=</span> <span class="cn">FALSE</span>,</span>
-<span>  <span class="va">...</span></span>
+<span>  <span class="va">...</span>,</span>
+<span>  spectral_dim <span class="op">=</span> <span class="va">ndim</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
 
@@ -117,9 +118,13 @@ eigenvalue ordering matters.</p></li>
 <dt id="arg-eig-k">eig_k<a class="anchor" aria-label="anchor" href="#arg-eig-k"></a></dt>
 <dd><p>Number of candidate vectors requested from the final
 eigensolver. If <code>NULL</code>, the default is
-<code>min(n - 1L, max(12L, ndim + 2L))</code>, where <code>n</code> is the number of
-observations. Must satisfy <code>ndim + 1 &lt;= eig_k &lt; n</code>. Larger values give
-the Rayleigh-Ritz postprocessing a wider candidate span. Dense
+<code>min(n - 1L, max(12L, spectral_dim + 2L))</code>, where <code>n</code> is the number of
+observations. With the default <code>spectral_dim = ndim</code>, it must satisfy
+<code>ndim + 1 &lt;= eig_k &lt; n</code>; the minimum can report that no spare boundary
+direction is available. When <code>spectral_dim &gt; ndim</code>, it must instead
+satisfy <code>spectral_dim + 2 &lt;= eig_k &lt; n</code>, leaving room for both the known
+null direction and a boundary mode after the retained block. Larger values
+give the Rayleigh-Ritz postprocessing a wider candidate span. Dense
 eigenanalysis computes the full eigensystem, then retains the lowest
 <code>eig_k</code> candidate vectors for that postprocessing.</p></dd>
 
@@ -127,7 +132,9 @@ eigenanalysis computes the full eigensystem, then retains the lowest
 <dt id="arg-output">output<a class="anchor" aria-label="anchor" href="#arg-output"></a></dt>
 <dd><p>What to return:</p><ul><li><p><code>"embedding"</code> Return the embedding matrix. This is the default.</p></li>
 <li><p><code>"result"</code> Return a list containing the embedding, compact eigenanalysis
-diagnostics, assembly diagnostics, and optionally <code>B</code>.</p></li>
+diagnostics, assembly diagnostics, and optionally <code>B</code>. When
+<code>spectral_dim &gt; ndim</code>, it also contains <code>spectral_embedding</code> and retained
+block diagnostics in <code>eigen$spectral</code>.</p></li>
 <li><p><code>"B"</code> Skip final eigenanalysis and return the raw alignment matrix when
 <code>normalize = FALSE</code>, or the normalized operator described above when
 <code>normalize = TRUE</code>.</p></li>
@@ -177,6 +184,15 @@ about avoiding oversubscription when BLAS is also multithreaded.</p></dd>
 <dd><p>Optional eigensolver and diagnostic controls. See the
 <code>Eigensolver controls</code> section.</p></dd>
 
+
+<dt id="arg-spectral-dim">spectral_dim<a class="anchor" aria-label="anchor" href="#arg-spectral-dim"></a></dt>
+<dd><p>Number of nonconstant modes to retain from the fixed LTSA
+operator. It defaults to <code>ndim</code>. A value greater than <code>ndim</code> requires
+<code>output = "result"</code>; the displayed <code>embedding</code> remains <code>ndim</code>-dimensional
+and the larger block is returned as <code>spectral_embedding</code>. An expanded
+block can contain at most <code>n - 3</code> modes so the candidate span can include
+the known null direction and a retained-boundary mode.</p></dd>
+
 </dl></div>
     <div class="section level2">
     <h2 id="value">Value<a class="anchor" aria-label="anchor" href="#value"></a></h2>
@@ -185,8 +201,11 @@ about avoiding oversubscription when BLAS is also multithreaded.</p></dd>
 the normalized operator supplied to eigenanalysis when <code>normalize = TRUE</code>.
 With <code>output = "result"</code>, a list containing <code>embedding</code>, compact <code>eigen</code>
 solve information, and <code>assembly</code> neighbor, rank-deficiency, component,
-route, and thread information; the raw, unnormalized <code>B</code> is also included
-when <code>include_B = TRUE</code>.</p>
+route, and thread information. When <code>spectral_dim &gt; ndim</code>,
+<code>spectral_embedding</code> contains the retained <code>n</code> by <code>spectral_dim</code> block,
+<code>eigen</code> continues to describe the displayed prefix, and <code>eigen$spectral</code>
+describes the retained block. Both scopes report a scaled boundary gap.
+The raw, unnormalized <code>B</code> is also included when <code>include_B = TRUE</code>.</p>
     </div>
     <div class="section level2">
     <h2 id="details">Details<a class="anchor" aria-label="anchor" href="#details"></a></h2>
@@ -197,8 +216,11 @@ nullspace can contain other directions.</p>
 <p>With <code>output = "result"</code>, <code>eigen$status</code> and <code>eigen$messages</code> report solve
 problems. If <code>eigen$diagnostics$near_zero_block_truncated</code> is <code>TRUE</code>, the
 requested dimensions cut through an observed near-zero eigenspace, so
-individual coordinates may not be identifiable; inspect the selected
-subspace or increase <code>ndim</code>. A positive <code>assembly$rank_deficient_count</code> and
+individual coordinates may not be identifiable. With <code>output = "result"</code>,
+set <code>spectral_dim</code> above <code>ndim</code> to retain more modes from the same operator
+for subspace-based inspection. Increasing <code>ndim</code> instead changes the local
+tangent dimension and rebuilds the operator. A positive
+<code>assembly$rank_deficient_count</code> and
 its <code>assembly$min_local_rank</code> suggest reconsidering the neighborhoods or
 input. If <code>assembly$component_count</code> exceeds one, use
 <code>assembly$component_sizes</code> and <code>assembly$component_membership</code> to reconnect
@@ -306,6 +328,23 @@ On the Equivalence of HLLE and LTSA.
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] "auto"</span>
 <span class="r-in"><span><span class="va">iris_result</span><span class="op">$</span><span class="va">eigen</span><span class="op">$</span><span class="va">backend</span><span class="op">$</span><span class="va">name</span></span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] "dense_eigen"</span>
+<span class="r-in"><span></span></span>
+<span class="r-in"><span><span class="co"># Retain extra modes without changing the local tangent dimension.</span></span></span>
+<span class="r-in"><span><span class="va">iris_block</span> <span class="op">&lt;-</span> <span class="fu">ltsa</span><span class="op">(</span></span></span>
+<span class="r-in"><span>  <span class="va">small_iris</span>,</span></span>
+<span class="r-in"><span>  n_neighbors <span class="op">=</span> <span class="fl">12</span>,</span></span>
+<span class="r-in"><span>  nn_method <span class="op">=</span> <span class="st">"exact"</span>,</span></span>
+<span class="r-in"><span>  eig_method <span class="op">=</span> <span class="st">"eig"</span>,</span></span>
+<span class="r-in"><span>  eig_k <span class="op">=</span> <span class="fl">6</span>,</span></span>
+<span class="r-in"><span>  output <span class="op">=</span> <span class="st">"result"</span>,</span></span>
+<span class="r-in"><span>  spectral_dim <span class="op">=</span> <span class="fl">4</span></span></span>
+<span class="r-in"><span><span class="op">)</span></span></span>
+<span class="r-in"><span><span class="fu"><a href="https://rdrr.io/r/base/dim.html" class="external-link">dim</a></span><span class="op">(</span><span class="va">iris_block</span><span class="op">$</span><span class="va">spectral_embedding</span><span class="op">)</span></span></span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] 75  4</span>
+<span class="r-in"><span><span class="va">iris_block</span><span class="op">$</span><span class="va">eigen</span><span class="op">$</span><span class="va">diagnostics</span><span class="op">$</span><span class="va">scaled_boundary_gap</span></span></span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] 0.0004569672</span>
+<span class="r-in"><span><span class="va">iris_block</span><span class="op">$</span><span class="va">eigen</span><span class="op">$</span><span class="va">spectral</span><span class="op">$</span><span class="va">diagnostics</span><span class="op">$</span><span class="va">scaled_boundary_gap</span></span></span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] 0.003888995</span>
 <span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="co"># Return the raw LTSA alignment matrix.</span></span></span>
 <span class="r-in"><span><span class="va">iris_B</span> <span class="op">&lt;-</span> <span class="fu">ltsa</span><span class="op">(</span></span></span>

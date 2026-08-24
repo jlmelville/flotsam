@@ -32,6 +32,13 @@ be worth modifying in roughly descending order of importance:
 
 - `ndim`: The number of dimensions to reduce to. Usually 2 for
   visualization.
+- `spectral_dim`: The number of nonconstant modes to retain from the
+  same LTSA operator. It defaults to `ndim`. Set it above `ndim`
+  together with `output = "result"` when you want to inspect a larger
+  low-frequency block without changing the local tangent dimension or
+  rebuilding the operator. An expanded block can contain at most `N - 3`
+  modes so the candidate span can also include the known null direction
+  and one retained-boundary mode.
 - `n_neighbors`: The number of neighbors to use for the local
   neighborhood. When computed neighbors are requested and this is
   omitted, the default is the smaller of `15` and the maximum permitted
@@ -89,16 +96,18 @@ be worth modifying in roughly descending order of importance:
     postprocessing. In terms of both memory usage and CPU time this is
     only feasible for small datasets, but it is useful as a diagnostic
     reference.
-- `eig_k`: The number of eigenvectors to return before a post-processing
-  step and final `ndim` return. If `NULL`, the default is
-  `min(N - 1L, max(12, ndim + 2))`. Must satisfy
-  `ndim + 1 <= eig_k < n`. Asking for more eigenvectors than necessary
-  seems to improve the reliability of the final result: RSpectra may
-  otherwise miss eigenvectors that are close to zero, or fail to
-  converge if the tolerance is tightened. The default seems sufficiently
-  generous for most cases. Dense eigenanalysis still uses `eig_k` to
-  limit the candidate span passed to the postprocessing step. The
-  “Numerical Diagnostics” article has more details.
+- `eig_k`: The number of eigenvectors to return before Rayleigh–Ritz
+  postprocessing and the final `spectral_dim` retention. If `NULL`, the
+  default is `min(N - 1L, max(12, spectral_dim + 2))`. With
+  `spectral_dim = ndim`, it must satisfy `ndim + 1 <= eig_k < N`; with
+  an expanded block it must satisfy `spectral_dim + 2 <= eig_k < N`.
+  Asking for more eigenvectors than necessary seems to improve the
+  reliability of the final result: RSpectra may otherwise miss
+  eigenvectors that are close to zero, or fail to converge if the
+  tolerance is tightened. The default seems sufficiently generous for
+  most cases. Dense eigenanalysis still uses `eig_k` to limit the
+  candidate span passed to the postprocessing step. The “Numerical
+  Diagnostics” article has more details.
 - `normalize`: Whether to solve the generalized problem
   $`Bv = \lambda Dv`$, where $`D = \operatorname{diag}(B)`$. This is a
   different problem from standard LTSA, with `D`-weighted orthogonality
@@ -108,7 +117,10 @@ be worth modifying in roughly descending order of importance:
   - `"embedding"`: Return the embedding matrix. This is the default.
   - `"result"`: Return a list containing the embedding, compact
     eigenanalysis diagnostics, assembly diagnostics, and optionally the
-    assembled unnormalized LTSA matrix `B`.
+    assembled unnormalized LTSA matrix `B`. When `spectral_dim > ndim`,
+    `spectral_embedding` contains the larger fixed-operator block;
+    `eigen$status` describes the displayed prefix and
+    `eigen$spectral$status` describes the retained block.
   - `"B"`: Skip final eigenanalysis and return the raw alignment matrix
     when `normalize = FALSE`, or the normalized operator
     $`D^{-1/2} B D^{-1/2}`$ when `normalize = TRUE`.
@@ -133,4 +145,7 @@ all eigenanalysis controls in `...`.
 
 For practical solver and troubleshooting guidance, see the [Numerical
 Diagnostics](https://jlmelville.github.io/flotsam/articles/numerical-diagnostics.md)
-article.
+article. For worked synthetic and real-image examples of inspecting
+extra modes from one fixed operator, see [When the first LTSA
+coordinates are not the whole
+story](https://jlmelville.github.io/flotsam/articles/spectral-blocks.md).

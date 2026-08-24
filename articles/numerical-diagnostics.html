@@ -173,10 +173,12 @@ recover an entirely missing eigenvector, hence the use of
 <code>TRUE</code>, the requested <code>ndim</code> cuts through a larger
 near-zero nonconstant eigenspace observed within that span. The selected
 subspace can still be meaningful, but its individual coordinates are not
-uniquely identifiable. Inspect the selected subspace, increase
-<code>ndim</code>, or use subspace-based downstream analysis. A stricter
-tolerance does not resolve a genuinely repeated eigenspace, and this
-flag is not evidence of data clustering.</p>
+uniquely identifiable. To inspect more modes of the same operator, use
+<code>output = "result"</code> and set <code>spectral_dim</code> above
+<code>ndim</code>; increasing <code>ndim</code> instead changes the
+local tangent dimension and rebuilds the operator. A stricter tolerance
+does not resolve a genuinely repeated eigenspace, and this flag is not
+evidence of data clustering.</p>
 </div>
 </div>
 <div class="section level2">
@@ -256,9 +258,30 @@ visible.</p>
 <span><span class="va">ltsa_result</span><span class="op">$</span><span class="va">eigen</span><span class="op">$</span><span class="va">messages</span></span></code></pre></div>
 <p>Inspect <code>eigen$status</code> and <code>eigen$messages</code>
 first. If they report a weak Ritz boundary gap, the selected subspace
-may be poorly separated from the next candidate direction. Stricter
-convergence criteria can help when the cause is solver accuracy, at the
-cost of longer computation.</p>
+may be poorly separated from the next candidate direction. Retain a
+larger block from the same operator when you want to inspect that
+ambiguity directly:</p>
+<div class="sourceCode" id="cb9"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="va">ltsa_block</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/ltsa.html">ltsa</a></span><span class="op">(</span></span>
+<span>  <span class="va">swiss_roll</span>,</span>
+<span>  ndim <span class="op">=</span> <span class="fl">2</span>,</span>
+<span>  spectral_dim <span class="op">=</span> <span class="fl">4</span>,</span>
+<span>  eig_k <span class="op">=</span> <span class="fl">16</span>,</span>
+<span>  output <span class="op">=</span> <span class="st">"result"</span></span>
+<span><span class="op">)</span></span>
+<span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/dim.html" class="external-link">dim</a></span><span class="op">(</span><span class="va">ltsa_block</span><span class="op">$</span><span class="va">spectral_embedding</span><span class="op">)</span></span>
+<span><span class="va">ltsa_block</span><span class="op">$</span><span class="va">eigen</span><span class="op">$</span><span class="va">diagnostics</span><span class="op">$</span><span class="va">scaled_boundary_gap</span></span>
+<span><span class="va">ltsa_block</span><span class="op">$</span><span class="va">eigen</span><span class="op">$</span><span class="va">spectral</span><span class="op">$</span><span class="va">diagnostics</span><span class="op">$</span><span class="va">scaled_boundary_gap</span></span></code></pre></div>
+<p>The first status and gap describe the displayed <code>ndim</code>
+prefix; the nested <code>eigen$spectral</code> fields describe the
+retained <code>spectral_dim</code> block. Stricter convergence criteria
+can help when the cause is solver accuracy, at the cost of longer
+computation.</p>
+<p>For examples of when an extra same-operator mode reveals useful
+periodic or morphological structure—and when it instead remains
+localized—see <a href="spectral-blocks.html">When the first LTSA
+coordinates are not the whole story</a>.</p>
 </div>
 </div>
 <div class="section level2">
@@ -324,7 +347,7 @@ passed directly to <code>ltsa</code>. <code>flotsam</code> defaults to
 <code>tol = 1e-6</code>, deliberately looser than RSpectra’s own
 <code>1e-10</code> default. Select RSpectra explicitly when supplying
 these controls:</p>
-<div class="sourceCode" id="cb9"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb10"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">ltsa_strict</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/ltsa.html">ltsa</a></span><span class="op">(</span></span>
 <span>  <span class="va">swiss_roll</span>,</span>
 <span>  eig_method <span class="op">=</span> <span class="st">"rspectra"</span>,</span>
@@ -360,7 +383,7 @@ eigenanalysis controls in <code>...</code>.</p>
 <p>In the event of a convergence failure with stricter convergence, you
 may also need to increase <code>eig_k</code> (the number of eigenvectors
 returned before the Rayleigh-Ritz processing):</p>
-<div class="sourceCode" id="cb10"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb11"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">ltsa_wider</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/ltsa.html">ltsa</a></span><span class="op">(</span></span>
 <span>  <span class="va">swiss_roll</span>,</span>
 <span>  eig_k <span class="op">=</span> <span class="fl">32</span>,</span>
@@ -374,7 +397,7 @@ alignment matrix; with <code>normalize = TRUE</code>, it returns the
 normalized operator
 <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msup><mi>D</mi><mrow><mi>−</mi><mn>1</mn><mi>/</mi><mn>2</mn></mrow></msup><mi>B</mi><msup><mi>D</mi><mrow><mi>−</mi><mn>1</mn><mi>/</mi><mn>2</mn></mrow></msup></mrow><annotation encoding="application/x-tex">D^{-1/2} B D^{-1/2}</annotation></semantics></math>
 used by eigenanalysis:</p>
-<div class="sourceCode" id="cb11"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb12"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">raw_B</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/ltsa.html">ltsa</a></span><span class="op">(</span><span class="va">swiss_roll</span>, output <span class="op">=</span> <span class="st">"B"</span><span class="op">)</span></span>
 <span><span class="va">normalized_B</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/ltsa.html">ltsa</a></span><span class="op">(</span><span class="va">swiss_roll</span>, output <span class="op">=</span> <span class="st">"B"</span>, normalize <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span></code></pre></div>
 <p>If you use <code>eig_method = "irlba"</code> or
