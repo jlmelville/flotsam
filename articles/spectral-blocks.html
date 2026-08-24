@@ -218,11 +218,12 @@ contains 72 views of each object as it rotates. One object traces a
 closed, locally one-dimensional curve through pixel space, so the circle
 example predicts a spectral pair.</p>
 <p>At <code>k = 7</code>, mixing objects produces a disconnected
-neighbor graph. We fit each object separately and use objects 4 and 1,
-whose connected graphs mostly follow the rotation. Each fit uses
-ordinary LTSA with <code>ndim = 1</code>, exact neighbors, and four
-retained modes. The coordinates come from pixels; pose supplies the
-point colors and thumbnail labels.</p>
+neighbor graph, so we fit objects separately. A topology-only screen
+selected objects 4 and 1: their graphs are connected and locally cyclic,
+and they have the two lowest shortcut rates among the eligible objects.
+Each fit uses ordinary LTSA with <code>ndim = 1</code>, exact neighbors,
+and four retained modes. The coordinates come from pixels; pose supplies
+the point colors and thumbnail labels.</p>
 <div class="float">
 <img src="figures/ltsa-spectral-block-coil-object-4.png" alt="COIL-20 object 4. Modes 1 and 2 form a pose-ordered orbit, with thumbnails placed in the same radial direction as their observations."><div class="figcaption">COIL-20 object 4. Modes 1 and 2 form a
 pose-ordered orbit, with thumbnails placed in the same radial direction
@@ -248,9 +249,15 @@ support fraction is</p>
 <p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mfrac><mn>1</mn><mrow><mi>n</mi><munder><mo>∑</mo><mi>i</mi></munder><msubsup><mi>v</mi><mi>i</mi><mn>4</mn></msubsup></mrow></mfrac><mi>.</mi></mrow><annotation encoding="application/x-tex">
 \frac{1}{n\sum_i v_i^4}.
 </annotation></semantics></math></p>
-<p>It ranges from <code>1 / n</code> when one observation carries the
-mode to <code>1</code> when the energy is spread uniformly. Here, a
-mode’s energy means its squared coordinate values, <code>v^2</code>:</p>
+<p>This is the normalized participation ratio. It equals
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mn>1</mn><mi>/</mi><mi>n</mi></mrow><annotation encoding="application/x-tex">1/n</annotation></semantics></math>
+when one observation carries the mode,
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>r</mi><mi>/</mi><mi>n</mi></mrow><annotation encoding="application/x-tex">r/n</annotation></semantics></math>
+when the energy is spread equally across exactly
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>r</mi><annotation encoding="application/x-tex">r</annotation></semantics></math>
+observations, and 1 when it is spread equally across all observations.
+Here, a mode’s energy means its squared coordinate values,
+<code>v^2</code>:</p>
 <div class="sourceCode" id="cb5"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">effective_support_fraction</span> <span class="op">&lt;-</span> <span class="kw">function</span><span class="op">(</span><span class="va">v</span><span class="op">)</span> <span class="op">{</span></span>
 <span>  <span class="va">v</span> <span class="op">&lt;-</span> <span class="va">v</span> <span class="op">/</span> <span class="fu"><a href="https://rdrr.io/r/base/MathFun.html" class="external-link">sqrt</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/sum.html" class="external-link">sum</a></span><span class="op">(</span><span class="va">v</span><span class="op">^</span><span class="fl">2</span><span class="op">)</span><span class="op">)</span></span>
@@ -298,15 +305,16 @@ the central region.</p>
 <div class="section level2">
 <h2 id="fashion-mnist-a-localized-spectral-block">Fashion-MNIST: a localized spectral block<a class="anchor" aria-label="anchor" href="#fashion-mnist-a-localized-spectral-block"></a>
 </h2>
-<p>Fashion-MNIST supplies a different outcome. We fit trousers, dresses,
-and bags separately with ordinary LTSA, using <code>ndim = 2</code>,
-<code>k = 15</code>, and four retained modes. Each class uses one saved
-approximate-neighbor graph.</p>
-<p>All twelve retained coordinates lie near the single-observation
-support limit, and the largest 1% of observations carry more than 99.96%
-of each coordinate’s energy. The graphs are connected, local patches
-have full rank, and the eigensolves converge. The support plot therefore
-identifies localization as the limiting feature.</p>
+<p>Fashion-MNIST shows how a retained block can diagnose localization.
+We fit trousers, dresses, and bags separately with ordinary LTSA, using
+<code>ndim = 2</code>, <code>k = 15</code>, and four retained modes.
+Each class uses one saved approximate-neighbor graph.</p>
+<p>Across the three classes, all twelve retained coordinates lie near
+the single-observation support limit, and the largest 1% of observations
+carry more than 99.96% of each coordinate’s energy. The graphs are
+connected, local patches have full rank, and the eigensolves converge.
+The support plot identifies localization throughout the retained
+four-mode blocks.</p>
 <div class="float">
 <img src="figures/ltsa-spectral-block-fashion-diagnostics.png" alt="Fashion-MNIST low spectra and effective support. All four retained modes are localized despite the weak boundaries."><div class="figcaption">Fashion-MNIST low spectra and effective support.
 All four retained modes are localized despite the weak boundaries.</div>
@@ -319,8 +327,8 @@ all four modes.</p>
 with representative images from the central plotted regions.</div>
 </div>
 <p>The eigengap describes boundary stability; support describes how
-global the modes are. Fashion-MNIST has weak boundaries and localized
-alternatives.</p>
+global the returned modes are. Fashion-MNIST has weak boundaries, and
+all four retained modes in each class are localized.</p>
 </div>
 <div class="section level2">
 <h2 id="what-to-carry-into-practice">What to carry into practice<a class="anchor" aria-label="anchor" href="#what-to-carry-into-practice"></a>
@@ -329,13 +337,19 @@ alternatives.</p>
 one-dimensional closed path appears as a pair in the low-frequency
 block. MNIST shows how normalized LTSA can produce a coherent
 complementary view, with support deciding how much weight to place on
-each coordinate. Fashion-MNIST shows that retaining modes also diagnoses
-a localized low spectrum.</p>
+each coordinate. Fashion-MNIST shows that the retained four-mode
+ordinary-LTSA blocks can themselves be localized.</p>
 <p>Use <code>spectral_dim</code> when topology or a weak boundary gives
 you a reason to look past the displayed prefix. Read the block together
 with connectivity, rank, solver, gap, and support diagnostics. For
 details of the returned fields, see <a href="numerical-diagnostics.html">Numerical diagnostics and solver
 notes</a>.</p>
+<p>Retaining a block supplies candidate coordinates; choosing which
+coordinates to display is a separate problem. <a href="https://proceedings.neurips.cc/paper_files/paper/2019/file/6a10bbd480e4c5573d8f3af73ae0454b-Paper.pdf" class="external-link">Independent
+Eigencoordinate Selection</a> is one approach that searches a larger
+spectral set for smooth, locally independent coordinates.
+<code>spectral_dim</code> supplies the modes needed to investigate that
+question.</p>
 </div>
 <div class="section level2">
 <h2 id="reproduce-the-real-data-examples">Reproduce the real-data examples<a class="anchor" aria-label="anchor" href="#reproduce-the-real-data-examples"></a>
