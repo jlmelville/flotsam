@@ -211,11 +211,12 @@ second global coordinate.
 each object as it rotates. One object traces a closed, locally one-dimensional
 curve through pixel space, so the circle example predicts a spectral pair.
 
-At `k = 7`, mixing objects produces a disconnected neighbor graph. We fit each
-object separately and use objects 4 and 1, whose connected graphs mostly follow
-the rotation. Each fit uses ordinary LTSA with `ndim = 1`, exact neighbors, and
-four retained modes. The coordinates come from pixels; pose supplies the point
-colors and thumbnail labels.
+At `k = 7`, mixing objects produces a disconnected neighbor graph, so we fit
+objects separately. A topology-only screen selected objects 4 and 1: their
+graphs are connected and locally cyclic, and they have the two lowest shortcut
+rates among the eligible objects. Each fit uses ordinary LTSA with `ndim = 1`,
+exact neighbors, and four retained modes. The coordinates come from pixels;
+pose supplies the point colors and thumbnail labels.
 
 ![COIL-20 object 4. Modes 1 and 2 form a pose-ordered orbit, with thumbnails placed in the same radial direction as their observations.](figures/ltsa-spectral-block-coil-object-4.png)
 
@@ -236,9 +237,10 @@ $$
 \frac{1}{n\sum_i v_i^4}.
 $$
 
-It ranges from `1 / n` when one observation carries the mode to `1` when the
-energy is spread uniformly. Here, a mode's energy means its squared coordinate
-values, `v^2`:
+This is the normalized participation ratio. It equals $1/n$ when one
+observation carries the mode, $r/n$ when the energy is spread equally across
+exactly $r$ observations, and 1 when it is spread equally across all
+observations. Here, a mode's energy means its squared coordinate values, `v^2`:
 
 ```r
 effective_support_fraction <- function(v) {
@@ -277,15 +279,16 @@ those already shown. This gives a compact tour of the central region.
 
 ## Fashion-MNIST: a localized spectral block
 
-Fashion-MNIST supplies a different outcome. We fit trousers, dresses, and bags
-separately with ordinary LTSA, using `ndim = 2`, `k = 15`, and four retained
-modes. Each class uses one saved approximate-neighbor graph.
+Fashion-MNIST shows how a retained block can diagnose localization. We fit
+trousers, dresses, and bags separately with ordinary LTSA, using `ndim = 2`,
+`k = 15`, and four retained modes. Each class uses one saved
+approximate-neighbor graph.
 
-All twelve retained coordinates lie near the single-observation support limit,
-and the largest 1% of observations carry more than 99.96% of each coordinate's
-energy. The graphs are connected, local patches have full rank, and the
-eigensolves converge. The support plot therefore identifies localization as
-the limiting feature.
+Across the three classes, all twelve retained coordinates lie near the
+single-observation support limit, and the largest 1% of observations carry more
+than 99.96% of each coordinate's energy. The graphs are connected, local
+patches have full rank, and the eigensolves converge. The support plot
+identifies localization throughout the retained four-mode blocks.
 
 ![Fashion-MNIST low spectra and effective support. All four retained modes are localized despite the weak boundaries.](figures/ltsa-spectral-block-fashion-diagnostics.png)
 
@@ -295,20 +298,28 @@ clouds reflect the same concentration measured across all four modes.
 ![Displayed pairs for three Fashion-MNIST classes, with representative images from the central plotted regions.](figures/ltsa-spectral-block-fashion-comparison.png)
 
 The eigengap describes boundary stability; support describes how global the
-modes are. Fashion-MNIST has weak boundaries and localized alternatives.
+returned modes are. Fashion-MNIST has weak boundaries, and all four retained
+modes in each class are localized.
 
 ## What to carry into practice
 
 The circle and COIL-20 show the clearest use: a locally one-dimensional closed
 path appears as a pair in the low-frequency block. MNIST shows how normalized
 LTSA can produce a coherent complementary view, with support deciding how much
-weight to place on each coordinate. Fashion-MNIST shows that retaining modes
-also diagnoses a localized low spectrum.
+weight to place on each coordinate. Fashion-MNIST shows that the retained
+four-mode ordinary-LTSA blocks can themselves be localized.
 
 Use `spectral_dim` when topology or a weak boundary gives you a reason to look
 past the displayed prefix. Read the block together with connectivity, rank,
 solver, gap, and support diagnostics. For details of the returned fields, see
 [Numerical diagnostics and solver notes](numerical-diagnostics.html).
+
+Retaining a block supplies candidate coordinates; choosing which coordinates
+to display is a separate problem. [Independent Eigencoordinate
+Selection](https://proceedings.neurips.cc/paper_files/paper/2019/file/6a10bbd480e4c5573d8f3af73ae0454b-Paper.pdf)
+is one approach that searches a larger spectral set for smooth, locally
+independent coordinates. `spectral_dim` supplies the modes needed to investigate
+that question.
 
 ## Reproduce the real-data examples
 
