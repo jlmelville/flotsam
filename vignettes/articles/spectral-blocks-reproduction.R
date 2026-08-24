@@ -180,8 +180,6 @@ draw_embedding_panel <- function(
   main,
   xlab,
   ylab,
-  marker_cex = 3,
-  marker_lwd = 1.6,
   text_cex = 2
 ) {
   window <- central_window(coordinates)
@@ -196,14 +194,6 @@ draw_embedding_panel <- function(
     xlab = xlab,
     ylab = ylab,
     main = main
-  )
-  graphics::points(
-    coordinates[selected, , drop = FALSE],
-    pch = 21,
-    bg = "white",
-    col = "#D55E00",
-    cex = marker_cex,
-    lwd = marker_lwd
   )
   graphics::text(
     coordinates[selected, , drop = FALSE],
@@ -546,8 +536,6 @@ for (class_name in names(fashion_fits)) {
     ),
     "same-operator LTSA mode 1",
     "same-operator LTSA mode 2",
-    marker_cex = 2.8,
-    marker_lwd = 1.5,
     text_cex = 1.9
   )
   graphics::par(mar = c(0.8, 0.8, 3.5, 0.8))
