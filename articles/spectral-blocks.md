@@ -1,47 +1,19 @@
-# When the first LTSA coordinates are not the whole story
+# Exploring LTSA spectral blocks
 
-LTSA usually returns as many coordinates as the local tangent dimension
-requested with `ndim`. That is a useful default, but it can hide a small
-ambiguity: the first `ndim` eigenvectors are an ordered slice of a
-low-frequency spectral block, and the boundary of that slice may be
-weak. A nearby mode can contain a complementary view of the same fixed
-LTSA operator.
+LTSA uses `ndim` twice: once to build the local tangent spaces and again
+to choose how many global coordinates to return. Those choices can
+differ. A circle is locally one-dimensional, for example, but two
+coordinates show its closed path.
 
-This article shows when retaining a few extra modes is useful, and just
-as importantly, when it is not. The examples are pedagogical subsets
-rather than a claim that LTSA embeds an entire image collection well in
-one shot.
+`spectral_dim` retains extra coordinates from the same LTSA operator.
+This article shows how to inspect them on a circle, COIL-20, MNIST, and
+Fashion-MNIST.
 
-## One operator, two dimensions to choose
+## Keep more modes from the same operator
 
-`ndim` has two jobs in an ordinary call: it sets the local tangent rank
-used to construct the alignment operator `B`, and it sets the number of
-coordinates in the returned embedding. Changing `ndim` therefore
-rebuilds `B`.
-
-`spectral_dim` does something narrower. With `output = "result"`, it
-retains more nonconstant eigenvectors after constructing the same
-operator:
-
-``` text
-data + neighborhoods + ndim  --->  fixed LTSA operator B
-                                         |
-                                         v
-                              low nonconstant modes
-                               |               |
-                               v               v
-                    embedding[, 1:ndim]   spectral_embedding
-```
-
-`eig_k` is different again: it is the wider numerical candidate request
-passed to the eigensolver and Rayleigh–Ritz postprocessing. It does not
-set the local tangent rank or the number of modes returned. When
-`spectral_dim > ndim`, the request must leave room for the known
-constant null direction and one mode beyond the retained block, so
-`eig_k` must be at least `spectral_dim + 2`. That extra boundary mode is
-what makes the retained-block gap diagnosable.
-
-For example:
+Given a data matrix `X`, request four low-frequency modes while keeping
+a two-dimensional local tangent model and a two-coordinate returned
+embedding:
 
 ``` r
 
@@ -53,13 +25,42 @@ fit <- ltsa(
   spectral_dim = 4
 )
 
-dim(fit$embedding)                   # n by 2
-dim(fit$spectral_embedding)          # n by 4
+dim(fit$embedding)                    # n by 2
+dim(fit$spectral_embedding)           # n by 4
 identical(
   fit$embedding,
   fit$spectral_embedding[, 1:2, drop = FALSE]
 )
 ```
+
+The calculation follows this pipeline:
+
+``` text
+data + graph + ndim
+        |
+        v
+  fixed operator B
+        |
+        v
+ eig_k candidate modes
+        |
+        v
+spectral_dim retained modes
+        |
+        v
+ first ndim displayed
+```
+
+| Control | Changes `B`? | Purpose |
+|----|:--:|----|
+| `ndim` | yes | Sets the local tangent rank and displayed prefix |
+| `spectral_dim` | no | Retains extra nonconstant modes from the fixed operator |
+| `eig_k` | no | Gives the eigensolver a numerical candidate span |
+
+Most users can leave `eig_k` at its default. When retaining an expanded
+block, a manual request must be at least `spectral_dim + 2`: one place
+for the known constant direction and another for the mode just beyond
+the retained block.
 
 The displayed and retained boundaries have separate diagnostics:
 
@@ -71,30 +72,44 @@ fit$eigen$status
 fit$eigen$spectral$status
 ```
 
-The first gap describes the displayed `ndim`-dimensional prefix. The
-second describes the boundary after the retained `spectral_dim` modes. A
-weak displayed gap says that the displayed subspace is poorly separated
-from the next direction. It does **not** say that the next direction is
-useful.
+A boundary gap compares the last included mode with the next one. A
+large gap isolates the chosen subspace. A small gap suggests
+interpreting the neighboring modes together and checking their geometry
+and support.
+
+## A short inspection routine
+
+Three questions organize the diagnostics:
+
+1.  **Is the operator structurally sound?** Check graph connectivity and
+    local ranks.
+2.  **Was the spectrum computed reliably?** Check status, messages, and
+    residuals.
+3.  **Is the displayed view well determined and useful?** Check boundary
+    gaps, inspect a small retained block, and measure how broadly each
+    mode is supported.
+
+When comparing stochastic fits, reuse the same saved neighbor matrix,
+reset the eigensolver seed immediately before each fit, and keep thread
+settings equal.
 
 ## A circle needs a spectral pair
 
-A circle is locally one-dimensional, so `ndim = 1` is the appropriate
-local tangent rank. Globally, however, no single continuous real-valued
-coordinate can go once around a closed loop without identifying or
-cutting points. Two low-frequency coordinates can represent the periodic
-progression together.
+A circle has a one-dimensional tangent at every point. A single
+real-valued coordinate cannot follow the whole loop continuously, so the
+first two low-frequency modes work as a pair. Their signs and
+orientation can change between fits; treat the two-dimensional span as
+the stable unit.
 
-The example below uses exact neighbors and dense eigenanalysis so the
-small example is deterministic and the repeated spectral pairs are
-recovered completely.
+The example uses exact neighbors and dense eigenanalysis, making the
+repeated pairs easy to see.
 
 ``` r
 
 theta <- seq(0, 2 * pi, length.out = 721)[-721]
 circle <- cbind(x = cos(theta), y = sin(theta))
 
-circle_fit <- suppressWarnings(ltsa(
+circle_fit <- ltsa(
   circle,
   ndim = 1,
   n_neighbors = 9,
@@ -103,7 +118,7 @@ circle_fit <- suppressWarnings(ltsa(
   eig_k = 8,
   output = "result",
   spectral_dim = 4
-))
+)
 
 circle_fit$eigen$values
 #> [1] 4.464673e-07
@@ -115,194 +130,65 @@ circle_fit$eigen$messages
 #> [1] "Weak Ritz boundary gap after the selected block: 1.293e-17 < 1e-04."
 ```
 
-![A locally one-dimensional circle. One returned coordinate cannot show
-the closed progression, while the first same-operator spectral pair
-does. The low spectrum contains repeated
-pairs.](spectral-blocks_files/figure-html/circle-figure-1.png)
+![The input circle, its one-dimensional LTSA display, the first two
+modes from the same operator, and the low spectrum. The mode pair
+follows the complete periodic
+progression.](spectral-blocks_files/figure-html/circle-figure-1.png)
 
-A locally one-dimensional circle. One returned coordinate cannot show
-the closed progression, while the first same-operator spectral pair
-does. The low spectrum contains repeated pairs.
+The input circle, its one-dimensional LTSA display, the first two modes
+from the same operator, and the low spectrum. The mode pair follows the
+complete periodic progression.
 
-The orientation and signs of the pair are arbitrary; its two-dimensional
-span is the identifiable object. Increasing `ndim` to two would not be
-an equivalent way to obtain this picture: it would estimate two local
-tangent directions and construct a different operator.
+Setting `ndim = 2` would build a two-dimensional local tangent model.
+Here, `spectral_dim = 2` keeps the original one-dimensional model and
+reveals its second global coordinate.
 
-## COIL-20: the same issue in real images
+## COIL-20: a real periodic example
 
 [COIL-20](https://cave.cs.columbia.edu/repository/COIL-20) contains 72
-views of each of 20 objects as it rotates. Each object was fitted
-separately, avoiding the disconnected graph obtained by mixing objects
-at a small neighborhood. Before any embedding was inspected, all objects
-were screened at `k = 7` using only their pixel-neighbor graphs. The
-first two objects under a fixed rule were objects 4 and 1: both direct
-and effective graphs had to be connected, most neighbors had to be
-locally adjacent in pose, each pose needed neighbors on both sides, and
-the graph needed wraparound edges.
+views of each object as it rotates. One object traces a closed, locally
+one-dimensional curve through pixel space, so the circle example
+predicts a spectral pair.
 
-The fits used ordinary LTSA, `ndim = 1`, exact self-first neighbors,
-four retained modes, and `eig_k = 8`. No supervised rotation was
-applied. Pose is used only for color and for choosing eight evenly
-spaced explanatory images.
+At `k = 7`, mixing objects produces a disconnected neighbor graph. We
+fit each object separately and use objects 4 and 1, whose connected
+graphs mostly follow the rotation. Each fit uses ordinary LTSA with
+`ndim = 1`, exact neighbors, and four retained modes. The coordinates
+come from pixels; pose supplies the point colors and thumbnail labels.
 
-![COIL-20 object 4. Raw modes 1 and 2 form a pose-ordered oval; the
-first spectral pair is much more clearly separated from mode 3 than
-either member is from the
-other.](figures/ltsa-spectral-block-coil-object-4.png)
+![COIL-20 object 4. Modes 1 and 2 form a pose-ordered orbit, with
+thumbnails placed in the same radial direction as their
+observations.](figures/ltsa-spectral-block-coil-object-4.png)
 
-COIL-20 object 4. Raw modes 1 and 2 form a pose-ordered oval; the first
-spectral pair is much more clearly separated from mode 3 than either
-member is from the other.
+COIL-20 object 4. Modes 1 and 2 form a pose-ordered orbit, with
+thumbnails placed in the same radial direction as their observations.
 
-![COIL-20 object 1. The path is more distorted, but the independently
-selected object still gives a coherent periodic progression rather than
-a hand-picked geometric
-circle.](figures/ltsa-spectral-block-coil-object-1.png)
+![COIL-20 object 1. The path is more distorted and still follows the
+object’s rotation.](figures/ltsa-spectral-block-coil-object-1.png)
 
-COIL-20 object 1. The path is more distorted, but the independently
-selected object still gives a coherent periodic progression rather than
-a hand-picked geometric circle.
+COIL-20 object 1. The path is more distorted and still follows the
+object’s rotation.
 
-The scaled mode 1/2 gaps were `0.000108` and `0.000181`, while the pair
-2/3 gaps were `0.00250` and `0.00215`. In both examples, the second
-coordinate turns a one-dimensional slice into an intelligible rotational
-orbit already present in the fixed operator.
+The gap after mode 2 is much larger than the gap between modes 1 and 2.
+For objects 4 and 1, the mode 1–2 gaps are `0.000108` and `0.000181`,
+while the mode 2–3 gaps are `0.00250` and `0.00215`—about 23 and 12
+times larger. This is the spectral pattern expected from a mode pair.
+The second mode completes the rotational orbit already present in the
+fixed operator.
 
-The essential reproduction is short; the graph-only screening and
-thumbnail layout are article-specific presentation code:
+## Check whether a mode represents many observations
 
-``` r
-
-coil <- snedata::download_coil20(as = "list")
-rows <- coil$meta$object == 4
-object_4 <- coil$data[rows, , drop = FALSE]
-
-coil_fit <- ltsa(
-  object_4,
-  ndim = 1,
-  n_neighbors = 7,
-  nn_method = "exact",
-  eig_method = "eig",
-  eig_k = 8,
-  output = "result",
-  spectral_dim = 4
-)
-
-plot(coil_fit$spectral_embedding[, 1:2])
-```
-
-This is evidence for inspecting a retained block, not evidence that
-COIL-20 as a whole has a useful one-shot LTSA embedding.
-
-## MNIST: useful variation and a warning
-
-The complete 7,877-observation digit-1 subset of
-[MNIST](https://github.com/fgnt/mnist) gives a less tidy, more realistic
-example. The subset and the use of normalized LTSA were already
-suggested by earlier exploratory work, so this is disclosed pedagogical
-evidence rather than an independent benchmark.
-
-Ordinary and normalized LTSA were fit to the same materialized
-approximate neighbor graph with `ndim = 2`, `k = 15`, four retained
-modes, and `eig_k = 8`. Normalized LTSA solves a different generalized
-eigenproblem; it is not a numerical repair for ordinary LTSA.
-
-The neighbor graph was generated once with NND, seed `20260824`, and one
-neighbor thread. Both fits reused that self-first graph, used one
-assembly thread and RSpectra, and reset the solver seed to `20260824`
-immediately before each fit.
-
-The ordinary first three modes were almost point-localized despite a
-connected effective graph, full local ranks, and acceptable solver
-residuals. Normalized modes 1 and 2 were broadly supported and gave a
-coherent view of slant, curvature, stroke width, hooks, and unusual
-serifed or branched forms.
-
-![Normalized LTSA modes 1 and 2 for MNIST digit 1. The numbered images
-were selected to cover the central plotted view; they are explanatory
-representatives, not a quality
-sample.](figures/ltsa-spectral-block-mnist-normalized-display.png)
-
-Normalized LTSA modes 1 and 2 for MNIST digit 1. The numbered images
-were selected to cover the central plotted view; they are explanatory
-representatives, not a quality sample.
-
-Modes 2 and 3 give a complementary view of that morphology, but mode 3
-is already noticeably localized. The picture is interesting; the
-diagnostic is the reason not to promote it uncritically as a better
-embedding.
-
-![Normalized LTSA modes 2 and 3. The additional mode exposes a different
-sheet-and-branch view, but its limited support makes this a qualified
-diagnostic view rather than an automatic
-improvement.](figures/ltsa-spectral-block-mnist-normalized-extra.png)
-
-Normalized LTSA modes 2 and 3. The additional mode exposes a different
-sheet-and-branch view, but its limited support makes this a qualified
-diagnostic view rather than an automatic improvement.
-
-![The MNIST spectra and effective support fractions. Ordinary modes 1–3
-are near the single-observation support limit; normalized modes become
-progressively more localized after the first
-pair.](figures/ltsa-spectral-block-mnist-diagnostics.png)
-
-The MNIST spectra and effective support fractions. Ordinary modes 1–3
-are near the single-observation support limit; normalized modes become
-progressively more localized after the first pair.
-
-A compact reproduction of the normalized retained block is:
-
-``` r
-
-mnist <- snedata::download_mnist(as = "list")
-labels <- as.integer(as.character(mnist$meta$label))
-digit_1 <- mnist$data[labels == 1, , drop = FALSE]
-nonconstant <- vapply(
-  seq_len(ncol(digit_1)),
-  function(index) {
-    pixel <- digit_1[, index]
-    min(pixel) != max(pixel)
-  },
-  logical(1)
-)
-digit_1 <- digit_1[, nonconstant, drop = FALSE]
-
-set.seed(20260824)
-mnist_fit <- ltsa(
-  digit_1,
-  ndim = 2,
-  n_neighbors = 15,
-  nn_method = "nnd",
-  n_threads = 1,
-  eig_method = "rspectra",
-  eig_k = 8,
-  normalize = TRUE,
-  output = "result",
-  spectral_dim = 4
-)
-```
-
-For a direct comparison of ordinary and normalized LTSA, materialize one
-neighbor graph and pass that same self-first index matrix as `nn_method`
-to both calls. At minimum, reset the seed immediately before each
-sampled call and keep the thread settings identical.
-
-The representative rule standardizes the plotted pair, keeps the central
-98% per axis, starts nearest the component-wise median, and greedily
-adds the point farthest from those already selected. It covers the view
-deliberately. It does not measure embedding quality.
-
-The mode-support diagnostic used here is also deliberately local to the
-article. For a Euclidean-normalized coordinate vector `v`, its effective
-support fraction is
+A low-energy mode can be dominated by a few observations. For a
+Euclidean-normalized coordinate vector `v`, the effective support
+fraction is
 
 ``` math
 \frac{1}{n\sum_i v_i^4}.
 ```
 
-It equals one for a perfectly uniform-magnitude vector and approaches
-`1 / n` when one observation dominates:
+It ranges from `1 / n` when one observation carries the mode to `1` when
+the energy is spread uniformly. Here, a mode’s energy means its squared
+coordinate values, `v^2`:
 
 ``` r
 
@@ -310,96 +196,639 @@ effective_support_fraction <- function(v) {
   v <- v / sqrt(sum(v^2))
   1 / (length(v) * sum(v^4))
 }
-
-apply(mnist_fit$spectral_embedding, 2, effective_support_fraction)
 ```
 
-This is not a generic embedding-quality score. It answers the narrower
-question raised by these plots: is a coordinate broadly supported, or is
-an attractive central cloud produced after a few observations absorb
-almost all its energy?
+This diagnostic measures localization. The plots then show what the
+broadly supported coordinates represent.
 
-## Fashion-MNIST: extra modes need not help
+## MNIST: a complementary view
 
-Three fixed, previously inspected classes from
-[Fashion-MNIST](https://github.com/zalandoresearch/fashion-mnist)—trouser,
-dress, and bag—supply the negative example. Every class was fitted with
-ordinary LTSA using the same declared `ndim = 2`, `k = 15`, and four
-retained modes. No class, neighborhood, normalization setting, or mode
-pair was substituted after seeing the results.
+The 7,877 MNIST digit-1 images show how localization changes the
+interpretation of extra modes. Ordinary and normalized LTSA use the same
+saved neighbor matrix, `ndim = 2`, `k = 15`, and four retained modes.
+Normalized LTSA changes the weighting through a generalized
+eigenproblem, giving a distinct estimator over the same graph.
 
-Each class used its own self-first NND graph, with seed `20260825` reset
-before graph construction and one neighbor thread. Every RSpectra fit
-used `eig_k = 8`, one assembly thread, and the same seed reset
-immediately before eigenanalysis.
+The ordinary first three modes are concentrated on individual
+observations. Normalized modes 1 and 2 are broadly supported and arrange
+handwriting by slant, curvature, stroke width, hooks, and serifed or
+branched forms.
 
-![Displayed pairs for the three fixed Fashion-MNIST classes. Central
-percentile framing makes the majority cloud visible, but the
-representatives do not establish a semantic
-ordering.](figures/ltsa-spectral-block-fashion-comparison.png)
+![Normalized LTSA modes 1 and 2 for MNIST digit 1. The numbered images
+cover the central plotted region and show how handwriting changes across
+the map.](figures/ltsa-spectral-block-mnist-normalized-display.png)
 
-Displayed pairs for the three fixed Fashion-MNIST classes. Central
-percentile framing makes the majority cloud visible, but the
-representatives do not establish a semantic ordering.
+Normalized LTSA modes 1 and 2 for MNIST digit 1. The numbered images
+cover the central plotted region and show how handwriting changes across
+the map.
 
-All twelve retained coordinates were essentially at the
-single-observation support limit, and more than 99.96% of each
-coordinate’s energy lay in the largest 1% of observations. The graphs
-were connected, local patches had full rank, and the eigensolves
-converged. The low modes themselves were localized.
+Modes 2 and 3 give another view of the same morphology. Mode 3 has less
+support, so this pair works best as a complementary diagnostic view.
 
-![Fashion-MNIST low spectra and effective support. Weak boundaries
-motivate caution, but retaining extra modes does not rescue globally
-unsupported
-coordinates.](figures/ltsa-spectral-block-fashion-diagnostics.png)
+![Normalized LTSA modes 2 and 3 expose a different sheet-and-branch view
+of digit-1
+morphology.](figures/ltsa-spectral-block-mnist-normalized-extra.png)
 
-Fashion-MNIST low spectra and effective support. Weak boundaries
-motivate caution, but retaining extra modes does not rescue globally
-unsupported coordinates.
+Normalized LTSA modes 2 and 3 expose a different sheet-and-branch view
+of digit-1 morphology.
 
-This is the crucial counterexample: a weak boundary is a reason not to
-treat the first displayed plane as uniquely privileged. It is not a
-promise that a better raw pair exists in the retained block.
+![MNIST low spectra and effective support fractions. Ordinary modes 1–3
+approach the single-observation limit; normalized modes become
+progressively more localized after the first
+pair.](figures/ltsa-spectral-block-mnist-diagnostics.png)
 
-## A practical inspection sequence
+MNIST low spectra and effective support fractions. Ordinary modes 1–3
+approach the single-observation limit; normalized modes become
+progressively more localized after the first pair.
 
-When an LTSA result is scientifically or visually important:
+The numbered representatives cover the central 98% of each plot axis.
+Starting near the plot center, the selection repeatedly chooses the
+image farthest from those already shown. This gives a compact tour of
+the central region.
 
-1.  Inspect `eigen$status`, `eigen$messages`, and the displayed boundary
-    gap.
-2.  Check `assembly$component_count` and the local-rank diagnostics. A
-    spectral block cannot repair a disconnected effective graph or
-    deficient patches.
-3.  If the displayed boundary is weak or the data have periodic
-    structure, retain a small same-operator block with `spectral_dim`
-    rather than increasing `ndim`.
-4.  Inspect raw pair views without assuming that one is optimal. Treat
-    signs and rotations inside a nearly repeated eigenspace as
-    arbitrary.
-5.  Check whether each plotted mode is broadly supported. An accurately
-    solved, low-energy vector may still describe only a few
-    observations.
-6.  If comparing ordinary and normalized LTSA, name them as different
-    estimators and keep the graph and stochastic settings fixed.
+## Fashion-MNIST: a localized spectral block
 
-The result may be a useful complementary view, as for the circle,
-COIL-20, and the qualified MNIST example. It may instead show that the
-low-frequency block does not contain a defensible global chart, as in
-the Fashion-MNIST subsets. Both outcomes are informative. `spectral_dim`
-exposes the evidence; it does not choose the interpretation.
+Fashion-MNIST supplies a different outcome. We fit trousers, dresses,
+and bags separately with ordinary LTSA, using `ndim = 2`, `k = 15`, and
+four retained modes. Each class uses one saved approximate-neighbor
+graph.
 
-For details of the returned diagnostics and eigensolver controls, see
-[Numerical diagnostics and solver
+All twelve retained coordinates lie near the single-observation support
+limit, and the largest 1% of observations carry more than 99.96% of each
+coordinate’s energy. The graphs are connected, local patches have full
+rank, and the eigensolves converge. The support plot therefore
+identifies localization as the limiting feature.
+
+![Fashion-MNIST low spectra and effective support. All four retained
+modes are localized despite the weak
+boundaries.](figures/ltsa-spectral-block-fashion-diagnostics.png)
+
+Fashion-MNIST low spectra and effective support. All four retained modes
+are localized despite the weak boundaries.
+
+The image panels provide visual context for the displayed pairs. Their
+star-like clouds reflect the same concentration measured across all four
+modes.
+
+![Displayed pairs for three Fashion-MNIST classes, with representative
+images from the central plotted
+regions.](figures/ltsa-spectral-block-fashion-comparison.png)
+
+Displayed pairs for three Fashion-MNIST classes, with representative
+images from the central plotted regions.
+
+The eigengap describes boundary stability; support describes how global
+the modes are. Fashion-MNIST has weak boundaries and localized
+alternatives.
+
+## What to carry into practice
+
+The circle and COIL-20 show the clearest use: a locally one-dimensional
+closed path appears as a pair in the low-frequency block. MNIST shows
+how normalized LTSA can produce a coherent complementary view, with
+support deciding how much weight to place on each coordinate.
+Fashion-MNIST shows that retaining modes also diagnoses a localized low
+spectrum.
+
+Use `spectral_dim` when topology or a weak boundary gives you a reason
+to look past the displayed prefix. Read the block together with
+connectivity, rank, solver, gap, and support diagnostics. For details of
+the returned fields, see [Numerical diagnostics and solver
 notes](https://jlmelville.github.io/flotsam/articles/numerical-diagnostics.md).
 
-## Data sources and attribution
+## Reproduce the real-data examples
 
-The image examples come from
+The complete script downloads the datasets with `snedata`, reuses saved
+neighbor matrices for estimator comparisons, fits the retained blocks,
+and draws the thumbnail and support plots. Install its extra
+dependencies with `pak::pak("jlmelville/snedata")` and
+`install.packages("rnndescent")`.
+
+Show the complete data and plotting script (downloads three image
+datasets)
+
+``` r
+
+# Reproduce the real-data examples in the spectral-blocks article.
+#
+# This script downloads COIL-20, MNIST, and Fashion-MNIST with snedata.
+# The image datasets are fitted when their sections run, so expect several
+# minutes of computation and substantial memory use.
+
+library(flotsam)
+
+mnist_neighbor_seed <- 20260824L
+mnist_solver_seed <- 20260824L
+fashion_neighbor_seed <- 20260825L
+fashion_solver_seed <- 20260825L
+
+drop_constant_columns <- function(X) {
+  keep <- vapply(
+    seq_len(ncol(X)),
+    function(column) {
+      values <- X[, column]
+      min(values) != max(values)
+    },
+    logical(1)
+  )
+  X[, keep, drop = FALSE]
+}
+
+# Build one self-first approximate-neighbor matrix so several fits can reuse
+# exactly the same graph. In flotsam, n_neighbors includes the self column.
+self_first_nnd <- function(X, n_neighbors, seed) {
+  set.seed(seed)
+  raw <- rnndescent::nnd_knn(
+    data = X,
+    k = n_neighbors + 1L,
+    n_threads = 1L,
+    verbose = FALSE
+  )
+
+  result <- matrix(NA_integer_, nrow(X), n_neighbors)
+  for (row in seq_len(nrow(X))) {
+    indices <- raw$idx[row, ]
+    distances <- raw$dist[row, ]
+    valid <- is.finite(distances) & !is.na(indices) & indices != row
+    order_in_row <- order(distances[valid], indices[valid])
+    neighbors <- indices[valid][order_in_row]
+    neighbors <- neighbors[!duplicated(neighbors)]
+    if (length(neighbors) < n_neighbors - 1L) {
+      stop("Approximate-neighbor search returned too few neighbors")
+    }
+    result[row, ] <- c(row, neighbors[seq_len(n_neighbors - 1L)])
+  }
+  result
+}
+
+effective_support_fraction <- function(vectors) {
+  vapply(
+    seq_len(ncol(vectors)),
+    function(column) {
+      vector <- vectors[, column]
+      unit <- vector / sqrt(sum(vector^2))
+      1 / (length(unit) * sum(unit^4))
+    },
+    numeric(1)
+  )
+}
+
+central_window <- function(coordinates) {
+  limits <- apply(
+    coordinates,
+    2L,
+    stats::quantile,
+    probs = c(0.01, 0.99),
+    names = FALSE
+  )
+  spans <- apply(limits, 2L, diff)
+  spans[spans == 0] <- 1
+  list(
+    xlim = limits[, 1L] + c(-0.04, 0.04) * spans[[1L]],
+    ylim = limits[, 2L] + c(-0.04, 0.04) * spans[[2L]]
+  )
+}
+
+representative_indices <- function(coordinates, count) {
+  scaled <- scale(coordinates)
+  scaled[!is.finite(scaled)] <- 0
+  limits <- apply(
+    scaled,
+    2L,
+    stats::quantile,
+    probs = c(0.01, 0.99),
+    names = FALSE
+  )
+  eligible <- which(
+    scaled[, 1L] >= limits[1L, 1L] &
+      scaled[, 1L] <= limits[2L, 1L] &
+      scaled[, 2L] >= limits[1L, 2L] &
+      scaled[, 2L] <= limits[2L, 2L]
+  )
+
+  center <- apply(scaled[eligible, , drop = FALSE], 2L, stats::median)
+  selected <- eligible[[which.min(
+    rowSums(sweep(scaled[eligible, , drop = FALSE], 2L, center)^2)
+  )]]
+  nearest <- rowSums(
+    sweep(scaled[eligible, , drop = FALSE], 2L, scaled[selected, ])^2
+  )
+
+  while (length(selected) < count) {
+    nearest[eligible %in% selected] <- -Inf
+    next_position <- which.max(nearest)
+    next_index <- eligible[[next_position]]
+    selected <- c(selected, next_index)
+    next_distance <- rowSums(
+      sweep(
+        scaled[eligible, , drop = FALSE],
+        2L,
+        scaled[next_index, ]
+      )^2
+    )
+    nearest <- pmin(nearest, next_distance)
+  }
+  selected
+}
+
+pixel_raster <- function(pixel_row, height, transpose = TRUE) {
+  image <- matrix(as.numeric(pixel_row), nrow = height)
+  if (transpose) {
+    image <- t(image)
+  }
+  maximum <- max(image)
+  if (maximum > 0) {
+    image <- image / maximum
+  }
+  as.raster(matrix(
+    grDevices::gray(1 - image),
+    nrow = nrow(image),
+    ncol = ncol(image)
+  ))
+}
+
+draw_image_panel <- function(X, selected, height, columns, transpose = TRUE) {
+  rows <- ceiling(length(selected) / columns)
+  graphics::plot.new()
+  graphics::plot.window(xlim = c(0, columns), ylim = c(0, rows), asp = 1)
+  for (index in seq_along(selected)) {
+    column <- (index - 1L) %% columns
+    row <- rows - 1L - (index - 1L) %/% columns
+    graphics::rasterImage(
+      pixel_raster(X[selected[[index]], ], height, transpose),
+      column + 0.04,
+      row + 0.04,
+      column + 0.96,
+      row + 0.96,
+      interpolate = FALSE
+    )
+    graphics::text(
+      column + 0.14,
+      row + 0.86,
+      labels = index,
+      col = "#D55E00",
+      font = 2,
+      cex = 1.05
+    )
+  }
+}
+
+draw_embedding_panel <- function(coordinates, selected, main) {
+  window <- central_window(coordinates)
+  graphics::plot(
+    coordinates,
+    pch = 16,
+    cex = 0.38,
+    col = grDevices::adjustcolor("grey25", alpha.f = 0.20),
+    asp = 1,
+    xlim = window$xlim,
+    ylim = window$ylim,
+    xlab = "LTSA mode 1",
+    ylab = "LTSA mode 2",
+    main = main
+  )
+  graphics::points(
+    coordinates[selected, , drop = FALSE],
+    pch = 21,
+    bg = "white",
+    col = "#D55E00",
+    cex = 1.7,
+    lwd = 1.1
+  )
+  graphics::text(
+    coordinates[selected, , drop = FALSE],
+    labels = seq_along(selected),
+    col = "#D55E00",
+    font = 2,
+    cex = 0.98
+  )
+}
+
+plot_pair_with_images <- function(
+  coordinates,
+  X,
+  height,
+  count,
+  columns,
+  main,
+  image_title,
+  transpose = TRUE
+) {
+  selected <- representative_indices(coordinates, count)
+  old_par <- graphics::par(no.readonly = TRUE)
+  on.exit(graphics::par(old_par))
+  graphics::layout(matrix(c(1L, 1L, 1L, 2L, 2L), nrow = 1L))
+  graphics::par(mar = c(4.4, 4.5, 4.2, 1.2))
+  draw_embedding_panel(coordinates, selected, main)
+  graphics::par(mar = c(1, 1, 4.2, 1))
+  draw_image_panel(X, selected, height, columns, transpose)
+  graphics::title(main = image_title)
+  invisible(selected)
+}
+
+draw_low_spectrum <- function(
+  fit,
+  main,
+  boundaries = c(2.5, 4.5),
+  boundary_labels = c("displayed boundary", "retained boundary")
+) {
+  values <- fit$eigen$ritz_values[1:5]
+  graphics::plot(
+    seq_along(values),
+    values,
+    type = "b",
+    pch = 21,
+    bg = c("#0072B2", "#0072B2", "grey65", "grey65", "white"),
+    xaxt = "n",
+    xlab = "nonconstant Ritz mode",
+    ylab = "Ritz value",
+    main = main
+  )
+  graphics::axis(1, at = seq_along(values))
+  boundary_lty <- seq_along(boundaries) + 1L
+  graphics::abline(
+    v = boundaries,
+    lty = boundary_lty,
+    col = "grey45"
+  )
+  graphics::legend(
+    "topleft",
+    legend = boundary_labels,
+    lty = boundary_lty,
+    col = "grey45",
+    bty = "n",
+    cex = 0.82
+  )
+}
+
+plot_support <- function(fits, labels, colors, main, legend_position = "left") {
+  support <- vapply(
+    fits,
+    function(fit) effective_support_fraction(fit$spectral_embedding),
+    numeric(4L)
+  )
+  graphics::matplot(
+    seq_len(4L),
+    support,
+    type = "b",
+    log = "y",
+    pch = seq.int(21L, length.out = length(fits)),
+    col = colors,
+    bg = colors,
+    ylim = range(c(support, 0.01)),
+    xaxt = "n",
+    xlab = "nonconstant mode",
+    ylab = "effective support fraction (log scale)",
+    main = main
+  )
+  graphics::axis(1, at = seq_len(4L))
+  graphics::abline(h = 0.01, lty = 3, col = "grey45")
+  graphics::legend(
+    legend_position,
+    legend = c(labels, "1% support"),
+    col = c(colors, "grey45"),
+    pch = c(seq.int(21L, length.out = length(fits)), NA),
+    pt.bg = c(colors, NA),
+    lty = c(rep(1, length(fits)), 3),
+    bty = "n"
+  )
+}
+
+# COIL-20 ---------------------------------------------------------------
+
+coil <- snedata::download_coil20(as = "list")
+coil_objects <- c(4L, 1L)
+coil_fits <- lapply(coil_objects, function(object) {
+  rows <- coil$meta$object == object
+  X <- coil$data[rows, , drop = FALSE]
+  poses <- as.integer(coil$meta$pose[rows])
+  fit <- ltsa(
+    X,
+    ndim = 1,
+    n_neighbors = 7,
+    nn_method = "exact",
+    eig_method = "eig",
+    eig_k = 8,
+    output = "result",
+    spectral_dim = 4
+  )
+  list(object = object, X = X, poses = poses, fit = fit)
+})
+
+plot_coil_orbit <- function(fit, X, poses, object) {
+  coordinates <- fit$spectral_embedding[, 1:2, drop = FALSE]
+  x_span <- diff(range(coordinates[, 1L]))
+  y_span <- diff(range(coordinates[, 2L]))
+  center <- colMeans(coordinates)
+  selected <- match(seq.int(0L, 63L, by = 9L), poses)
+  direction <- cbind(
+    (coordinates[selected, 1L] - center[[1L]]) / x_span,
+    (coordinates[selected, 2L] - center[[2L]]) / y_span
+  )
+  angle <- atan2(direction[, 2L], direction[, 1L])
+  centers <- cbind(
+    center[[1L]] + 0.62 * x_span * cos(angle),
+    center[[2L]] + 0.62 * y_span * sin(angle)
+  )
+
+  xlim <- range(coordinates[, 1L]) + c(-0.46, 0.46) * x_span
+  ylim <- range(coordinates[, 2L]) + c(-0.46, 0.46) * y_span
+  colors <- grDevices::hcl.colors(72L, "Spectral", rev = TRUE)
+  graphics::plot(
+    coordinates,
+    type = "n",
+    asp = 1,
+    xlim = xlim,
+    ylim = ylim,
+    xlab = "LTSA mode 1",
+    ylab = "LTSA mode 2",
+    main = paste("COIL-20 object", object, "rotational orbit")
+  )
+  graphics::points(
+    coordinates,
+    pch = 21,
+    bg = colors[poses + 1L],
+    col = "grey20"
+  )
+  for (index in seq_along(selected)) {
+    row <- selected[[index]]
+    graphics::segments(
+      coordinates[row, 1L],
+      coordinates[row, 2L],
+      centers[index, 1L],
+      centers[index, 2L],
+      col = "grey45"
+    )
+    width <- 0.19 * x_span
+    height <- 0.19 * y_span
+    graphics::rasterImage(
+      pixel_raster(X[row, ], height = 128L, transpose = FALSE),
+      centers[index, 1L] - width / 2,
+      centers[index, 2L] - height / 2,
+      centers[index, 1L] + width / 2,
+      centers[index, 2L] + height / 2,
+      interpolate = FALSE
+    )
+    graphics::text(
+      centers[index, 1L],
+      centers[index, 2L] - 0.62 * height,
+      labels = paste("pose", poses[[row]]),
+      cex = 0.9,
+      xpd = NA
+    )
+  }
+}
+
+for (coil_result in coil_fits) {
+  old_par <- graphics::par(no.readonly = TRUE)
+  graphics::layout(matrix(c(1L, 1L, 2L), nrow = 1L))
+  plot_coil_orbit(
+    coil_result$fit,
+    coil_result$X,
+    coil_result$poses,
+    coil_result$object
+  )
+  draw_low_spectrum(
+    coil_result$fit,
+    paste("COIL-20 object", coil_result$object),
+    boundaries = c(1.5, 2.5, 4.5),
+    boundary_labels = c(
+      "displayed 1D boundary",
+      "periodic-pair boundary",
+      "retained boundary"
+    )
+  )
+  graphics::par(old_par)
+}
+
+# MNIST digit 1 ---------------------------------------------------------
+
+mnist <- snedata::download_mnist(as = "list")
+mnist_labels <- as.integer(as.character(mnist$meta$label))
+mnist_images <- mnist$data[mnist_labels == 1L, , drop = FALSE]
+mnist_X <- drop_constant_columns(mnist_images)
+mnist_graph <- self_first_nnd(mnist_X, 15L, mnist_neighbor_seed)
+
+fit_mnist <- function(normalize) {
+  set.seed(mnist_solver_seed)
+  ltsa(
+    mnist_X,
+    ndim = 2,
+    n_neighbors = 15,
+    nn_method = mnist_graph,
+    eig_method = "rspectra",
+    eig_k = 8,
+    normalize = normalize,
+    output = "result",
+    spectral_dim = 4
+  )
+}
+
+mnist_ordinary <- fit_mnist(FALSE)
+mnist_normalized <- fit_mnist(TRUE)
+
+plot_pair_with_images(
+  mnist_normalized$spectral_embedding[, 1:2, drop = FALSE],
+  mnist_images,
+  height = 28L,
+  count = 16L,
+  columns = 4L,
+  main = "Normalized LTSA digit 1: modes 1 and 2",
+  image_title = "Representative digits from the map"
+)
+
+plot_pair_with_images(
+  mnist_normalized$spectral_embedding[, 2:3, drop = FALSE],
+  mnist_images,
+  height = 28L,
+  count = 16L,
+  columns = 4L,
+  main = "Normalized LTSA digit 1: modes 2 and 3",
+  image_title = "Representative digits from the map"
+)
+
+old_par <- graphics::par(no.readonly = TRUE)
+graphics::par(mfrow = c(1L, 3L), mar = c(4.2, 4.5, 3.3, 1))
+draw_low_spectrum(mnist_ordinary, "Ordinary LTSA low spectrum")
+draw_low_spectrum(mnist_normalized, "Normalized LTSA low spectrum")
+plot_support(
+  list(mnist_ordinary, mnist_normalized),
+  c("ordinary", "normalized"),
+  c("#D55E00", "#0072B2"),
+  "MNIST digit-1 mode support",
+  legend_position = "topright"
+)
+graphics::par(old_par)
+
+# Fashion-MNIST ---------------------------------------------------------
+
+fashion <- snedata::download_fashion_mnist(as = "list")
+fashion_labels <- as.integer(as.character(fashion$meta$label))
+fashion_classes <- c(Trouser = 1L, Dress = 3L, Bag = 8L)
+
+fashion_fits <- lapply(seq_along(fashion_classes), function(index) {
+  label <- fashion_classes[[index]]
+  images <- fashion$data[fashion_labels == label, , drop = FALSE]
+  X <- drop_constant_columns(images)
+  graph <- self_first_nnd(X, 15L, fashion_neighbor_seed)
+  set.seed(fashion_solver_seed)
+  fit <- ltsa(
+    X,
+    ndim = 2,
+    n_neighbors = 15,
+    nn_method = graph,
+    eig_method = "rspectra",
+    eig_k = 8,
+    output = "result",
+    spectral_dim = 4
+  )
+  list(fit = fit, images = images)
+})
+names(fashion_fits) <- names(fashion_classes)
+
+old_par <- graphics::par(no.readonly = TRUE)
+graphics::layout(
+  matrix(seq_len(6L), nrow = 3L, ncol = 2L, byrow = TRUE),
+  widths = c(1.05, 1.55)
+)
+for (class_name in names(fashion_fits)) {
+  class_result <- fashion_fits[[class_name]]
+  coordinates <- class_result$fit$embedding
+  selected <- representative_indices(coordinates, 12L)
+  graphics::par(mar = c(4, 4.2, 3.5, 1))
+  draw_embedding_panel(coordinates, selected, class_name)
+  graphics::par(mar = c(0.8, 0.8, 3.5, 0.8))
+  draw_image_panel(class_result$images, selected, 28L, 6L)
+  graphics::title(main = "Representative images")
+}
+graphics::par(old_par)
+
+old_par <- graphics::par(no.readonly = TRUE)
+graphics::layout(matrix(c(1L, 2L, 3L, 4L, 4L, 4L), nrow = 2L, byrow = TRUE))
+graphics::par(mar = c(4.2, 4.5, 3.3, 1))
+for (class_name in names(fashion_fits)) {
+  draw_low_spectrum(
+    fashion_fits[[class_name]]$fit,
+    paste(class_name, "low spectrum")
+  )
+}
+plot_support(
+  lapply(fashion_fits, function(x) x$fit),
+  names(fashion_fits),
+  c("#0072B2", "#D55E00", "#009E73"),
+  "Mode support by Fashion-MNIST class"
+)
+graphics::par(old_par)
+```
+
+## Data sources
+
+The image examples use
 [COIL-20](https://cave.cs.columbia.edu/repository/COIL-20) (Sameer A.
 Nene, Shree K. Nayar, and Hiroshi Murase),
 [MNIST](https://yann.lecun.com/exdb/mnist/) (Yann LeCun, Corinna Cortes,
 and Christopher J. C. Burges), and
 [Fashion-MNIST](https://arxiv.org/abs/1708.07747) (Han Xiao, Kashif
-Rasul, and Roland Vollgraf). The package contains only the small,
-low-resolution samples inside these static explanatory figures;
-article-development scripts download the datasets separately.
+Rasul, and Roland Vollgraf). Static article figures contain
+low-resolution thumbnails; the reproduction script downloads each
+dataset through `snedata`.
