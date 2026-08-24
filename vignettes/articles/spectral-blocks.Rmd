@@ -340,5 +340,4 @@ The image examples use [COIL-20](https://cave.cs.columbia.edu/repository/COIL-20
 [MNIST](https://yann.lecun.com/exdb/mnist/) (Yann LeCun, Corinna Cortes, and
 Christopher J. C. Burges), and
 [Fashion-MNIST](https://arxiv.org/abs/1708.07747) (Han Xiao, Kashif Rasul, and
-Roland Vollgraf). Static article figures contain low-resolution thumbnails;
-the reproduction script downloads each dataset through `snedata`.
+Roland Vollgraf).

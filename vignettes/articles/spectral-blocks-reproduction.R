@@ -72,9 +72,14 @@ central_window <- function(coordinates) {
   )
   spans <- apply(limits, 2L, diff)
   spans[spans == 0] <- 1
+  outside <- coordinates[, 1L] < limits[1L, 1L] |
+    coordinates[, 1L] > limits[2L, 1L] |
+    coordinates[, 2L] < limits[1L, 2L] |
+    coordinates[, 2L] > limits[2L, 2L]
   list(
     xlim = limits[, 1L] + c(-0.04, 0.04) * spans[[1L]],
-    ylim = limits[, 2L] + c(-0.04, 0.04) * spans[[2L]]
+    ylim = limits[, 2L] + c(-0.04, 0.04) * spans[[2L]],
+    outside_count = sum(outside)
   )
 }
 
@@ -136,7 +141,14 @@ pixel_raster <- function(pixel_row, height, transpose = TRUE) {
   ))
 }
 
-draw_image_panel <- function(X, selected, height, columns, transpose = TRUE) {
+draw_image_panel <- function(
+  X,
+  selected,
+  height,
+  columns,
+  transpose = TRUE,
+  number_cex = 1.35
+) {
   rows <- ceiling(length(selected) / columns)
   graphics::plot.new()
   graphics::plot.window(xlim = c(0, columns), ylim = c(0, rows), asp = 1)
@@ -157,12 +169,21 @@ draw_image_panel <- function(X, selected, height, columns, transpose = TRUE) {
       labels = index,
       col = "#D55E00",
       font = 2,
-      cex = 1.05
+      cex = number_cex
     )
   }
 }
 
-draw_embedding_panel <- function(coordinates, selected, main) {
+draw_embedding_panel <- function(
+  coordinates,
+  selected,
+  main,
+  xlab,
+  ylab,
+  marker_cex = 3,
+  marker_lwd = 1.6,
+  text_cex = 2
+) {
   window <- central_window(coordinates)
   graphics::plot(
     coordinates,
@@ -172,8 +193,8 @@ draw_embedding_panel <- function(coordinates, selected, main) {
     asp = 1,
     xlim = window$xlim,
     ylim = window$ylim,
-    xlab = "LTSA mode 1",
-    ylab = "LTSA mode 2",
+    xlab = xlab,
+    ylab = ylab,
     main = main
   )
   graphics::points(
@@ -181,15 +202,15 @@ draw_embedding_panel <- function(coordinates, selected, main) {
     pch = 21,
     bg = "white",
     col = "#D55E00",
-    cex = 1.7,
-    lwd = 1.1
+    cex = marker_cex,
+    lwd = marker_lwd
   )
   graphics::text(
     coordinates[selected, , drop = FALSE],
     labels = seq_along(selected),
     col = "#D55E00",
     font = 2,
-    cex = 0.98
+    cex = text_cex
   )
 }
 
@@ -199,18 +220,39 @@ plot_pair_with_images <- function(
   height,
   count,
   columns,
+  pair,
   main,
   image_title,
-  transpose = TRUE
+  transpose = TRUE,
+  image_number_cex = 1.35
 ) {
   selected <- representative_indices(coordinates, count)
   old_par <- graphics::par(no.readonly = TRUE)
   on.exit(graphics::par(old_par))
   graphics::layout(matrix(c(1L, 1L, 1L, 2L, 2L), nrow = 1L))
   graphics::par(mar = c(4.4, 4.5, 4.2, 1.2))
-  draw_embedding_panel(coordinates, selected, main)
+  window <- central_window(coordinates)
+  draw_embedding_panel(
+    coordinates,
+    selected,
+    paste0(
+      main,
+      "\nRepresentative coverage; central 98% per axis; ",
+      window$outside_count,
+      " observations outside frame"
+    ),
+    paste0("same-operator LTSA mode ", pair[[1L]]),
+    paste0("same-operator LTSA mode ", pair[[2L]])
+  )
   graphics::par(mar = c(1, 1, 4.2, 1))
-  draw_image_panel(X, selected, height, columns, transpose)
+  draw_image_panel(
+    X,
+    selected,
+    height,
+    columns,
+    transpose,
+    image_number_cex
+  )
   graphics::title(main = image_title)
   invisible(selected)
 }
@@ -422,6 +464,7 @@ plot_pair_with_images(
   height = 28L,
   count = 16L,
   columns = 4L,
+  pair = 1:2,
   main = "Normalized LTSA digit 1: modes 1 and 2",
   image_title = "Representative digits from the map"
 )
@@ -432,6 +475,7 @@ plot_pair_with_images(
   height = 28L,
   count = 16L,
   columns = 4L,
+  pair = 2:3,
   main = "Normalized LTSA digit 1: modes 2 and 3",
   image_title = "Representative digits from the map"
 )
@@ -454,6 +498,11 @@ graphics::par(old_par)
 fashion <- snedata::download_fashion_mnist(as = "list")
 fashion_labels <- as.integer(as.character(fashion$meta$label))
 fashion_classes <- c(Trouser = 1L, Dress = 3L, Bag = 8L)
+fashion_teaching_labels <- c(
+  Trouser = "silhouette and leg shape",
+  Dress = "garment outline",
+  Bag = "handle and body shape"
+)
 
 fashion_fits <- lapply(seq_along(fashion_classes), function(index) {
   label <- fashion_classes[[index]]
@@ -478,17 +527,44 @@ names(fashion_fits) <- names(fashion_classes)
 old_par <- graphics::par(no.readonly = TRUE)
 graphics::layout(
   matrix(seq_len(6L), nrow = 3L, ncol = 2L, byrow = TRUE),
-  widths = c(1.05, 1.55)
+  widths = c(1, 1)
 )
 for (class_name in names(fashion_fits)) {
   class_result <- fashion_fits[[class_name]]
   coordinates <- class_result$fit$embedding
   selected <- representative_indices(coordinates, 12L)
+  window <- central_window(coordinates)
   graphics::par(mar = c(4, 4.2, 3.5, 1))
-  draw_embedding_panel(coordinates, selected, class_name)
+  draw_embedding_panel(
+    coordinates,
+    selected,
+    paste0(
+      class_name,
+      ": displayed pair\nCentral 98% per axis; ",
+      window$outside_count,
+      " outside"
+    ),
+    "same-operator LTSA mode 1",
+    "same-operator LTSA mode 2",
+    marker_cex = 2.8,
+    marker_lwd = 1.5,
+    text_cex = 1.9
+  )
   graphics::par(mar = c(0.8, 0.8, 3.5, 0.8))
-  draw_image_panel(class_result$images, selected, 28L, 6L)
-  graphics::title(main = "Representative images")
+  draw_image_panel(
+    class_result$images,
+    selected,
+    28L,
+    4L,
+    number_cex = 1.2
+  )
+  graphics::title(
+    main = paste0(
+      fashion_teaching_labels[[class_name]],
+      "; representative images"
+    ),
+    cex.main = 1.02
+  )
 }
 graphics::par(old_par)
 
