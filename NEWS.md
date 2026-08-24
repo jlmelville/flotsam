@@ -1,5 +1,10 @@
 # flotsam 0.0.0.9002
 
+* `ltsa()` can now retain extra nonconstant modes from one fixed LTSA operator
+  with `spectral_dim` and `output = "result"`. The usual `embedding` remains
+  `ndim`-dimensional, while `spectral_embedding` and `eigen$spectral` expose the
+  larger block and its separate boundary diagnostics. Defaults and ordinary
+  return shapes are unchanged.
 * Connected-component diagnostics now use a compiled union-find scan, avoiding
   substantial transient R allocation when assembling larger neighborhood
   graphs.

@@ -18,7 +18,8 @@ ltsa(
   n_threads = 1,
   n_assembly_threads = 1,
   verbose = FALSE,
-  ...
+  ...,
+  spectral_dim = ndim
 )
 }
 \arguments{
@@ -67,9 +68,13 @@ eigenvalue ordering matters.
 
 \item{eig_k}{Number of candidate vectors requested from the final
 eigensolver. If \code{NULL}, the default is
-\code{min(n - 1L, max(12L, ndim + 2L))}, where \code{n} is the number of
-observations. Must satisfy \verb{ndim + 1 <= eig_k < n}. Larger values give
-the Rayleigh-Ritz postprocessing a wider candidate span. Dense
+\code{min(n - 1L, max(12L, spectral_dim + 2L))}, where \code{n} is the number of
+observations. With the default \code{spectral_dim = ndim}, it must satisfy
+\verb{ndim + 1 <= eig_k < n}; the minimum can report that no spare boundary
+direction is available. When \code{spectral_dim > ndim}, it must instead
+satisfy \verb{spectral_dim + 2 <= eig_k < n}, leaving room for both the known
+null direction and a boundary mode after the retained block. Larger values
+give the Rayleigh-Ritz postprocessing a wider candidate span. Dense
 eigenanalysis computes the full eigensystem, then retains the lowest
 \code{eig_k} candidate vectors for that postprocessing.}
 
@@ -77,7 +82,9 @@ eigenanalysis computes the full eigensystem, then retains the lowest
 \itemize{
 \item \code{"embedding"} Return the embedding matrix. This is the default.
 \item \code{"result"} Return a list containing the embedding, compact eigenanalysis
-diagnostics, assembly diagnostics, and optionally \code{B}.
+diagnostics, assembly diagnostics, and optionally \code{B}. When
+\code{spectral_dim > ndim}, it also contains \code{spectral_embedding} and retained
+block diagnostics in \code{eigen$spectral}.
 \item \code{"B"} Skip final eigenanalysis and return the raw alignment matrix when
 \code{normalize = FALSE}, or the normalized operator described above when
 \code{normalize = TRUE}.
@@ -112,6 +119,13 @@ about avoiding oversubscription when BLAS is also multithreaded.}
 
 \item{...}{Optional eigensolver and diagnostic controls. See the
 \verb{Eigensolver controls} section.}
+
+\item{spectral_dim}{Number of nonconstant modes to retain from the fixed LTSA
+operator. It defaults to \code{ndim}. A value greater than \code{ndim} requires
+\code{output = "result"}; the displayed \code{embedding} remains \code{ndim}-dimensional
+and the larger block is returned as \code{spectral_embedding}. An expanded
+block can contain at most \code{n - 3} modes so the candidate span can include
+the known null direction and a retained-boundary mode.}
 }
 \value{
 With \code{output = "embedding"}, an \code{n} by \code{ndim} embedding matrix. With
@@ -119,8 +133,11 @@ With \code{output = "embedding"}, an \code{n} by \code{ndim} embedding matrix. W
 the normalized operator supplied to eigenanalysis when \code{normalize = TRUE}.
 With \code{output = "result"}, a list containing \code{embedding}, compact \code{eigen}
 solve information, and \code{assembly} neighbor, rank-deficiency, component,
-route, and thread information; the raw, unnormalized \code{B} is also included
-when \code{include_B = TRUE}.
+route, and thread information. When \code{spectral_dim > ndim},
+\code{spectral_embedding} contains the retained \code{n} by \code{spectral_dim} block,
+\code{eigen} continues to describe the displayed prefix, and \code{eigen$spectral}
+describes the retained block. Both scopes report a scaled boundary gap.
+The raw, unnormalized \code{B} is also included when \code{include_B = TRUE}.
 }
 \description{
 Apply the Local Tangent Space Alignment (LTSA) method (Zhang and Zha, 2004)
@@ -135,8 +152,11 @@ nullspace can contain other directions.
 With \code{output = "result"}, \code{eigen$status} and \code{eigen$messages} report solve
 problems. If \code{eigen$diagnostics$near_zero_block_truncated} is \code{TRUE}, the
 requested dimensions cut through an observed near-zero eigenspace, so
-individual coordinates may not be identifiable; inspect the selected
-subspace or increase \code{ndim}. A positive \code{assembly$rank_deficient_count} and
+individual coordinates may not be identifiable. With \code{output = "result"},
+set \code{spectral_dim} above \code{ndim} to retain more modes from the same operator
+for subspace-based inspection. Increasing \code{ndim} instead changes the local
+tangent dimension and rebuilds the operator. A positive
+\code{assembly$rank_deficient_count} and
 its \code{assembly$min_local_rank} suggest reconsidering the neighborhoods or
 input. If \code{assembly$component_count} exceeds one, use
 \code{assembly$component_sizes} and \code{assembly$component_membership} to reconnect
@@ -233,6 +253,20 @@ iris_result$eigen$status
 iris_result$eigen$messages
 iris_result$eigen$method
 iris_result$eigen$backend$name
+
+# Retain extra modes without changing the local tangent dimension.
+iris_block <- ltsa(
+  small_iris,
+  n_neighbors = 12,
+  nn_method = "exact",
+  eig_method = "eig",
+  eig_k = 6,
+  output = "result",
+  spectral_dim = 4
+)
+dim(iris_block$spectral_embedding)
+iris_block$eigen$diagnostics$scaled_boundary_gap
+iris_block$eigen$spectral$diagnostics$scaled_boundary_gap
 
 # Return the raw LTSA alignment matrix.
 iris_B <- ltsa(

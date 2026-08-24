@@ -8,7 +8,7 @@ default_eig_k <- function(ndim, n) {
   min(n - 1L, max(12L, ndim + 2L))
 }
 
-validate_eig_k <- function(eig_k, ndim, n) {
+validate_eig_k <- function(eig_k, ndim, n, dimension_name = "ndim") {
   if (is.null(eig_k)) {
     return(default_eig_k(ndim = ndim, n = n))
   }
@@ -25,9 +25,36 @@ validate_eig_k <- function(eig_k, ndim, n) {
       eig_k < ndim + 1L ||
       eig_k >= n
   ) {
-    stop("eig_k must satisfy ndim + 1 <= eig_k < n", call. = FALSE)
+    stop(
+      "eig_k must satisfy ",
+      dimension_name,
+      " + 1 <= eig_k < n",
+      call. = FALSE
+    )
   }
   as.integer(eig_k)
+}
+
+validate_spectral_eig_k <- function(eig_k, ndim, spectral_dim, n) {
+  dimension_name <- if (spectral_dim > ndim) {
+    "spectral_dim"
+  } else {
+    "ndim"
+  }
+  eig_k <- validate_eig_k(
+    eig_k = eig_k,
+    ndim = spectral_dim,
+    n = n,
+    dimension_name = dimension_name
+  )
+  if (spectral_dim > ndim && eig_k < spectral_dim + 2L) {
+    stop(
+      "eig_k must satisfy spectral_dim + 2 <= eig_k < n when ",
+      "spectral_dim exceeds ndim",
+      call. = FALSE
+    )
+  }
+  eig_k
 }
 
 symmetrize_operator <- function(B) {

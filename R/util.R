@@ -54,6 +54,7 @@ validate_arguments <- function(
   X,
   n_neighbors,
   ndim,
+  spectral_dim,
   nn_method,
   nn_idx,
   eig_method,
@@ -77,6 +78,16 @@ validate_arguments <- function(
   }
 
   ndim <- check_whole_number(ndim, "ndim", min = 1)
+  spectral_dim <- check_whole_number(spectral_dim, "spectral_dim", min = 1)
+  if (spectral_dim < ndim) {
+    stop("spectral_dim must be at least ndim", call. = FALSE)
+  }
+  if (spectral_dim > ndim && !identical(output, "result")) {
+    stop(
+      "spectral_dim can exceed ndim only when output = \"result\"",
+      call. = FALSE
+    )
+  }
   if (!is.null(n_neighbors)) {
     n_neighbors <- check_whole_number(n_neighbors, "n_neighbors", min = 1)
   }
@@ -108,7 +119,19 @@ validate_arguments <- function(
   if (ndim >= nrow(X)) {
     stop("ndim must be less than the number of observations", call. = FALSE)
   }
-  eig_k <- validate_eig_k(eig_k, ndim = ndim, n = nrow(X))
+  if (spectral_dim > ndim && spectral_dim >= nrow(X) - 2L) {
+    stop(
+      "spectral_dim must be at most nrow(X) - 3 so eigenanalysis has a ",
+      "spare boundary mode",
+      call. = FALSE
+    )
+  }
+  eig_k <- validate_spectral_eig_k(
+    eig_k = eig_k,
+    ndim = ndim,
+    spectral_dim = spectral_dim,
+    n = nrow(X)
+  )
 
   if (is.null(nn_idx)) {
     if (is.null(n_neighbors)) {
@@ -139,6 +162,7 @@ validate_arguments <- function(
     n_neighbors = n_neighbors,
     nn_idx = nn_idx,
     ndim = ndim,
+    spectral_dim = spectral_dim,
     nn_method = nn_method,
     eig_method = eig_method,
     eig_k = eig_k,

@@ -4,6 +4,14 @@
 # own Ritz extraction internally, but this step answers the LTSA-specific
 # question: within the returned candidate span, which vectors best diagonalize
 # the original LTSA matrix after the known constant null direction is removed?
+scaled_ritz_boundary_gap <- function(values, boundary_dim, lambda_max) {
+  if (length(values) <= boundary_dim) {
+    return(NA_real_)
+  }
+  boundary_gap <- values[[boundary_dim + 1L]] - values[[boundary_dim]]
+  boundary_gap / residual_scale(lambda_max)
+}
+
 select_ritz_vectors <- function(
   B,
   vectors,
@@ -78,12 +86,7 @@ select_ritz_vectors <- function(
   # Residual, gap, and near-zero diagnostics
   residuals_all <- ritz_residuals(B, vectors_all, values_all, lambda_max)
 
-  if (length(values_all) > ndim) {
-    boundary_gap <- values_all[[ndim + 1L]] - values_all[[ndim]]
-    global_gap <- boundary_gap / residual_scale(lambda_max)
-  } else {
-    global_gap <- NA_real_
-  }
+  global_gap <- scaled_ritz_boundary_gap(values_all, ndim, lambda_max)
 
   take <- seq_len(ndim)
   near_zero_nonconstant_count <- sum(abs(values_all) <= near_zero_tol)
@@ -96,6 +99,23 @@ select_ritz_vectors <- function(
     rank_after_null = rank_after_null,
     global_gap = global_gap,
     near_zero_nonconstant_count = near_zero_nonconstant_count
+  )
+}
+
+prefix_ritz_result <- function(ritz_result, ndim, lambda_max) {
+  take <- seq_len(ndim)
+  list(
+    vectors = ritz_result$vectors[, take, drop = FALSE],
+    values = ritz_result$values[take],
+    ritz_values = ritz_result$ritz_values,
+    residuals = ritz_result$residuals[take],
+    rank_after_null = ritz_result$rank_after_null,
+    global_gap = scaled_ritz_boundary_gap(
+      ritz_result$ritz_values,
+      ndim,
+      lambda_max
+    ),
+    near_zero_nonconstant_count = ritz_result$near_zero_nonconstant_count
   )
 }
 
@@ -176,7 +196,10 @@ diagnose_ritz <- function(
   eig_k,
   ndim,
   resid_tol,
-  gap_tol
+  gap_tol,
+  dimension_name = "ndim",
+  block_name = "requested embedding",
+  boundary_name = "selected block"
 ) {
   backend <- backend_metadata(candidate_result)
   lambda_max <- candidate_result$lambda_max %||% NA_real_
@@ -192,7 +215,11 @@ diagnose_ritz <- function(
   if (length(values) < ndim || ncol(ritz_result$vectors) < ndim) {
     invalid_messages <- c(
       invalid_messages,
-      "Fewer than ndim usable nonconstant Ritz vectors were selected."
+      paste0(
+        "Fewer than ",
+        dimension_name,
+        " usable nonconstant Ritz vectors were selected."
+      )
     )
   }
   if (ritz_result$rank_after_null < ndim) {
@@ -201,7 +228,9 @@ diagnose_ritz <- function(
       paste0(
         "Post-null candidate rank ",
         ritz_result$rank_after_null,
-        " is less than ndim = ",
+        " is less than ",
+        dimension_name,
+        " = ",
         ndim,
         "."
       )
@@ -235,20 +264,28 @@ diagnose_ritz <- function(
     warning_messages <- c(
       warning_messages,
       paste0(
-        "Candidate span contains fewer than ndim + 1 post-null Ritz ",
+        "Candidate span contains fewer than ",
+        dimension_name,
+        " + 1 post-null Ritz ",
         "values; no spare boundary direction is available."
       )
     )
   } else if (!is.finite(ritz_result$global_gap)) {
     warning_messages <- c(
       warning_messages,
-      "Ritz boundary gap after the selected block is unavailable."
+      paste0(
+        "Ritz boundary gap after the ",
+        boundary_name,
+        " is unavailable."
+      )
     )
   } else if (ritz_result$global_gap < gap_tol) {
     warning_messages <- c(
       warning_messages,
       paste0(
-        "Weak Ritz boundary gap after the selected block: ",
+        "Weak Ritz boundary gap after the ",
+        boundary_name,
+        ": ",
         signif(ritz_result$global_gap, 4),
         " < ",
         signif(gap_tol, 4),
@@ -266,11 +303,14 @@ diagnose_ritz <- function(
     warning_messages <- c(
       warning_messages,
       paste0(
-        "The requested embedding cuts through a larger near-zero eigenspace; ",
+        "The ",
+        block_name,
+        " cuts through a larger near-zero eigenspace; ",
         "individual coordinates are not uniquely identifiable. Increase ",
-        "eig_k to inspect more of the observed block, or use a larger ndim ",
-        "or subspace-based downstream analysis. A stricter tolerance does ",
-        "not resolve a genuine repeated eigenspace."
+        "eig_k to inspect more of the observed block, or request a larger ",
+        "spectral_dim with output = \"result\" to retain more modes from the ",
+        "same operator. A stricter tolerance does not resolve a genuine ",
+        "repeated eigenspace."
       )
     )
   }
@@ -416,7 +456,8 @@ run_eigenanalysis <- function(
   eig_k,
   eigen_args,
   null_vector,
-  verbose
+  verbose,
+  spectral_dim = ndim
 ) {
   provider <- switch(
     eig_method,
@@ -450,7 +491,8 @@ run_eigenanalysis <- function(
     eig_k = eig_k,
     resid_tol = eigen_args$resid_tol,
     gap_tol = eigen_args$gap_tol,
-    verbose = verbose
+    verbose = verbose,
+    spectral_dim = spectral_dim
   )
 }
 
@@ -463,9 +505,15 @@ solve_with_ritz <- function(
   eig_k = NULL,
   resid_tol = 1e-5,
   gap_tol = 1e-4,
-  verbose = FALSE
+  verbose = FALSE,
+  spectral_dim = ndim
 ) {
-  eig_k <- validate_eig_k(eig_k = eig_k, ndim = ndim, n = nrow(B))
+  eig_k <- validate_spectral_eig_k(
+    eig_k = eig_k,
+    ndim = ndim,
+    spectral_dim = spectral_dim,
+    n = nrow(B)
+  )
   B <- symmetrize_operator(B)
   provider_args <- provider_args %||% list()
   candidate_result <- do.call(
@@ -484,20 +532,29 @@ solve_with_ritz <- function(
   ritz_result <- select_ritz_vectors(
     B = B,
     vectors = candidate_result$vectors,
-    ndim = ndim,
+    ndim = spectral_dim,
     null_vector = null_vector,
     lambda_max = lambda_max
   )
+  displayed_ritz_result <- if (spectral_dim > ndim) {
+    prefix_ritz_result(
+      ritz_result = ritz_result,
+      ndim = ndim,
+      lambda_max = lambda_max
+    )
+  } else {
+    ritz_result
+  }
   eigen <- diagnose_ritz(
     candidate_result = candidate_result,
-    ritz_result = ritz_result,
+    ritz_result = displayed_ritz_result,
     eig_k = eig_k,
     ndim = ndim,
     resid_tol = resid_tol,
     gap_tol = gap_tol
   )
 
-  list(
+  result <- list(
     vectors = ritz_result$vectors,
     values = ritz_result$values,
     eigen = eigen,
@@ -505,4 +562,20 @@ solve_with_ritz <- function(
     lambda_max = eigen$lambda_max,
     eig_k = eig_k
   )
+  if (spectral_dim > ndim) {
+    result$spectral_eigen <- diagnose_ritz(
+      candidate_result = candidate_result,
+      ritz_result = ritz_result,
+      eig_k = eig_k,
+      ndim = spectral_dim,
+      resid_tol = resid_tol,
+      gap_tol = gap_tol,
+      dimension_name = "spectral_dim",
+      block_name = "retained spectral block",
+      boundary_name = "retained block"
+    )
+    result$displayed_boundary_gap <- displayed_ritz_result$global_gap
+    result$spectral_boundary_gap <- ritz_result$global_gap
+  }
+  result
 }
