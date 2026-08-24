@@ -198,7 +198,7 @@ repeated pairs easy to see.</p>
 <span><span class="va">circle_fit</span><span class="op">$</span><span class="va">eigen</span><span class="op">$</span><span class="va">status</span></span>
 <span><span class="co">#&gt; [1] "warning"</span></span>
 <span><span class="va">circle_fit</span><span class="op">$</span><span class="va">eigen</span><span class="op">$</span><span class="va">messages</span></span>
-<span><span class="co">#&gt; [1] "Weak Ritz boundary gap after the selected block: 6.808e-18 &lt; 1e-04."</span></span></code></pre></div>
+<span><span class="co">#&gt; [1] "Weak Ritz boundary gap after the selected block: 1.293e-17 &lt; 1e-04."</span></span></code></pre></div>
 <div class="figure" style="text-align: center">
 <img src="spectral-blocks_files/figure-html/circle-figure-1.png" class="r-plt" alt="The input circle, its one-dimensional LTSA display, the first two modes from the same operator, and the low spectrum. The mode pair follows the complete periodic progression." width="1056"><p class="caption">
 The input circle, its one-dimensional LTSA display, the first two modes
@@ -423,9 +423,14 @@ datasets)
 <span>  <span class="op">)</span></span>
 <span>  <span class="va">spans</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/apply.html" class="external-link">apply</a></span><span class="op">(</span><span class="va">limits</span>, <span class="fl">2L</span>, <span class="va">diff</span><span class="op">)</span></span>
 <span>  <span class="va">spans</span><span class="op">[</span><span class="va">spans</span> <span class="op">==</span> <span class="fl">0</span><span class="op">]</span> <span class="op">&lt;-</span> <span class="fl">1</span></span>
+<span>  <span class="va">outside</span> <span class="op">&lt;-</span> <span class="va">coordinates</span><span class="op">[</span>, <span class="fl">1L</span><span class="op">]</span> <span class="op">&lt;</span> <span class="va">limits</span><span class="op">[</span><span class="fl">1L</span>, <span class="fl">1L</span><span class="op">]</span> <span class="op">|</span></span>
+<span>    <span class="va">coordinates</span><span class="op">[</span>, <span class="fl">1L</span><span class="op">]</span> <span class="op">&gt;</span> <span class="va">limits</span><span class="op">[</span><span class="fl">2L</span>, <span class="fl">1L</span><span class="op">]</span> <span class="op">|</span></span>
+<span>    <span class="va">coordinates</span><span class="op">[</span>, <span class="fl">2L</span><span class="op">]</span> <span class="op">&lt;</span> <span class="va">limits</span><span class="op">[</span><span class="fl">1L</span>, <span class="fl">2L</span><span class="op">]</span> <span class="op">|</span></span>
+<span>    <span class="va">coordinates</span><span class="op">[</span>, <span class="fl">2L</span><span class="op">]</span> <span class="op">&gt;</span> <span class="va">limits</span><span class="op">[</span><span class="fl">2L</span>, <span class="fl">2L</span><span class="op">]</span></span>
 <span>  <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span></span>
 <span>    xlim <span class="op">=</span> <span class="va">limits</span><span class="op">[</span>, <span class="fl">1L</span><span class="op">]</span> <span class="op">+</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="op">-</span><span class="fl">0.04</span>, <span class="fl">0.04</span><span class="op">)</span> <span class="op">*</span> <span class="va">spans</span><span class="op">[[</span><span class="fl">1L</span><span class="op">]</span><span class="op">]</span>,</span>
-<span>    ylim <span class="op">=</span> <span class="va">limits</span><span class="op">[</span>, <span class="fl">2L</span><span class="op">]</span> <span class="op">+</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="op">-</span><span class="fl">0.04</span>, <span class="fl">0.04</span><span class="op">)</span> <span class="op">*</span> <span class="va">spans</span><span class="op">[[</span><span class="fl">2L</span><span class="op">]</span><span class="op">]</span></span>
+<span>    ylim <span class="op">=</span> <span class="va">limits</span><span class="op">[</span>, <span class="fl">2L</span><span class="op">]</span> <span class="op">+</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="op">-</span><span class="fl">0.04</span>, <span class="fl">0.04</span><span class="op">)</span> <span class="op">*</span> <span class="va">spans</span><span class="op">[[</span><span class="fl">2L</span><span class="op">]</span><span class="op">]</span>,</span>
+<span>    outside_count <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/sum.html" class="external-link">sum</a></span><span class="op">(</span><span class="va">outside</span><span class="op">)</span></span>
 <span>  <span class="op">)</span></span>
 <span><span class="op">}</span></span>
 <span></span>
@@ -487,7 +492,14 @@ datasets)
 <span>  <span class="op">)</span><span class="op">)</span></span>
 <span><span class="op">}</span></span>
 <span></span>
-<span><span class="va">draw_image_panel</span> <span class="op">&lt;-</span> <span class="kw">function</span><span class="op">(</span><span class="va">X</span>, <span class="va">selected</span>, <span class="va">height</span>, <span class="va">columns</span>, <span class="va">transpose</span> <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span> <span class="op">{</span></span>
+<span><span class="va">draw_image_panel</span> <span class="op">&lt;-</span> <span class="kw">function</span><span class="op">(</span></span>
+<span>  <span class="va">X</span>,</span>
+<span>  <span class="va">selected</span>,</span>
+<span>  <span class="va">height</span>,</span>
+<span>  <span class="va">columns</span>,</span>
+<span>  <span class="va">transpose</span> <span class="op">=</span> <span class="cn">TRUE</span>,</span>
+<span>  <span class="va">number_cex</span> <span class="op">=</span> <span class="fl">1.35</span></span>
+<span><span class="op">)</span> <span class="op">{</span></span>
 <span>  <span class="va">rows</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/Round.html" class="external-link">ceiling</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/length.html" class="external-link">length</a></span><span class="op">(</span><span class="va">selected</span><span class="op">)</span> <span class="op">/</span> <span class="va">columns</span><span class="op">)</span></span>
 <span>  <span class="fu">graphics</span><span class="fu">::</span><span class="fu"><a href="https://rdrr.io/r/graphics/frame.html" class="external-link">plot.new</a></span><span class="op">(</span><span class="op">)</span></span>
 <span>  <span class="fu">graphics</span><span class="fu">::</span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.window.html" class="external-link">plot.window</a></span><span class="op">(</span>xlim <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">0</span>, <span class="va">columns</span><span class="op">)</span>, ylim <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">0</span>, <span class="va">rows</span><span class="op">)</span>, asp <span class="op">=</span> <span class="fl">1</span><span class="op">)</span></span>
@@ -508,12 +520,21 @@ datasets)
 <span>      labels <span class="op">=</span> <span class="va">index</span>,</span>
 <span>      col <span class="op">=</span> <span class="st">"#D55E00"</span>,</span>
 <span>      font <span class="op">=</span> <span class="fl">2</span>,</span>
-<span>      cex <span class="op">=</span> <span class="fl">1.05</span></span>
+<span>      cex <span class="op">=</span> <span class="va">number_cex</span></span>
 <span>    <span class="op">)</span></span>
 <span>  <span class="op">}</span></span>
 <span><span class="op">}</span></span>
 <span></span>
-<span><span class="va">draw_embedding_panel</span> <span class="op">&lt;-</span> <span class="kw">function</span><span class="op">(</span><span class="va">coordinates</span>, <span class="va">selected</span>, <span class="va">main</span><span class="op">)</span> <span class="op">{</span></span>
+<span><span class="va">draw_embedding_panel</span> <span class="op">&lt;-</span> <span class="kw">function</span><span class="op">(</span></span>
+<span>  <span class="va">coordinates</span>,</span>
+<span>  <span class="va">selected</span>,</span>
+<span>  <span class="va">main</span>,</span>
+<span>  <span class="va">xlab</span>,</span>
+<span>  <span class="va">ylab</span>,</span>
+<span>  <span class="va">marker_cex</span> <span class="op">=</span> <span class="fl">3</span>,</span>
+<span>  <span class="va">marker_lwd</span> <span class="op">=</span> <span class="fl">1.6</span>,</span>
+<span>  <span class="va">text_cex</span> <span class="op">=</span> <span class="fl">2</span></span>
+<span><span class="op">)</span> <span class="op">{</span></span>
 <span>  <span class="va">window</span> <span class="op">&lt;-</span> <span class="fu">central_window</span><span class="op">(</span><span class="va">coordinates</span><span class="op">)</span></span>
 <span>  <span class="fu">graphics</span><span class="fu">::</span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span></span>
 <span>    <span class="va">coordinates</span>,</span>
@@ -523,8 +544,8 @@ datasets)
 <span>    asp <span class="op">=</span> <span class="fl">1</span>,</span>
 <span>    xlim <span class="op">=</span> <span class="va">window</span><span class="op">$</span><span class="va">xlim</span>,</span>
 <span>    ylim <span class="op">=</span> <span class="va">window</span><span class="op">$</span><span class="va">ylim</span>,</span>
-<span>    xlab <span class="op">=</span> <span class="st">"LTSA mode 1"</span>,</span>
-<span>    ylab <span class="op">=</span> <span class="st">"LTSA mode 2"</span>,</span>
+<span>    xlab <span class="op">=</span> <span class="va">xlab</span>,</span>
+<span>    ylab <span class="op">=</span> <span class="va">ylab</span>,</span>
 <span>    main <span class="op">=</span> <span class="va">main</span></span>
 <span>  <span class="op">)</span></span>
 <span>  <span class="fu">graphics</span><span class="fu">::</span><span class="fu"><a href="https://rdrr.io/r/graphics/points.html" class="external-link">points</a></span><span class="op">(</span></span>
@@ -532,15 +553,15 @@ datasets)
 <span>    pch <span class="op">=</span> <span class="fl">21</span>,</span>
 <span>    bg <span class="op">=</span> <span class="st">"white"</span>,</span>
 <span>    col <span class="op">=</span> <span class="st">"#D55E00"</span>,</span>
-<span>    cex <span class="op">=</span> <span class="fl">1.7</span>,</span>
-<span>    lwd <span class="op">=</span> <span class="fl">1.1</span></span>
+<span>    cex <span class="op">=</span> <span class="va">marker_cex</span>,</span>
+<span>    lwd <span class="op">=</span> <span class="va">marker_lwd</span></span>
 <span>  <span class="op">)</span></span>
 <span>  <span class="fu">graphics</span><span class="fu">::</span><span class="fu"><a href="https://rdrr.io/r/graphics/text.html" class="external-link">text</a></span><span class="op">(</span></span>
 <span>    <span class="va">coordinates</span><span class="op">[</span><span class="va">selected</span>, , drop <span class="op">=</span> <span class="cn">FALSE</span><span class="op">]</span>,</span>
 <span>    labels <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/seq.html" class="external-link">seq_along</a></span><span class="op">(</span><span class="va">selected</span><span class="op">)</span>,</span>
 <span>    col <span class="op">=</span> <span class="st">"#D55E00"</span>,</span>
 <span>    font <span class="op">=</span> <span class="fl">2</span>,</span>
-<span>    cex <span class="op">=</span> <span class="fl">0.98</span></span>
+<span>    cex <span class="op">=</span> <span class="va">text_cex</span></span>
 <span>  <span class="op">)</span></span>
 <span><span class="op">}</span></span>
 <span></span>
@@ -550,18 +571,39 @@ datasets)
 <span>  <span class="va">height</span>,</span>
 <span>  <span class="va">count</span>,</span>
 <span>  <span class="va">columns</span>,</span>
+<span>  <span class="va">pair</span>,</span>
 <span>  <span class="va">main</span>,</span>
 <span>  <span class="va">image_title</span>,</span>
-<span>  <span class="va">transpose</span> <span class="op">=</span> <span class="cn">TRUE</span></span>
+<span>  <span class="va">transpose</span> <span class="op">=</span> <span class="cn">TRUE</span>,</span>
+<span>  <span class="va">image_number_cex</span> <span class="op">=</span> <span class="fl">1.35</span></span>
 <span><span class="op">)</span> <span class="op">{</span></span>
 <span>  <span class="va">selected</span> <span class="op">&lt;-</span> <span class="fu">representative_indices</span><span class="op">(</span><span class="va">coordinates</span>, <span class="va">count</span><span class="op">)</span></span>
 <span>  <span class="va">old_par</span> <span class="op">&lt;-</span> <span class="fu">graphics</span><span class="fu">::</span><span class="fu"><a href="https://rdrr.io/r/graphics/par.html" class="external-link">par</a></span><span class="op">(</span>no.readonly <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span>
 <span>  <span class="fu"><a href="https://rdrr.io/r/base/on.exit.html" class="external-link">on.exit</a></span><span class="op">(</span><span class="fu">graphics</span><span class="fu">::</span><span class="fu"><a href="https://rdrr.io/r/graphics/par.html" class="external-link">par</a></span><span class="op">(</span><span class="va">old_par</span><span class="op">)</span><span class="op">)</span></span>
 <span>  <span class="fu">graphics</span><span class="fu">::</span><span class="fu"><a href="https://rdrr.io/r/graphics/layout.html" class="external-link">layout</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/matrix.html" class="external-link">matrix</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">1L</span>, <span class="fl">1L</span>, <span class="fl">1L</span>, <span class="fl">2L</span>, <span class="fl">2L</span><span class="op">)</span>, nrow <span class="op">=</span> <span class="fl">1L</span><span class="op">)</span><span class="op">)</span></span>
 <span>  <span class="fu">graphics</span><span class="fu">::</span><span class="fu"><a href="https://rdrr.io/r/graphics/par.html" class="external-link">par</a></span><span class="op">(</span>mar <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">4.4</span>, <span class="fl">4.5</span>, <span class="fl">4.2</span>, <span class="fl">1.2</span><span class="op">)</span><span class="op">)</span></span>
-<span>  <span class="fu">draw_embedding_panel</span><span class="op">(</span><span class="va">coordinates</span>, <span class="va">selected</span>, <span class="va">main</span><span class="op">)</span></span>
+<span>  <span class="va">window</span> <span class="op">&lt;-</span> <span class="fu">central_window</span><span class="op">(</span><span class="va">coordinates</span><span class="op">)</span></span>
+<span>  <span class="fu">draw_embedding_panel</span><span class="op">(</span></span>
+<span>    <span class="va">coordinates</span>,</span>
+<span>    <span class="va">selected</span>,</span>
+<span>    <span class="fu"><a href="https://rdrr.io/r/base/paste.html" class="external-link">paste0</a></span><span class="op">(</span></span>
+<span>      <span class="va">main</span>,</span>
+<span>      <span class="st">"\nRepresentative coverage; central 98% per axis; "</span>,</span>
+<span>      <span class="va">window</span><span class="op">$</span><span class="va">outside_count</span>,</span>
+<span>      <span class="st">" observations outside frame"</span></span>
+<span>    <span class="op">)</span>,</span>
+<span>    <span class="fu"><a href="https://rdrr.io/r/base/paste.html" class="external-link">paste0</a></span><span class="op">(</span><span class="st">"same-operator LTSA mode "</span>, <span class="va">pair</span><span class="op">[[</span><span class="fl">1L</span><span class="op">]</span><span class="op">]</span><span class="op">)</span>,</span>
+<span>    <span class="fu"><a href="https://rdrr.io/r/base/paste.html" class="external-link">paste0</a></span><span class="op">(</span><span class="st">"same-operator LTSA mode "</span>, <span class="va">pair</span><span class="op">[[</span><span class="fl">2L</span><span class="op">]</span><span class="op">]</span><span class="op">)</span></span>
+<span>  <span class="op">)</span></span>
 <span>  <span class="fu">graphics</span><span class="fu">::</span><span class="fu"><a href="https://rdrr.io/r/graphics/par.html" class="external-link">par</a></span><span class="op">(</span>mar <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">1</span>, <span class="fl">1</span>, <span class="fl">4.2</span>, <span class="fl">1</span><span class="op">)</span><span class="op">)</span></span>
-<span>  <span class="fu">draw_image_panel</span><span class="op">(</span><span class="va">X</span>, <span class="va">selected</span>, <span class="va">height</span>, <span class="va">columns</span>, <span class="va">transpose</span><span class="op">)</span></span>
+<span>  <span class="fu">draw_image_panel</span><span class="op">(</span></span>
+<span>    <span class="va">X</span>,</span>
+<span>    <span class="va">selected</span>,</span>
+<span>    <span class="va">height</span>,</span>
+<span>    <span class="va">columns</span>,</span>
+<span>    <span class="va">transpose</span>,</span>
+<span>    <span class="va">image_number_cex</span></span>
+<span>  <span class="op">)</span></span>
 <span>  <span class="fu">graphics</span><span class="fu">::</span><span class="fu"><a href="https://rdrr.io/r/graphics/title.html" class="external-link">title</a></span><span class="op">(</span>main <span class="op">=</span> <span class="va">image_title</span><span class="op">)</span></span>
 <span>  <span class="fu"><a href="https://rdrr.io/r/base/invisible.html" class="external-link">invisible</a></span><span class="op">(</span><span class="va">selected</span><span class="op">)</span></span>
 <span><span class="op">}</span></span>
@@ -773,6 +815,7 @@ datasets)
 <span>  height <span class="op">=</span> <span class="fl">28L</span>,</span>
 <span>  count <span class="op">=</span> <span class="fl">16L</span>,</span>
 <span>  columns <span class="op">=</span> <span class="fl">4L</span>,</span>
+<span>  pair <span class="op">=</span> <span class="fl">1</span><span class="op">:</span><span class="fl">2</span>,</span>
 <span>  main <span class="op">=</span> <span class="st">"Normalized LTSA digit 1: modes 1 and 2"</span>,</span>
 <span>  image_title <span class="op">=</span> <span class="st">"Representative digits from the map"</span></span>
 <span><span class="op">)</span></span>
@@ -783,6 +826,7 @@ datasets)
 <span>  height <span class="op">=</span> <span class="fl">28L</span>,</span>
 <span>  count <span class="op">=</span> <span class="fl">16L</span>,</span>
 <span>  columns <span class="op">=</span> <span class="fl">4L</span>,</span>
+<span>  pair <span class="op">=</span> <span class="fl">2</span><span class="op">:</span><span class="fl">3</span>,</span>
 <span>  main <span class="op">=</span> <span class="st">"Normalized LTSA digit 1: modes 2 and 3"</span>,</span>
 <span>  image_title <span class="op">=</span> <span class="st">"Representative digits from the map"</span></span>
 <span><span class="op">)</span></span>
@@ -805,6 +849,11 @@ datasets)
 <span><span class="va">fashion</span> <span class="op">&lt;-</span> <span class="fu">snedata</span><span class="fu">::</span><span class="fu">download_fashion_mnist</span><span class="op">(</span>as <span class="op">=</span> <span class="st">"list"</span><span class="op">)</span></span>
 <span><span class="va">fashion_labels</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/integer.html" class="external-link">as.integer</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/character.html" class="external-link">as.character</a></span><span class="op">(</span><span class="va">fashion</span><span class="op">$</span><span class="va">meta</span><span class="op">$</span><span class="va">label</span><span class="op">)</span><span class="op">)</span></span>
 <span><span class="va">fashion_classes</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span>Trouser <span class="op">=</span> <span class="fl">1L</span>, Dress <span class="op">=</span> <span class="fl">3L</span>, Bag <span class="op">=</span> <span class="fl">8L</span><span class="op">)</span></span>
+<span><span class="va">fashion_teaching_labels</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span></span>
+<span>  Trouser <span class="op">=</span> <span class="st">"silhouette and leg shape"</span>,</span>
+<span>  Dress <span class="op">=</span> <span class="st">"garment outline"</span>,</span>
+<span>  Bag <span class="op">=</span> <span class="st">"handle and body shape"</span></span>
+<span><span class="op">)</span></span>
 <span></span>
 <span><span class="va">fashion_fits</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/lapply.html" class="external-link">lapply</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/seq.html" class="external-link">seq_along</a></span><span class="op">(</span><span class="va">fashion_classes</span><span class="op">)</span>, <span class="kw">function</span><span class="op">(</span><span class="va">index</span><span class="op">)</span> <span class="op">{</span></span>
 <span>  <span class="va">label</span> <span class="op">&lt;-</span> <span class="va">fashion_classes</span><span class="op">[[</span><span class="va">index</span><span class="op">]</span><span class="op">]</span></span>
@@ -829,17 +878,44 @@ datasets)
 <span><span class="va">old_par</span> <span class="op">&lt;-</span> <span class="fu">graphics</span><span class="fu">::</span><span class="fu"><a href="https://rdrr.io/r/graphics/par.html" class="external-link">par</a></span><span class="op">(</span>no.readonly <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span>
 <span><span class="fu">graphics</span><span class="fu">::</span><span class="fu"><a href="https://rdrr.io/r/graphics/layout.html" class="external-link">layout</a></span><span class="op">(</span></span>
 <span>  <span class="fu"><a href="https://rdrr.io/r/base/matrix.html" class="external-link">matrix</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/seq.html" class="external-link">seq_len</a></span><span class="op">(</span><span class="fl">6L</span><span class="op">)</span>, nrow <span class="op">=</span> <span class="fl">3L</span>, ncol <span class="op">=</span> <span class="fl">2L</span>, byrow <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span>,</span>
-<span>  widths <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">1.05</span>, <span class="fl">1.55</span><span class="op">)</span></span>
+<span>  widths <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">1</span>, <span class="fl">1</span><span class="op">)</span></span>
 <span><span class="op">)</span></span>
 <span><span class="kw">for</span> <span class="op">(</span><span class="va">class_name</span> <span class="kw">in</span> <span class="fu"><a href="https://rdrr.io/r/base/names.html" class="external-link">names</a></span><span class="op">(</span><span class="va">fashion_fits</span><span class="op">)</span><span class="op">)</span> <span class="op">{</span></span>
 <span>  <span class="va">class_result</span> <span class="op">&lt;-</span> <span class="va">fashion_fits</span><span class="op">[[</span><span class="va">class_name</span><span class="op">]</span><span class="op">]</span></span>
 <span>  <span class="va">coordinates</span> <span class="op">&lt;-</span> <span class="va">class_result</span><span class="op">$</span><span class="va">fit</span><span class="op">$</span><span class="va">embedding</span></span>
 <span>  <span class="va">selected</span> <span class="op">&lt;-</span> <span class="fu">representative_indices</span><span class="op">(</span><span class="va">coordinates</span>, <span class="fl">12L</span><span class="op">)</span></span>
+<span>  <span class="va">window</span> <span class="op">&lt;-</span> <span class="fu">central_window</span><span class="op">(</span><span class="va">coordinates</span><span class="op">)</span></span>
 <span>  <span class="fu">graphics</span><span class="fu">::</span><span class="fu"><a href="https://rdrr.io/r/graphics/par.html" class="external-link">par</a></span><span class="op">(</span>mar <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">4</span>, <span class="fl">4.2</span>, <span class="fl">3.5</span>, <span class="fl">1</span><span class="op">)</span><span class="op">)</span></span>
-<span>  <span class="fu">draw_embedding_panel</span><span class="op">(</span><span class="va">coordinates</span>, <span class="va">selected</span>, <span class="va">class_name</span><span class="op">)</span></span>
+<span>  <span class="fu">draw_embedding_panel</span><span class="op">(</span></span>
+<span>    <span class="va">coordinates</span>,</span>
+<span>    <span class="va">selected</span>,</span>
+<span>    <span class="fu"><a href="https://rdrr.io/r/base/paste.html" class="external-link">paste0</a></span><span class="op">(</span></span>
+<span>      <span class="va">class_name</span>,</span>
+<span>      <span class="st">": displayed pair\nCentral 98% per axis; "</span>,</span>
+<span>      <span class="va">window</span><span class="op">$</span><span class="va">outside_count</span>,</span>
+<span>      <span class="st">" outside"</span></span>
+<span>    <span class="op">)</span>,</span>
+<span>    <span class="st">"same-operator LTSA mode 1"</span>,</span>
+<span>    <span class="st">"same-operator LTSA mode 2"</span>,</span>
+<span>    marker_cex <span class="op">=</span> <span class="fl">2.8</span>,</span>
+<span>    marker_lwd <span class="op">=</span> <span class="fl">1.5</span>,</span>
+<span>    text_cex <span class="op">=</span> <span class="fl">1.9</span></span>
+<span>  <span class="op">)</span></span>
 <span>  <span class="fu">graphics</span><span class="fu">::</span><span class="fu"><a href="https://rdrr.io/r/graphics/par.html" class="external-link">par</a></span><span class="op">(</span>mar <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">0.8</span>, <span class="fl">0.8</span>, <span class="fl">3.5</span>, <span class="fl">0.8</span><span class="op">)</span><span class="op">)</span></span>
-<span>  <span class="fu">draw_image_panel</span><span class="op">(</span><span class="va">class_result</span><span class="op">$</span><span class="va">images</span>, <span class="va">selected</span>, <span class="fl">28L</span>, <span class="fl">6L</span><span class="op">)</span></span>
-<span>  <span class="fu">graphics</span><span class="fu">::</span><span class="fu"><a href="https://rdrr.io/r/graphics/title.html" class="external-link">title</a></span><span class="op">(</span>main <span class="op">=</span> <span class="st">"Representative images"</span><span class="op">)</span></span>
+<span>  <span class="fu">draw_image_panel</span><span class="op">(</span></span>
+<span>    <span class="va">class_result</span><span class="op">$</span><span class="va">images</span>,</span>
+<span>    <span class="va">selected</span>,</span>
+<span>    <span class="fl">28L</span>,</span>
+<span>    <span class="fl">4L</span>,</span>
+<span>    number_cex <span class="op">=</span> <span class="fl">1.2</span></span>
+<span>  <span class="op">)</span></span>
+<span>  <span class="fu">graphics</span><span class="fu">::</span><span class="fu"><a href="https://rdrr.io/r/graphics/title.html" class="external-link">title</a></span><span class="op">(</span></span>
+<span>    main <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/paste.html" class="external-link">paste0</a></span><span class="op">(</span></span>
+<span>      <span class="va">fashion_teaching_labels</span><span class="op">[[</span><span class="va">class_name</span><span class="op">]</span><span class="op">]</span>,</span>
+<span>      <span class="st">"; representative images"</span></span>
+<span>    <span class="op">)</span>,</span>
+<span>    cex.main <span class="op">=</span> <span class="fl">1.02</span></span>
+<span>  <span class="op">)</span></span>
 <span><span class="op">}</span></span>
 <span><span class="fu">graphics</span><span class="fu">::</span><span class="fu"><a href="https://rdrr.io/r/graphics/par.html" class="external-link">par</a></span><span class="op">(</span><span class="va">old_par</span><span class="op">)</span></span>
 <span></span>
@@ -867,9 +943,7 @@ datasets)
 <p>The image examples use <a href="https://cave.cs.columbia.edu/repository/COIL-20" class="external-link">COIL-20</a>
 (Sameer A. Nene, Shree K. Nayar, and Hiroshi Murase), <a href="https://yann.lecun.com/exdb/mnist/" class="external-link">MNIST</a> (Yann LeCun, Corinna
 Cortes, and Christopher J. C. Burges), and <a href="https://arxiv.org/abs/1708.07747" class="external-link">Fashion-MNIST</a> (Han Xiao,
-Kashif Rasul, and Roland Vollgraf). Static article figures contain
-low-resolution thumbnails; the reproduction script downloads each
-dataset through <code>snedata</code>.</p>
+Kashif Rasul, and Roland Vollgraf).</p>
 </div>
   </main><aside class="col-md-3"><nav id="toc" aria-label="Table of contents"><h2>On this page</h2>
     </nav></aside>
