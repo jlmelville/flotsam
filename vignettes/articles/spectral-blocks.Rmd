@@ -317,18 +317,18 @@ neighbor matrices for estimator comparisons, fits the retained blocks, and
 draws the thumbnail and support plots. Install its extra dependencies with
 `pak::pak("jlmelville/snedata")` and `install.packages("rnndescent")`.
 
-```{r reproduction-code, echo=FALSE, results='asis'}
+```{r reproduction-code, echo=FALSE, results="asis"}
 script_path <- file.path(
   dirname(knitr::current_input(dir = TRUE)),
   "spectral-blocks-reproduction.R"
 )
 script <- paste(readLines(script_path, warn = FALSE), collapse = "\n")
 cat(
-  '<details><summary>Show the complete data and plotting script ',
-  '(downloads three image datasets)</summary>',
-  '<pre><code class="language-r">',
+  "<details><summary>Show the complete data and plotting script ",
+  "(downloads three image datasets)</summary>",
+  "<pre><code class=\"language-r\">",
   htmltools::htmlEscape(script),
-  '</code></pre></details>',
+  "</code></pre></details>",
   sep = "\n"
 )
 ```
