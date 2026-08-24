@@ -198,7 +198,7 @@ repeated pairs easy to see.</p>
 <span><span class="va">circle_fit</span><span class="op">$</span><span class="va">eigen</span><span class="op">$</span><span class="va">status</span></span>
 <span><span class="co">#&gt; [1] "warning"</span></span>
 <span><span class="va">circle_fit</span><span class="op">$</span><span class="va">eigen</span><span class="op">$</span><span class="va">messages</span></span>
-<span><span class="co">#&gt; [1] "Weak Ritz boundary gap after the selected block: 1.293e-17 &lt; 1e-04."</span></span></code></pre></div>
+<span><span class="co">#&gt; [1] "Weak Ritz boundary gap after the selected block: 6.808e-18 &lt; 1e-04."</span></span></code></pre></div>
 <div class="figure" style="text-align: center">
 <img src="spectral-blocks_files/figure-html/circle-figure-1.png" class="r-plt" alt="The input circle, its one-dimensional LTSA display, the first two modes from the same operator, and the low spectrum. The mode pair follows the complete periodic progression." width="1056"><p class="caption">
 The input circle, its one-dimensional LTSA display, the first two modes
@@ -531,8 +531,6 @@ datasets)
 <span>  <span class="va">main</span>,</span>
 <span>  <span class="va">xlab</span>,</span>
 <span>  <span class="va">ylab</span>,</span>
-<span>  <span class="va">marker_cex</span> <span class="op">=</span> <span class="fl">3</span>,</span>
-<span>  <span class="va">marker_lwd</span> <span class="op">=</span> <span class="fl">1.6</span>,</span>
 <span>  <span class="va">text_cex</span> <span class="op">=</span> <span class="fl">2</span></span>
 <span><span class="op">)</span> <span class="op">{</span></span>
 <span>  <span class="va">window</span> <span class="op">&lt;-</span> <span class="fu">central_window</span><span class="op">(</span><span class="va">coordinates</span><span class="op">)</span></span>
@@ -547,14 +545,6 @@ datasets)
 <span>    xlab <span class="op">=</span> <span class="va">xlab</span>,</span>
 <span>    ylab <span class="op">=</span> <span class="va">ylab</span>,</span>
 <span>    main <span class="op">=</span> <span class="va">main</span></span>
-<span>  <span class="op">)</span></span>
-<span>  <span class="fu">graphics</span><span class="fu">::</span><span class="fu"><a href="https://rdrr.io/r/graphics/points.html" class="external-link">points</a></span><span class="op">(</span></span>
-<span>    <span class="va">coordinates</span><span class="op">[</span><span class="va">selected</span>, , drop <span class="op">=</span> <span class="cn">FALSE</span><span class="op">]</span>,</span>
-<span>    pch <span class="op">=</span> <span class="fl">21</span>,</span>
-<span>    bg <span class="op">=</span> <span class="st">"white"</span>,</span>
-<span>    col <span class="op">=</span> <span class="st">"#D55E00"</span>,</span>
-<span>    cex <span class="op">=</span> <span class="va">marker_cex</span>,</span>
-<span>    lwd <span class="op">=</span> <span class="va">marker_lwd</span></span>
 <span>  <span class="op">)</span></span>
 <span>  <span class="fu">graphics</span><span class="fu">::</span><span class="fu"><a href="https://rdrr.io/r/graphics/text.html" class="external-link">text</a></span><span class="op">(</span></span>
 <span>    <span class="va">coordinates</span><span class="op">[</span><span class="va">selected</span>, , drop <span class="op">=</span> <span class="cn">FALSE</span><span class="op">]</span>,</span>
@@ -897,8 +887,6 @@ datasets)
 <span>    <span class="op">)</span>,</span>
 <span>    <span class="st">"same-operator LTSA mode 1"</span>,</span>
 <span>    <span class="st">"same-operator LTSA mode 2"</span>,</span>
-<span>    marker_cex <span class="op">=</span> <span class="fl">2.8</span>,</span>
-<span>    marker_lwd <span class="op">=</span> <span class="fl">1.5</span>,</span>
 <span>    text_cex <span class="op">=</span> <span class="fl">1.9</span></span>
 <span>  <span class="op">)</span></span>
 <span>  <span class="fu">graphics</span><span class="fu">::</span><span class="fu"><a href="https://rdrr.io/r/graphics/par.html" class="external-link">par</a></span><span class="op">(</span>mar <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">0.8</span>, <span class="fl">0.8</span>, <span class="fl">3.5</span>, <span class="fl">0.8</span><span class="op">)</span><span class="op">)</span></span>
