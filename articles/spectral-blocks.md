@@ -411,9 +411,9 @@ full-block support can be more concentrated than the visually rich modes
 1–2 map.
 
 The eigengap describes boundary stability; block support describes how
-broadly the retained span is represented across observations. Here,
-block and per-mode support tell the same story without treating any
-particular eigenvector basis as uniquely meaningful.
+broadly the retained span is represented across observations. Here, the
+basis-dependent per-mode supports and the basis-invariant block support
+lead to the same conclusion.
 
 ## What to carry into practice
 
