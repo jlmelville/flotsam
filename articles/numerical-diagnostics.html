@@ -5,12 +5,12 @@
 <meta charset="utf-8">
 <meta http-equiv="X-UA-Compatible" content="IE=edge">
 <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
-<title>Numerical diagnostics and solver notes • flotsam</title>
+<title>Diagnosing suspicious LTSA results • flotsam</title>
 <script src="../deps/jquery-3.6.0/jquery-3.6.0.min.js"></script><meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
 <link href="../deps/bootstrap-5.3.8/bootstrap.min.css" rel="stylesheet">
 <script src="../deps/bootstrap-5.3.8/bootstrap.bundle.min.js"></script><link href="../deps/font-awesome-6.5.2/css/all.min.css" rel="stylesheet">
 <link href="../deps/font-awesome-6.5.2/css/v4-shims.min.css" rel="stylesheet">
-<script src="../deps/headroom-0.11.0/headroom.min.js"></script><script src="../deps/headroom-0.11.0/jQuery.headroom.min.js"></script><script src="../deps/bootstrap-toc-1.0.1/bootstrap-toc.min.js"></script><script src="../deps/clipboard.js-2.0.11/clipboard.min.js"></script><script src="../deps/search-1.0.0/autocomplete.jquery.min.js"></script><script src="../deps/search-1.0.0/fuse.min.js"></script><script src="../deps/search-1.0.0/mark.min.js"></script><!-- pkgdown --><script src="../pkgdown.js"></script><script src="../extra.js"></script><meta property="og:title" content="Numerical diagnostics and solver notes">
+<script src="../deps/headroom-0.11.0/headroom.min.js"></script><script src="../deps/headroom-0.11.0/jQuery.headroom.min.js"></script><script src="../deps/bootstrap-toc-1.0.1/bootstrap-toc.min.js"></script><script src="../deps/clipboard.js-2.0.11/clipboard.min.js"></script><script src="../deps/search-1.0.0/autocomplete.jquery.min.js"></script><script src="../deps/search-1.0.0/fuse.min.js"></script><script src="../deps/search-1.0.0/mark.min.js"></script><!-- pkgdown --><script src="../pkgdown.js"></script><script src="../extra.js"></script><meta property="og:title" content="Diagnosing suspicious LTSA results">
 </head>
 <body>
     <a href="#main" class="visually-hidden-focusable">Skip to contents</a>
@@ -51,7 +51,7 @@
 <div class="row">
   <main id="main" class="col-md-9"><div class="page-header">
 
-      <h1>Numerical diagnostics and solver notes</h1>
+      <h1>Diagnosing suspicious LTSA results</h1>
             
       
       <small class="dont-index">Source: <a href="https://github.com/jlmelville/flotsam/blob/main/vignettes/articles/numerical-diagnostics.Rmd" class="external-link"><code>vignettes/articles/numerical-diagnostics.Rmd</code></a></small>
@@ -60,295 +60,542 @@
 
     
     
-<p>This note collects the LTSA implementation details that are useful
-when a result looks numerically suspicious, but too long for the README
-or <code><a href="../reference/ltsa.html">?ltsa</a></code>.</p>
+<p>When an LTSA map looks bent, collapsed, unstable, or unexpectedly
+different from another run, first determine which stage supplied the bad
+evidence. A neighbor graph can be disconnected, local neighborhoods can
+be rank deficient, the eigensolver can be inaccurate, or the requested
+dimensions can cut through a poorly separated low-frequency block. Those
+cases call for different fixes.</p>
+<p>This article gives a question-to-action path through the result
+object. See <a href="../reference/ltsa.html"><code>?ltsa</code></a> for
+the exhaustive argument contract, and see <a href="spectral-blocks.html">Exploring LTSA spectral blocks</a> for
+worked examples of interpreting extra modes.</p>
 <div class="section level2">
-<h2 id="threading">Threading<a class="anchor" aria-label="anchor" href="#threading"></a>
+<h2 id="start-with-the-result-object">Start with the result object<a class="anchor" aria-label="anchor" href="#start-with-the-result-object"></a>
 </h2>
-<p>If you use multiple assembly threads with a multithreaded <a href="https://csantill.github.io/RPerformanceWBLAS/" class="external-link">underlying linear
-algebra library</a>, avoid oversubscribing your machine: outer LTSA
-assembly threads and inner BLAS threads can otherwise compete with each
-other. I use MKL but need to set the following in my
-<code>~/.bashrc</code>:</p>
-<div class="sourceCode" id="cb1"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb1-1"><a href="#cb1-1" tabindex="-1"></a><span class="bu">export</span> <span class="va">MKL_THREADING_LAYER</span><span class="op">=</span>GNU</span>
-<span id="cb1-2"><a href="#cb1-2" tabindex="-1"></a><span class="bu">export</span> <span class="va">MKL_NUM_THREADS</span><span class="op">=</span>1</span></code></pre></div>
-</div>
-<div class="section level2">
-<h2 id="eigenanalysis-steps">Eigenanalysis Steps<a class="anchor" aria-label="anchor" href="#eigenanalysis-steps"></a>
-</h2>
-<p>The <code>ndim</code> embedding directions are the lowest nonconstant
-directions of the symmetric positive-semidefinite LTSA alignment
-operator <code>B</code>. The constant vector is a known null direction,
-not necessarily a unique smallest eigenvector: disconnected effective
-neighborhoods or other degeneracies can give <code>B</code> a larger
-nullspace.</p>
-<p>However, finding the lowest nonconstant eigenvectors for a large
-sparse matrix can be tricky. It’s easy to get into a scenario where
-convergence fails, takes an excessive time, or worse hangs forever. To
-ameliorate this, the <code>flotsam</code> implementation tries the
-following steps:</p>
-<div class="section level3">
-<h3 id="shifted-largest-algebraic-solves">Shifted largest-algebraic solves<a class="anchor" aria-label="anchor" href="#shifted-largest-algebraic-solves"></a>
-</h3>
-<p><code>flotsam</code> forms the reflected operator
-<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>μ</mi><mi>I</mi><mo>−</mo><mi>B</mi></mrow><annotation encoding="application/x-tex">\mu I - B</annotation></semantics></math>,
-where
-<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>μ</mi><annotation encoding="application/x-tex">\mu</annotation></semantics></math>
-is a rough estimate of the largest eigenvalue of <code>B</code> plus a
-small positive margin. A direction with eigenvalue
-<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>λ</mi><annotation encoding="application/x-tex">\lambda</annotation></semantics></math>
-for <code>B</code> has eigenvalue
-<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>μ</mi><mo>−</mo><mi>λ</mi></mrow><annotation encoding="application/x-tex">\mu - \lambda</annotation></semantics></math>
-for the reflected operator, so the smallest directions of <code>B</code>
-become the largest algebraic (or singular) directions requested from the
-iterative backend. Many methods offer a “shift-invert” option to target
-small eigenvalues, which will also spread out eigenvalues if they are
-clustered close to each other. Unfortunately, I’ve <em>never</em> had
-good luck with the shift-invert approach when it comes to large sparse
-matrices, so instead <code>flotsam</code> does a manual shift by doing a
-quick calculation to find the largest eigenvalue (this doesn’t need to
-be exact, just a rough estimate) and then shifting the matrix by that
-amount. This doesn’t fix the clustered eigenvalue problem, but it does
-seem to help with convergence in general.</p>
-<p>This approach was motivated by practical issues around small
-clustered eigenvalues and by discussion between Aaron Lun, Kevin
-Doherty, and Yixuan Qiu in at <a href="https://github.com/yixuan/spectra/issues/126" class="external-link uri">https://github.com/yixuan/spectra/issues/126</a>.</p>
-</div>
-<div class="section level3">
-<h3 id="over-requested-eigenvectors">Over-requested eigenvectors<a class="anchor" aria-label="anchor" href="#over-requested-eigenvectors"></a>
-</h3>
-<p>Instead of only requesting <code>ndim</code> output vectors, the
-iterative methods (those provided by <code>RSpectra</code> and
-<code>irlba</code>) request a wider candidate block controlled by
-<code>eig_k</code>. This tends to help with successful convergence and
-also helps with clustered eigenvalue problems, where an entire
-eigenvector can be missed. I have seen this help in cases where
-convergence failed, and simply increasing <code>tol</code> or
-<code>ncv</code> and <code>maxitr</code> alone didn’t help: it seems
-like increasing <code>eig_k</code> provided a larger space for the
-eigenanalysis to work in.</p>
-<p>The default <code>eig_k</code> is already quite generous for all the
-datasets I have tried it with. In most cases, you could get away with
-using a smaller value for <code>eig_k</code> and you would get the same
-solution faster. Unfortunately, there is no way to know in the case of
-clustered eigenvalues if you are actually getting all the eigenvectors
-back and increasing <code>eig_k</code> was the only thing that I have
-seen that worked. In practice, I have only seen this happen with
-synthetic datasets.</p>
-</div>
-<div class="section level3">
-<h3 id="automatic-selection-and-eig_k">Automatic selection and <code>eig_k</code><a class="anchor" aria-label="anchor" href="#automatic-selection-and-eig_k"></a>
-</h3>
-<p>With <code>eig_method = "auto"</code>, <code>flotsam</code> uses
-dense <code><a href="https://rdrr.io/r/base/eigen.html" class="external-link">base::eigen()</a></code> when <code>n &lt;= dense_n</code> or
-<code>eig_k &gt;= dense_fraction * n</code>; the defaults are
-<code>dense_n = 100</code> and <code>dense_fraction = 0.5</code>;
-otherwise it uses RSpectra. Explicit <code>"rspectra"</code>,
-<code>"irlba"</code>, and <code>"svdr"</code> requests always run the
-named backend. <code>resid_tol</code> and <code>gap_tol</code> affect
-diagnostics only. With <code>output = "result"</code>,
-<code>eigen$method</code> records <code>"auto"</code> or the explicit
-canonical method (the <code>"eigen"</code> alias is stored as
-<code>"eig"</code>), while <code>eigen$backend$name</code> records the
-backend that actually ran.</p>
-<p>An explicit <code>eig_method = "eig"</code> or <code>"eigen"</code>
-computes the full dense eigensystem, but <code>eig_k</code> is still
-validated and used: only the lowest <code>eig_k</code> candidate vectors
-are passed to the Rayleigh–Ritz step. It therefore bounds the observed
-candidate span and the post-null <code>ritz_values</code> even on the
-dense route.</p>
-</div>
-<div class="section level3">
-<h3 id="rayleigh-ritz-postprocessing">Rayleigh-Ritz postprocessing<a class="anchor" aria-label="anchor" href="#rayleigh-ritz-postprocessing"></a>
-</h3>
-<p>The Rayleigh-Ritz postprocessing step is a small polishing step that
-attempts to improve the accuracy of the returned eigenvectors. It
-removes the known constant null direction and then projects the
-remaining eigenvectors onto the candidate span. It may help with mixed
-or rotated vectors in the clustered low-eigenvalue case. It can’t
-recover an entirely missing eigenvector, hence the use of
-<code>eig_k</code> as mentioned above.</p>
-<p>If <code>eigen$diagnostics$near_zero_block_truncated</code> is
-<code>TRUE</code>, the requested <code>ndim</code> cuts through a larger
-near-zero nonconstant eigenspace observed within that span. The selected
-subspace can still be meaningful, but its individual coordinates are not
-uniquely identifiable. To inspect more modes of the same operator, use
-<code>output = "result"</code> and set <code>spectral_dim</code> above
-<code>ndim</code>; increasing <code>ndim</code> instead changes the
-local tangent dimension and rebuilds the operator. A stricter tolerance
-does not resolve a genuinely repeated eigenspace, and this flag is not
-evidence of data clustering.</p>
-</div>
-</div>
-<div class="section level2">
-<h2 id="comparison-to-scikit-learn-ltsa">Comparison to scikit-learn LTSA<a class="anchor" aria-label="anchor" href="#comparison-to-scikit-learn-ltsa"></a>
-</h2>
-<p>The Python implementation in scikit-learn uses <a href="https://scikit-learn.org/stable/modules/generated/sklearn.manifold.LocallyLinearEmbedding.html" class="external-link"><code>LocallyLinearEmbedding</code></a>
-with <code>method = "ltsa"</code>. It offers exact neighbor-search
-strategies and either dense eigenanalysis or ARPACK.
-<code>flotsam</code> can instead use approximate nearest-neighbor
-descent and its RSpectra or <code>irlba</code> shifted-candidate routes,
-so it may be faster on large datasets and may behave differently when
-the low spectrum is difficult. Neither implementation is uniformly
-faster or more reliable; the data size, neighbor search, and eigensolver
-settings all matter.</p>
-</div>
-<div class="section level2">
-<h2 id="a-clustered-eigenvalue-example">A Clustered Eigenvalue Example<a class="anchor" aria-label="anchor" href="#a-clustered-eigenvalue-example"></a>
-</h2>
-<p>The example below shows a case where the RSpectra backend fails to
-find all the eigenvectors. I will use the synthetic S-curve-with-a-hole
-dataset from the <code>snedata</code> package:</p>
-<div class="sourceCode" id="cb2"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="fu">pak</span><span class="fu">::</span><span class="fu"><a href="https://pak.r-lib.org/reference/pak.html" class="external-link">pak</a></span><span class="op">(</span><span class="st">"jlmelville/snedata"</span><span class="op">)</span></span>
-<span><span class="fu"><a href="https://rdrr.io/r/base/Random.html" class="external-link">set.seed</a></span><span class="op">(</span><span class="fl">42</span><span class="op">)</span></span>
-<span><span class="va">sch</span> <span class="op">&lt;-</span> <span class="fu">snedata</span><span class="fu">::</span><span class="fu">s_curve_hole</span><span class="op">(</span>n_samples <span class="op">=</span> <span class="fl">10000</span><span class="op">)</span></span></code></pre></div>
-<p>Let’s see what happens where we run with only 6 eigenvectors:</p>
-<div class="sourceCode" id="cb3"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">ltsa_result</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/ltsa.html">ltsa</a></span><span class="op">(</span><span class="va">sch</span>, eig_k <span class="op">=</span> <span class="fl">6</span><span class="op">)</span></span></code></pre></div>
-<div class="float">
-<img src="figures/s-curve-hole-eig-k-6.png" alt="eig_k = 6"><div class="figcaption"><code>eig_k = 6</code></div>
-</div>
-<p>The embedding is not a disaster, but it’s got a very obvious bend and
-you can’t see the hole (maybe the embedding is also twisted).</p>
-<p>Increasing the tolerance might be seen as the obvious step:</p>
-<div class="sourceCode" id="cb4"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">res_strict</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/ltsa.html">ltsa</a></span><span class="op">(</span><span class="va">sch</span>, eig_method <span class="op">=</span> <span class="st">"rspectra"</span>, eig_k <span class="op">=</span> <span class="fl">6</span>, tol <span class="op">=</span> <span class="fl">1e-8</span><span class="op">)</span></span></code></pre></div>
-<p>But this fails to converge:</p>
-<pre><code>Error: Eigenanalysis failed: RSpectra failed to converge enough LTSA candidate vectors: 0 / 6
-In addition: Warning message:
-In do.call(.Call, args = dot_call_args) :
-  only 0 eigenvalue(s) converged, less than k = 6</code></pre>
-<p>Increasing the number of eigenvectors to 18 helps the convergence
-succeed:</p>
-<div class="sourceCode" id="cb6"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">res_strict</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/ltsa.html">ltsa</a></span><span class="op">(</span><span class="va">sch</span>, eig_method <span class="op">=</span> <span class="st">"rspectra"</span>, eig_k <span class="op">=</span> <span class="fl">18</span>, tol <span class="op">=</span> <span class="fl">1e-8</span><span class="op">)</span></span></code></pre></div>
-<div class="float">
-<img src="figures/s-curve-hole-eig-k-18-tol-1e-8.png" alt="eig_k = 18, tol = 1e-8"><div class="figcaption">
-<code>eig_k = 18</code>,
-<code>tol = 1e-8</code>
-</div>
-</div>
-<p>Now the embedding looks correct: properly unrolled and the hole is
-visible.</p>
-<div class="section level3">
-<h3 id="ltsa-eigenanalysis-and-diagnostics">LTSA eigenanalysis and diagnostics<a class="anchor" aria-label="anchor" href="#ltsa-eigenanalysis-and-diagnostics"></a>
-</h3>
-<p>Examples below use a swiss roll dataset:</p>
-<div class="sourceCode" id="cb7"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">n</span> <span class="op">&lt;-</span> <span class="fl">1000</span></span>
-<span><span class="va">max_z</span> <span class="op">&lt;-</span> <span class="fl">10</span></span>
-<span></span>
-<span><span class="co"># phi represents the position along the roll</span></span>
+<p>Request <code>output = "result"</code>, then inspect status and
+messages before tuning anything. This deterministic Swiss-roll example
+uses exact neighbors to remove neighbor-search randomness and retains
+two extra modes so both the displayed and retained boundaries are
+available.</p>
+<div class="sourceCode" id="cb1"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/base/Random.html" class="external-link">set.seed</a></span><span class="op">(</span><span class="fl">20260825</span><span class="op">)</span></span>
+<span><span class="va">n</span> <span class="op">&lt;-</span> <span class="fl">1000</span></span>
 <span><span class="va">phi</span> <span class="op">&lt;-</span> <span class="fu">stats</span><span class="fu">::</span><span class="fu"><a href="https://rdrr.io/r/stats/Uniform.html" class="external-link">runif</a></span><span class="op">(</span><span class="va">n</span>, min <span class="op">=</span> <span class="fl">1.5</span> <span class="op">*</span> <span class="va">pi</span>, max <span class="op">=</span> <span class="fl">4.5</span> <span class="op">*</span> <span class="va">pi</span><span class="op">)</span></span>
-<span><span class="va">x</span> <span class="op">&lt;-</span> <span class="va">phi</span> <span class="op">*</span> <span class="fu"><a href="https://rdrr.io/r/base/Trig.html" class="external-link">cos</a></span><span class="op">(</span><span class="va">phi</span><span class="op">)</span></span>
-<span><span class="va">y</span> <span class="op">&lt;-</span> <span class="va">phi</span> <span class="op">*</span> <span class="fu"><a href="https://rdrr.io/r/base/Trig.html" class="external-link">sin</a></span><span class="op">(</span><span class="va">phi</span><span class="op">)</span></span>
-<span><span class="va">z</span> <span class="op">&lt;-</span> <span class="fu">stats</span><span class="fu">::</span><span class="fu"><a href="https://rdrr.io/r/stats/Uniform.html" class="external-link">runif</a></span><span class="op">(</span><span class="va">n</span>, max <span class="op">=</span> <span class="va">max_z</span><span class="op">)</span></span>
-<span><span class="va">swiss_roll</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/data.frame.html" class="external-link">data.frame</a></span><span class="op">(</span><span class="va">x</span>, <span class="va">y</span>, <span class="va">z</span><span class="op">)</span></span></code></pre></div>
-<p>Use <code>output = "result"</code> to inspect diagnostics:</p>
-<div class="sourceCode" id="cb8"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">ltsa_result</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/ltsa.html">ltsa</a></span><span class="op">(</span></span>
-<span>  <span class="va">swiss_roll</span>,</span>
-<span>  eig_k <span class="op">=</span> <span class="fl">16</span>,</span>
-<span>  output <span class="op">=</span> <span class="st">"result"</span></span>
+<span><span class="va">swiss_roll</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/data.frame.html" class="external-link">data.frame</a></span><span class="op">(</span></span>
+<span>  x <span class="op">=</span> <span class="va">phi</span> <span class="op">*</span> <span class="fu"><a href="https://rdrr.io/r/base/Trig.html" class="external-link">cos</a></span><span class="op">(</span><span class="va">phi</span><span class="op">)</span>,</span>
+<span>  y <span class="op">=</span> <span class="va">phi</span> <span class="op">*</span> <span class="fu"><a href="https://rdrr.io/r/base/Trig.html" class="external-link">sin</a></span><span class="op">(</span><span class="va">phi</span><span class="op">)</span>,</span>
+<span>  z <span class="op">=</span> <span class="fu">stats</span><span class="fu">::</span><span class="fu"><a href="https://rdrr.io/r/stats/Uniform.html" class="external-link">runif</a></span><span class="op">(</span><span class="va">n</span>, max <span class="op">=</span> <span class="fl">10</span><span class="op">)</span></span>
 <span><span class="op">)</span></span>
 <span></span>
-<span><span class="va">ltsa_result</span><span class="op">$</span><span class="va">eigen</span><span class="op">[</span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"status"</span>, <span class="st">"eig_k"</span>, <span class="st">"rank"</span><span class="op">)</span><span class="op">]</span></span>
-<span><span class="va">ltsa_result</span><span class="op">$</span><span class="va">eigen</span><span class="op">$</span><span class="va">messages</span></span></code></pre></div>
-<p>Inspect <code>eigen$status</code> and <code>eigen$messages</code>
-first. If they report a weak Ritz boundary gap, the selected subspace
-may be poorly separated from the next candidate direction. Retain a
-larger block from the same operator when you want to inspect that
-ambiguity directly:</p>
-<div class="sourceCode" id="cb9"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">ltsa_block</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/ltsa.html">ltsa</a></span><span class="op">(</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/Random.html" class="external-link">set.seed</a></span><span class="op">(</span><span class="fl">20260825</span><span class="op">)</span></span>
+<span><span class="va">diagnostic_fit</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/ltsa.html">ltsa</a></span><span class="op">(</span></span>
 <span>  <span class="va">swiss_roll</span>,</span>
 <span>  ndim <span class="op">=</span> <span class="fl">2</span>,</span>
-<span>  spectral_dim <span class="op">=</span> <span class="fl">4</span>,</span>
+<span>  n_neighbors <span class="op">=</span> <span class="fl">15</span>,</span>
+<span>  nn_method <span class="op">=</span> <span class="st">"exact"</span>,</span>
+<span>  eig_method <span class="op">=</span> <span class="st">"rspectra"</span>,</span>
 <span>  eig_k <span class="op">=</span> <span class="fl">16</span>,</span>
-<span>  output <span class="op">=</span> <span class="st">"result"</span></span>
+<span>  output <span class="op">=</span> <span class="st">"result"</span>,</span>
+<span>  spectral_dim <span class="op">=</span> <span class="fl">4</span>,</span>
+<span>  n_threads <span class="op">=</span> <span class="fl">1</span>,</span>
+<span>  n_assembly_threads <span class="op">=</span> <span class="fl">1</span></span>
+<span><span class="op">)</span></span></code></pre></div>
+<p>The displayed <code>ndim</code> prefix and the retained
+<code>spectral_dim</code> block have separate status, messages, and
+boundary gaps.</p>
+<div class="sourceCode" id="cb2"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/base/data.frame.html" class="external-link">data.frame</a></span><span class="op">(</span></span>
+<span>  scope <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"displayed"</span>, <span class="st">"retained"</span><span class="op">)</span>,</span>
+<span>  status <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span></span>
+<span>    <span class="va">diagnostic_fit</span><span class="op">$</span><span class="va">eigen</span><span class="op">$</span><span class="va">status</span>,</span>
+<span>    <span class="va">diagnostic_fit</span><span class="op">$</span><span class="va">eigen</span><span class="op">$</span><span class="va">spectral</span><span class="op">$</span><span class="va">status</span></span>
+<span>  <span class="op">)</span>,</span>
+<span>  boundary_gap <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/formatc.html" class="external-link">formatC</a></span><span class="op">(</span></span>
+<span>    <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span></span>
+<span>      <span class="va">diagnostic_fit</span><span class="op">$</span><span class="va">eigen</span><span class="op">$</span><span class="va">diagnostics</span><span class="op">$</span><span class="va">scaled_boundary_gap</span>,</span>
+<span>      <span class="va">diagnostic_fit</span><span class="op">$</span><span class="va">eigen</span><span class="op">$</span><span class="va">spectral</span><span class="op">$</span><span class="va">diagnostics</span><span class="op">$</span><span class="va">scaled_boundary_gap</span></span>
+<span>    <span class="op">)</span>,</span>
+<span>    digits <span class="op">=</span> <span class="fl">4</span>,</span>
+<span>    format <span class="op">=</span> <span class="st">"e"</span></span>
+<span>  <span class="op">)</span>,</span>
+<span>  max_scaled_residual <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/formatc.html" class="external-link">formatC</a></span><span class="op">(</span></span>
+<span>    <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span></span>
+<span>      <span class="fu"><a href="https://rdrr.io/r/base/Extremes.html" class="external-link">max</a></span><span class="op">(</span><span class="va">diagnostic_fit</span><span class="op">$</span><span class="va">eigen</span><span class="op">$</span><span class="va">residuals</span><span class="op">)</span>,</span>
+<span>      <span class="fu"><a href="https://rdrr.io/r/base/Extremes.html" class="external-link">max</a></span><span class="op">(</span><span class="va">diagnostic_fit</span><span class="op">$</span><span class="va">eigen</span><span class="op">$</span><span class="va">spectral</span><span class="op">$</span><span class="va">residuals</span><span class="op">)</span></span>
+<span>    <span class="op">)</span>,</span>
+<span>    digits <span class="op">=</span> <span class="fl">4</span>,</span>
+<span>    format <span class="op">=</span> <span class="st">"e"</span></span>
+<span>  <span class="op">)</span></span>
+<span><span class="op">)</span></span>
+<span><span class="co">#&gt;       scope  status boundary_gap max_scaled_residual</span></span>
+<span><span class="co">#&gt; 1 displayed warning   1.2355e-06          4.4757e-07</span></span>
+<span><span class="co">#&gt; 2  retained warning   2.9753e-05          4.4757e-07</span></span>
+<span></span>
+<span><span class="va">diagnostic_fit</span><span class="op">$</span><span class="va">eigen</span><span class="op">$</span><span class="va">messages</span></span>
+<span><span class="co">#&gt; [1] "Weak Ritz boundary gap after the selected block: 1.235e-06 &lt; 1e-04."</span></span>
+<span><span class="va">diagnostic_fit</span><span class="op">$</span><span class="va">eigen</span><span class="op">$</span><span class="va">spectral</span><span class="op">$</span><span class="va">messages</span></span>
+<span><span class="co">#&gt; [1] "Weak Ritz boundary gap after the retained block: 2.975e-05 &lt; 1e-04."</span></span></code></pre></div>
+<p>Now rule out structural problems in the operator.</p>
+<div class="sourceCode" id="cb3"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/base/data.frame.html" class="external-link">data.frame</a></span><span class="op">(</span></span>
+<span>  components <span class="op">=</span> <span class="va">diagnostic_fit</span><span class="op">$</span><span class="va">assembly</span><span class="op">$</span><span class="va">component_count</span>,</span>
+<span>  rank_deficient_neighborhoods <span class="op">=</span></span>
+<span>    <span class="va">diagnostic_fit</span><span class="op">$</span><span class="va">assembly</span><span class="op">$</span><span class="va">rank_deficient_count</span>,</span>
+<span>  minimum_local_rank <span class="op">=</span> <span class="va">diagnostic_fit</span><span class="op">$</span><span class="va">assembly</span><span class="op">$</span><span class="va">min_local_rank</span>,</span>
+<span>  requested_method <span class="op">=</span> <span class="va">diagnostic_fit</span><span class="op">$</span><span class="va">eigen</span><span class="op">$</span><span class="va">method</span>,</span>
+<span>  backend <span class="op">=</span> <span class="va">diagnostic_fit</span><span class="op">$</span><span class="va">eigen</span><span class="op">$</span><span class="va">backend</span><span class="op">$</span><span class="va">name</span></span>
+<span><span class="op">)</span></span>
+<span><span class="co">#&gt;   components rank_deficient_neighborhoods minimum_local_rank requested_method</span></span>
+<span><span class="co">#&gt; 1          1                            0                  2         rspectra</span></span>
+<span><span class="co">#&gt;    backend</span></span>
+<span><span class="co">#&gt; 1 rspectra</span></span></code></pre></div>
+<p>Here the selected scaled residuals are below the default diagnostic
+tolerance, the effective-neighborhood graph has one component, and every
+local basis has the requested rank. Both statuses instead point to weak
+Ritz boundary gaps. The evidence therefore points away from a
+disconnected graph, deficient local geometry, or gross eigensolver error
+and toward inspecting neighboring modes together. The next action is to
+retain a larger block from this operator, as the example already does,
+rather than changing <code>ndim</code> and rebuilding it.</p>
+</div>
+<div class="section level2">
+<h2 id="choose-the-next-action-from-the-signal">Choose the next action from the signal<a class="anchor" aria-label="anchor" href="#choose-the-next-action-from-the-signal"></a>
+</h2>
+<table class="table">
+<colgroup>
+<col width="33%">
+<col width="33%">
+<col width="33%">
+</colgroup>
+<thead><tr class="header">
+<th>Signal</th>
+<th>What it supports</th>
+<th>Next action</th>
+</tr></thead>
+<tbody>
+<tr class="odd">
+<td>Backend failure, <code>status = "invalid"</code>, or a residual
+message</td>
+<td>The candidate solve is not accurate enough</td>
+<td>Name the backend explicitly and adjust its convergence controls; use
+dense <code>"eig"</code> as a small-data reference</td>
+</tr>
+<tr class="even">
+<td>Weak displayed gap or
+<code>near_zero_block_truncated = TRUE</code>
+</td>
+<td>The requested prefix is not isolated from adjacent modes</td>
+<td>Keep <code>ndim</code> fixed, retain adjacent modes with
+<code>spectral_dim</code>, and interpret the span rather than individual
+coordinates</td>
+</tr>
+<tr class="odd">
+<td><code>assembly$component_count &gt; 1</code></td>
+<td>Effective neighborhoods form disconnected groups</td>
+<td>Increase or revise neighborhood construction, or analyze the
+components separately</td>
+</tr>
+<tr class="even">
+<td>Positive <code>rank_deficient_count</code>
+</td>
+<td>Some neighborhoods cannot support the requested local tangent
+rank</td>
+<td>Inspect repeated or degenerate observations and reconsider
+<code>n_neighbors</code> or <code>ndim</code>
+</td>
+</tr>
+<tr class="odd">
+<td>Clean structural and solver diagnostics, but localized or collapsed
+coordinates</td>
+<td>The estimator or selected span may not match the intended
+structure</td>
+<td>Inspect support, compare ordinary and normalized LTSA on one fixed
+graph, and verify the scientific target</td>
+</tr>
+</tbody>
+</table>
+<p>Connectedness does not prove that a graph is well coupled, and a
+small residual does not prove that a chosen boundary is meaningful. Use
+each field to rule in or out its own failure class rather than treating
+<code>status</code> as a single quality score.</p>
+<div class="section level3">
+<h3 id="keep-the-three-dimension-controls-distinct">Keep the three dimension controls distinct<a class="anchor" aria-label="anchor" href="#keep-the-three-dimension-controls-distinct"></a>
+</h3>
+<ul>
+<li>
+<code>ndim</code> sets the local tangent rank, changes the LTSA
+operator, and sets the displayed prefix.</li>
+<li>
+<code>spectral_dim</code> retains more nonconstant modes from that
+fixed operator. It is the inspection control for a weak displayed
+boundary.</li>
+<li>
+<code>eig_k</code> gives the eigensolver and Rayleigh–Ritz step a
+wider candidate span. It can recover a missing candidate direction but
+does not decide how many modes the result retains.</li>
+</ul>
+<p>A stricter tolerance cannot separate a genuinely repeated eigenspace.
+When <code>eigen$diagnostics$near_zero_block_truncated</code> is
+<code>TRUE</code>, individual coordinates inside the observed near-zero
+block are not uniquely identifiable; reason about the subspace
+instead.</p>
+</div>
+</div>
+<div class="section level2">
+<h2 id="when-a-tighter-solve-also-needs-a-wider-candidate-span">When a tighter solve also needs a wider candidate span<a class="anchor" aria-label="anchor" href="#when-a-tighter-solve-also-needs-a-wider-candidate-span"></a>
+</h2>
+<p>The 10,000-sample S-curve-with-a-hole example exercises a different
+failure. Its reproduction script generates the public
+<code>snedata</code> dataset, builds one self-first 15-neighbor graph
+with one thread, and reuses that graph for all three solves. It resets
+the eigensolver seed immediately before every sampled call.</p>
+<p>The frozen full run reports:</p>
+<table class="table">
+<colgroup>
+<col width="30%">
+<col width="30%">
+<col width="40%">
+</colgroup>
+<thead><tr class="header">
+<th>Candidate request</th>
+<th>Outcome</th>
+<th align="right">Minimum latent-coordinate R-squared</th>
+</tr></thead>
+<tbody>
+<tr class="odd">
+<td>
+<code>eig_k = 6</code>, <code>tol = 1e-6</code>
+</td>
+<td>Warning result; bent two-dimensional span</td>
+<td align="right">0.0463</td>
+</tr>
+<tr class="even">
+<td>
+<code>eig_k = 6</code>, <code>tol = 1e-8</code>
+</td>
+<td>RSpectra fails with 0 of 6 candidates converged</td>
+<td align="right">—</td>
+</tr>
+<tr class="odd">
+<td>
+<code>eig_k = 18</code>, <code>tol = 1e-8</code>
+</td>
+<td>Warning result; expected unrolled span recovered</td>
+<td align="right">0.999999</td>
+</tr>
+</tbody>
+</table>
+<p>The R-squared witness regresses each recoverable latent coordinate on
+the returned two-dimensional span. It is unchanged by sign flips,
+rotations, or rescaling of the embedding. The wider strict result
+recovers the expected unrolled geometry; the hole is also visible in the
+generated figure. Its status remains <code>"warning"</code> because the
+displayed Ritz boundary is weak, so the example demonstrates successful
+geometric recovery without claiming that the two-mode boundary is
+strongly isolated.</p>
+<div class="float">
+<img src="figures/s-curve-hole-eig-k-6.png" alt="With six candidate vectors, one latent direction is largely missed and the embedding bends."><div class="figcaption">With six candidate vectors, one latent direction
+is largely missed and the embedding bends.</div>
+</div>
+<div class="float">
+<img src="figures/s-curve-hole-eig-k-18-tol-1e-8.png" alt="With eighteen candidate vectors and the tighter tolerance, the same fixed graph yields the expected unrolled geometry and visible hole."><div class="figcaption">With eighteen candidate vectors and the tighter
+tolerance, the same fixed graph yields the expected unrolled geometry
+and visible hole.</div>
+</div>
+<p>From the package source tree, after installing the current package
+and <code>snedata</code>, one command regenerates both figures and stops
+if the solver, assembly, or latent-geometry invariants fail:</p>
+<div class="sourceCode" id="cb4"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb4-1"><a href="#cb4-1" tabindex="-1"></a><span class="va">FLOTSAM_NUMERICAL_DIAGNOSTICS_FIGURE_DIR</span><span class="op">=</span>vignettes/articles/figures <span class="dt">\</span></span>
+<span id="cb4-2"><a href="#cb4-2" tabindex="-1"></a>  <span class="ex">Rscript</span> vignettes/articles/numerical-diagnostics-reproduction.R</span></code></pre></div>
+<p>Use the reduced route for a quick no-download execution check. It
+deliberately does not overwrite the full article figures because the
+scale-dependent six-vector failure does not occur on the smaller
+sample.</p>
+<div class="sourceCode" id="cb5"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb5-1"><a href="#cb5-1" tabindex="-1"></a><span class="va">FLOTSAM_NUMERICAL_DIAGNOSTICS_SMOKE</span><span class="op">=</span>true <span class="dt">\</span></span>
+<span id="cb5-2"><a href="#cb5-2" tabindex="-1"></a>  <span class="ex">Rscript</span> vignettes/articles/numerical-diagnostics-reproduction.R</span></code></pre></div>
+<details><summary>
+Show the complete S-curve reproduction script (full route uses 10,000
+generated samples)
+</summary><pre><code class="language-r"><span></span>
+<span><span class="co"># Reproduce the S-curve example in the numerical-diagnostics article.</span></span>
+<span><span class="co">#</span></span>
+<span><span class="co"># The full route uses 10,000 generated samples and writes the two article</span></span>
+<span><span class="co"># figures when FLOTSAM_NUMERICAL_DIAGNOSTICS_FIGURE_DIR is set. Set</span></span>
+<span><span class="co"># FLOTSAM_NUMERICAL_DIAGNOSTICS_SMOKE=true for a reduced no-download smoke run;</span></span>
+<span><span class="co"># the smoke route checks the recipe but deliberately does not write article</span></span>
+<span><span class="co"># figures.</span></span>
+<span></span>
+<span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://jlmelville.github.io/flotsam/">flotsam</a></span><span class="op">)</span></span>
+<span></span>
+<span><span class="kw">if</span> <span class="op">(</span><span class="op">!</span><span class="fu"><a href="https://rdrr.io/r/base/ns-load.html" class="external-link">requireNamespace</a></span><span class="op">(</span><span class="st">"snedata"</span>, quietly <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span><span class="op">)</span> <span class="op">{</span></span>
+<span>  <span class="kw"><a href="https://rdrr.io/r/base/stop.html" class="external-link">stop</a></span><span class="op">(</span></span>
+<span>    <span class="st">"Install the article data helper with pak::pak('jlmelville/snedata')."</span>,</span>
+<span>    call. <span class="op">=</span> <span class="cn">FALSE</span></span>
+<span>  <span class="op">)</span></span>
+<span><span class="op">}</span></span>
+<span></span>
+<span><span class="va">data_seed</span> <span class="op">&lt;-</span> <span class="fl">42L</span></span>
+<span><span class="va">neighbor_seed</span> <span class="op">&lt;-</span> <span class="fl">42L</span></span>
+<span><span class="va">solver_seed</span> <span class="op">&lt;-</span> <span class="fl">42L</span></span>
+<span><span class="va">n_neighbors</span> <span class="op">&lt;-</span> <span class="fl">15L</span></span>
+<span><span class="va">smoke</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/chartr.html" class="external-link">tolower</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/Sys.getenv.html" class="external-link">Sys.getenv</a></span><span class="op">(</span></span>
+<span>  <span class="st">"FLOTSAM_NUMERICAL_DIAGNOSTICS_SMOKE"</span>,</span>
+<span>  unset <span class="op">=</span> <span class="st">"false"</span></span>
+<span><span class="op">)</span><span class="op">)</span> <span class="op"><a href="https://rdrr.io/r/base/match.html" class="external-link">%in%</a></span></span>
+<span>  <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"1"</span>, <span class="st">"true"</span>, <span class="st">"yes"</span><span class="op">)</span></span>
+<span><span class="va">figure_directory</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/Sys.getenv.html" class="external-link">Sys.getenv</a></span><span class="op">(</span></span>
+<span>  <span class="st">"FLOTSAM_NUMERICAL_DIAGNOSTICS_FIGURE_DIR"</span>,</span>
+<span>  unset <span class="op">=</span> <span class="st">""</span></span>
 <span><span class="op">)</span></span>
 <span></span>
-<span><span class="fu"><a href="https://rdrr.io/r/base/dim.html" class="external-link">dim</a></span><span class="op">(</span><span class="va">ltsa_block</span><span class="op">$</span><span class="va">spectral_embedding</span><span class="op">)</span></span>
-<span><span class="va">ltsa_block</span><span class="op">$</span><span class="va">eigen</span><span class="op">$</span><span class="va">diagnostics</span><span class="op">$</span><span class="va">scaled_boundary_gap</span></span>
-<span><span class="va">ltsa_block</span><span class="op">$</span><span class="va">eigen</span><span class="op">$</span><span class="va">spectral</span><span class="op">$</span><span class="va">diagnostics</span><span class="op">$</span><span class="va">scaled_boundary_gap</span></span></code></pre></div>
-<p>The first status and gap describe the displayed <code>ndim</code>
-prefix; the nested <code>eigen$spectral</code> fields describe the
-retained <code>spectral_dim</code> block. Stricter convergence criteria
-can help when the cause is solver accuracy, at the cost of longer
-computation.</p>
-<p>For examples of when an extra same-operator mode reveals useful
-periodic or morphological structure—and when it instead remains
-localized—see <a href="spectral-blocks.html">When the first LTSA
-coordinates are not the whole story</a>.</p>
-</div>
+<span><span class="va">self_first_nnd</span> <span class="op">&lt;-</span> <span class="kw">function</span><span class="op">(</span><span class="va">X</span>, <span class="va">n_neighbors</span>, <span class="va">seed</span><span class="op">)</span> <span class="op">{</span></span>
+<span>  <span class="fu"><a href="https://rdrr.io/r/base/Random.html" class="external-link">set.seed</a></span><span class="op">(</span><span class="va">seed</span><span class="op">)</span></span>
+<span>  <span class="va">raw</span> <span class="op">&lt;-</span> <span class="fu">rnndescent</span><span class="fu">::</span><span class="fu"><a href="https://jlmelville.github.io/rnndescent/reference/nnd_knn.html" class="external-link">nnd_knn</a></span><span class="op">(</span></span>
+<span>    data <span class="op">=</span> <span class="va">X</span>,</span>
+<span>    k <span class="op">=</span> <span class="va">n_neighbors</span> <span class="op">+</span> <span class="fl">1L</span>,</span>
+<span>    n_threads <span class="op">=</span> <span class="fl">1L</span>,</span>
+<span>    verbose <span class="op">=</span> <span class="cn">FALSE</span></span>
+<span>  <span class="op">)</span></span>
+<span></span>
+<span>  <span class="va">result</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/matrix.html" class="external-link">matrix</a></span><span class="op">(</span><span class="cn">NA_integer_</span>, <span class="fu"><a href="https://rdrr.io/r/base/nrow.html" class="external-link">nrow</a></span><span class="op">(</span><span class="va">X</span><span class="op">)</span>, <span class="va">n_neighbors</span><span class="op">)</span></span>
+<span>  <span class="kw">for</span> <span class="op">(</span><span class="va">row</span> <span class="kw">in</span> <span class="fu"><a href="https://rdrr.io/r/base/seq.html" class="external-link">seq_len</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/nrow.html" class="external-link">nrow</a></span><span class="op">(</span><span class="va">X</span><span class="op">)</span><span class="op">)</span><span class="op">)</span> <span class="op">{</span></span>
+<span>    <span class="va">indices</span> <span class="op">&lt;-</span> <span class="va">raw</span><span class="op">$</span><span class="va">idx</span><span class="op">[</span><span class="va">row</span>, <span class="op">]</span></span>
+<span>    <span class="va">distances</span> <span class="op">&lt;-</span> <span class="va">raw</span><span class="op">$</span><span class="va">dist</span><span class="op">[</span><span class="va">row</span>, <span class="op">]</span></span>
+<span>    <span class="va">valid</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/is.finite.html" class="external-link">is.finite</a></span><span class="op">(</span><span class="va">distances</span><span class="op">)</span> <span class="op">&amp;</span> <span class="op">!</span><span class="fu"><a href="https://rdrr.io/r/base/NA.html" class="external-link">is.na</a></span><span class="op">(</span><span class="va">indices</span><span class="op">)</span> <span class="op">&amp;</span> <span class="va">indices</span> <span class="op">!=</span> <span class="va">row</span></span>
+<span>    <span class="va">order_in_row</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/order.html" class="external-link">order</a></span><span class="op">(</span><span class="va">distances</span><span class="op">[</span><span class="va">valid</span><span class="op">]</span>, <span class="va">indices</span><span class="op">[</span><span class="va">valid</span><span class="op">]</span><span class="op">)</span></span>
+<span>    <span class="va">neighbors</span> <span class="op">&lt;-</span> <span class="va">indices</span><span class="op">[</span><span class="va">valid</span><span class="op">]</span><span class="op">[</span><span class="va">order_in_row</span><span class="op">]</span></span>
+<span>    <span class="va">neighbors</span> <span class="op">&lt;-</span> <span class="va">neighbors</span><span class="op">[</span><span class="op">!</span><span class="fu"><a href="https://rdrr.io/r/base/duplicated.html" class="external-link">duplicated</a></span><span class="op">(</span><span class="va">neighbors</span><span class="op">)</span><span class="op">]</span></span>
+<span>    <span class="kw">if</span> <span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/length.html" class="external-link">length</a></span><span class="op">(</span><span class="va">neighbors</span><span class="op">)</span> <span class="op">&lt;</span> <span class="va">n_neighbors</span> <span class="op">-</span> <span class="fl">1L</span><span class="op">)</span> <span class="op">{</span></span>
+<span>      <span class="kw"><a href="https://rdrr.io/r/base/stop.html" class="external-link">stop</a></span><span class="op">(</span><span class="st">"Approximate-neighbor search returned too few neighbors"</span><span class="op">)</span></span>
+<span>    <span class="op">}</span></span>
+<span>    <span class="va">result</span><span class="op">[</span><span class="va">row</span>, <span class="op">]</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="va">row</span>, <span class="va">neighbors</span><span class="op">[</span><span class="fu"><a href="https://rdrr.io/r/base/seq.html" class="external-link">seq_len</a></span><span class="op">(</span><span class="va">n_neighbors</span> <span class="op">-</span> <span class="fl">1L</span><span class="op">)</span><span class="op">]</span><span class="op">)</span></span>
+<span>  <span class="op">}</span></span>
+<span></span>
+<span>  <span class="fu"><a href="https://rdrr.io/r/base/stopifnot.html" class="external-link">stopifnot</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/all.html" class="external-link">all</a></span><span class="op">(</span><span class="va">result</span><span class="op">[</span>, <span class="fl">1L</span><span class="op">]</span> <span class="op">==</span> <span class="fu"><a href="https://rdrr.io/r/base/seq.html" class="external-link">seq_len</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/nrow.html" class="external-link">nrow</a></span><span class="op">(</span><span class="va">result</span><span class="op">)</span><span class="op">)</span><span class="op">)</span><span class="op">)</span></span>
+<span>  <span class="va">result</span></span>
+<span><span class="op">}</span></span>
+<span></span>
+<span><span class="co"># snedata constructs x = sin(t), z = sign(t) * (cos(t) - 1), with</span></span>
+<span><span class="co"># t in [-3 * pi / 2, 3 * pi / 2]. Recover t from the public coordinates so</span></span>
+<span><span class="co"># the semantic check does not depend on an unexported generator value.</span></span>
+<span><span class="va">latent_coordinates</span> <span class="op">&lt;-</span> <span class="kw">function</span><span class="op">(</span><span class="va">data</span><span class="op">)</span> <span class="op">{</span></span>
+<span>  <span class="va">signed_t</span> <span class="op">&lt;-</span> <span class="op">-</span><span class="fu"><a href="https://rdrr.io/r/base/sign.html" class="external-link">sign</a></span><span class="op">(</span><span class="va">data</span><span class="op">$</span><span class="va">z</span><span class="op">)</span></span>
+<span>  <span class="va">cosine</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/Extremes.html" class="external-link">pmax</a></span><span class="op">(</span><span class="op">-</span><span class="fl">1</span>, <span class="fu"><a href="https://rdrr.io/r/base/Extremes.html" class="external-link">pmin</a></span><span class="op">(</span><span class="fl">1</span>, <span class="fl">1</span> <span class="op">-</span> <span class="fu"><a href="https://rdrr.io/r/base/MathFun.html" class="external-link">abs</a></span><span class="op">(</span><span class="va">data</span><span class="op">$</span><span class="va">z</span><span class="op">)</span><span class="op">)</span><span class="op">)</span></span>
+<span>  <span class="va">abs_t</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/Trig.html" class="external-link">acos</a></span><span class="op">(</span><span class="va">cosine</span><span class="op">)</span></span>
+<span>  <span class="va">outside_principal_turn</span> <span class="op">&lt;-</span> <span class="va">signed_t</span> <span class="op">!=</span> <span class="fl">0</span> <span class="op">&amp;</span> <span class="fu"><a href="https://rdrr.io/r/base/sign.html" class="external-link">sign</a></span><span class="op">(</span><span class="va">data</span><span class="op">$</span><span class="va">x</span><span class="op">)</span> <span class="op">!=</span> <span class="va">signed_t</span></span>
+<span>  <span class="va">abs_t</span><span class="op">[</span><span class="va">outside_principal_turn</span><span class="op">]</span> <span class="op">&lt;-</span></span>
+<span>    <span class="fl">2</span> <span class="op">*</span> <span class="va">pi</span> <span class="op">-</span> <span class="va">abs_t</span><span class="op">[</span><span class="va">outside_principal_turn</span><span class="op">]</span></span>
+<span>  <span class="va">t</span> <span class="op">&lt;-</span> <span class="va">signed_t</span> <span class="op">*</span> <span class="va">abs_t</span></span>
+<span></span>
+<span>  <span class="fu"><a href="https://rdrr.io/r/base/stopifnot.html" class="external-link">stopifnot</a></span><span class="op">(</span></span>
+<span>    <span class="fu"><a href="https://rdrr.io/r/base/Extremes.html" class="external-link">max</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/MathFun.html" class="external-link">abs</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/Trig.html" class="external-link">sin</a></span><span class="op">(</span><span class="va">t</span><span class="op">)</span> <span class="op">-</span> <span class="va">data</span><span class="op">$</span><span class="va">x</span><span class="op">)</span><span class="op">)</span> <span class="op">&lt;</span> <span class="fl">1e-10</span>,</span>
+<span>    <span class="fu"><a href="https://rdrr.io/r/base/Extremes.html" class="external-link">max</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/MathFun.html" class="external-link">abs</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/sign.html" class="external-link">sign</a></span><span class="op">(</span><span class="va">t</span><span class="op">)</span> <span class="op">*</span> <span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/Trig.html" class="external-link">cos</a></span><span class="op">(</span><span class="va">t</span><span class="op">)</span> <span class="op">-</span> <span class="fl">1</span><span class="op">)</span> <span class="op">-</span> <span class="va">data</span><span class="op">$</span><span class="va">z</span><span class="op">)</span><span class="op">)</span> <span class="op">&lt;</span> <span class="fl">1e-10</span></span>
+<span>  <span class="op">)</span></span>
+<span>  <span class="fu"><a href="https://rdrr.io/r/base/cbind.html" class="external-link">cbind</a></span><span class="op">(</span>t <span class="op">=</span> <span class="va">t</span>, height <span class="op">=</span> <span class="va">data</span><span class="op">$</span><span class="va">y</span><span class="op">)</span></span>
+<span><span class="op">}</span></span>
+<span></span>
+<span><span class="va">latent_r_squared</span> <span class="op">&lt;-</span> <span class="kw">function</span><span class="op">(</span><span class="va">embedding</span>, <span class="va">latent</span><span class="op">)</span> <span class="op">{</span></span>
+<span>  <span class="fu"><a href="https://rdrr.io/r/base/lapply.html" class="external-link">vapply</a></span><span class="op">(</span></span>
+<span>    <span class="fu"><a href="https://rdrr.io/r/base/seq.html" class="external-link">seq_len</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/nrow.html" class="external-link">ncol</a></span><span class="op">(</span><span class="va">latent</span><span class="op">)</span><span class="op">)</span>,</span>
+<span>    <span class="kw">function</span><span class="op">(</span><span class="va">column</span><span class="op">)</span> <span class="op">{</span></span>
+<span>      <span class="fu"><a href="https://rdrr.io/r/base/summary.html" class="external-link">summary</a></span><span class="op">(</span><span class="fu">stats</span><span class="fu">::</span><span class="fu"><a href="https://rdrr.io/r/stats/lm.html" class="external-link">lm</a></span><span class="op">(</span><span class="va">latent</span><span class="op">[</span>, <span class="va">column</span><span class="op">]</span> <span class="op">~</span> <span class="va">embedding</span><span class="op">)</span><span class="op">)</span><span class="op">$</span><span class="va">r.squared</span></span>
+<span>    <span class="op">}</span>,</span>
+<span>    <span class="fu"><a href="https://rdrr.io/r/base/numeric.html" class="external-link">numeric</a></span><span class="op">(</span><span class="fl">1</span><span class="op">)</span></span>
+<span>  <span class="op">)</span></span>
+<span><span class="op">}</span></span>
+<span></span>
+<span><span class="va">run_fit</span> <span class="op">&lt;-</span> <span class="kw">function</span><span class="op">(</span><span class="va">X</span>, <span class="va">graph</span>, <span class="va">eig_k</span>, <span class="va">tol</span><span class="op">)</span> <span class="op">{</span></span>
+<span>  <span class="fu"><a href="https://rdrr.io/r/base/Random.html" class="external-link">set.seed</a></span><span class="op">(</span><span class="va">solver_seed</span><span class="op">)</span></span>
+<span>  <span class="fu"><a href="../reference/ltsa.html">ltsa</a></span><span class="op">(</span></span>
+<span>    <span class="va">X</span>,</span>
+<span>    n_neighbors <span class="op">=</span> <span class="va">n_neighbors</span>,</span>
+<span>    nn_method <span class="op">=</span> <span class="va">graph</span>,</span>
+<span>    eig_method <span class="op">=</span> <span class="st">"rspectra"</span>,</span>
+<span>    eig_k <span class="op">=</span> <span class="va">eig_k</span>,</span>
+<span>    output <span class="op">=</span> <span class="st">"result"</span>,</span>
+<span>    n_threads <span class="op">=</span> <span class="fl">1L</span>,</span>
+<span>    n_assembly_threads <span class="op">=</span> <span class="fl">1L</span>,</span>
+<span>    tol <span class="op">=</span> <span class="va">tol</span></span>
+<span>  <span class="op">)</span></span>
+<span><span class="op">}</span></span>
+<span></span>
+<span><span class="va">capture_fit</span> <span class="op">&lt;-</span> <span class="kw">function</span><span class="op">(</span><span class="va">X</span>, <span class="va">graph</span>, <span class="va">eig_k</span>, <span class="va">tol</span><span class="op">)</span> <span class="op">{</span></span>
+<span>  <span class="va">warnings</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/character.html" class="external-link">character</a></span><span class="op">(</span><span class="op">)</span></span>
+<span>  <span class="va">value</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/conditions.html" class="external-link">withCallingHandlers</a></span><span class="op">(</span></span>
+<span>    <span class="kw"><a href="https://rdrr.io/r/base/conditions.html" class="external-link">tryCatch</a></span><span class="op">(</span></span>
+<span>      <span class="fu">run_fit</span><span class="op">(</span><span class="va">X</span>, <span class="va">graph</span>, <span class="va">eig_k</span>, <span class="va">tol</span><span class="op">)</span>,</span>
+<span>      error <span class="op">=</span> <span class="kw">function</span><span class="op">(</span><span class="va">condition</span><span class="op">)</span> <span class="va">condition</span></span>
+<span>    <span class="op">)</span>,</span>
+<span>    warning <span class="op">=</span> <span class="kw">function</span><span class="op">(</span><span class="va">condition</span><span class="op">)</span> <span class="op">{</span></span>
+<span>      <span class="va">warnings</span> <span class="op">&lt;&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="va">warnings</span>, <span class="fu"><a href="https://rdrr.io/r/base/conditions.html" class="external-link">conditionMessage</a></span><span class="op">(</span><span class="va">condition</span><span class="op">)</span><span class="op">)</span></span>
+<span>      <span class="fu"><a href="https://rdrr.io/r/base/conditions.html" class="external-link">invokeRestart</a></span><span class="op">(</span><span class="st">"muffleWarning"</span><span class="op">)</span></span>
+<span>    <span class="op">}</span></span>
+<span>  <span class="op">)</span></span>
+<span>  <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>value <span class="op">=</span> <span class="va">value</span>, warnings <span class="op">=</span> <span class="va">warnings</span><span class="op">)</span></span>
+<span><span class="op">}</span></span>
+<span></span>
+<span><span class="va">fit_summary</span> <span class="op">&lt;-</span> <span class="kw">function</span><span class="op">(</span><span class="va">name</span>, <span class="va">captured</span>, <span class="va">latent</span>, <span class="va">eig_k</span>, <span class="va">tol</span><span class="op">)</span> <span class="op">{</span></span>
+<span>  <span class="va">value</span> <span class="op">&lt;-</span> <span class="va">captured</span><span class="op">$</span><span class="va">value</span></span>
+<span>  <span class="kw">if</span> <span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/class.html" class="external-link">inherits</a></span><span class="op">(</span><span class="va">value</span>, <span class="st">"error"</span><span class="op">)</span><span class="op">)</span> <span class="op">{</span></span>
+<span>    <span class="kw"><a href="https://rdrr.io/r/base/function.html" class="external-link">return</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/data.frame.html" class="external-link">data.frame</a></span><span class="op">(</span></span>
+<span>      scenario <span class="op">=</span> <span class="va">name</span>,</span>
+<span>      outcome <span class="op">=</span> <span class="st">"error"</span>,</span>
+<span>      eig_k <span class="op">=</span> <span class="va">eig_k</span>,</span>
+<span>      tol <span class="op">=</span> <span class="va">tol</span>,</span>
+<span>      status <span class="op">=</span> <span class="cn">NA_character_</span>,</span>
+<span>      min_latent_r_squared <span class="op">=</span> <span class="cn">NA_real_</span>,</span>
+<span>      components <span class="op">=</span> <span class="cn">NA_integer_</span>,</span>
+<span>      rank_deficient_neighborhoods <span class="op">=</span> <span class="cn">NA_integer_</span>,</span>
+<span>      detail <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/conditions.html" class="external-link">conditionMessage</a></span><span class="op">(</span><span class="va">value</span><span class="op">)</span></span>
+<span>    <span class="op">)</span><span class="op">)</span></span>
+<span>  <span class="op">}</span></span>
+<span></span>
+<span>  <span class="fu"><a href="https://rdrr.io/r/base/data.frame.html" class="external-link">data.frame</a></span><span class="op">(</span></span>
+<span>    scenario <span class="op">=</span> <span class="va">name</span>,</span>
+<span>    outcome <span class="op">=</span> <span class="st">"result"</span>,</span>
+<span>    eig_k <span class="op">=</span> <span class="va">eig_k</span>,</span>
+<span>    tol <span class="op">=</span> <span class="va">tol</span>,</span>
+<span>    status <span class="op">=</span> <span class="va">value</span><span class="op">$</span><span class="va">eigen</span><span class="op">$</span><span class="va">status</span>,</span>
+<span>    min_latent_r_squared <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/Extremes.html" class="external-link">min</a></span><span class="op">(</span></span>
+<span>      <span class="fu">latent_r_squared</span><span class="op">(</span><span class="va">value</span><span class="op">$</span><span class="va">embedding</span>, <span class="va">latent</span><span class="op">)</span></span>
+<span>    <span class="op">)</span>,</span>
+<span>    components <span class="op">=</span> <span class="va">value</span><span class="op">$</span><span class="va">assembly</span><span class="op">$</span><span class="va">component_count</span>,</span>
+<span>    rank_deficient_neighborhoods <span class="op">=</span> <span class="va">value</span><span class="op">$</span><span class="va">assembly</span><span class="op">$</span><span class="va">rank_deficient_count</span>,</span>
+<span>    detail <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/paste.html" class="external-link">paste</a></span><span class="op">(</span><span class="va">value</span><span class="op">$</span><span class="va">eigen</span><span class="op">$</span><span class="va">messages</span>, collapse <span class="op">=</span> <span class="st">" | "</span><span class="op">)</span></span>
+<span>  <span class="op">)</span></span>
+<span><span class="op">}</span></span>
+<span></span>
+<span><span class="va">draw_embedding</span> <span class="op">&lt;-</span> <span class="kw">function</span><span class="op">(</span><span class="va">fit</span>, <span class="va">colors</span>, <span class="va">filename</span>, <span class="va">title</span><span class="op">)</span> <span class="op">{</span></span>
+<span>  <span class="fu"><a href="https://rdrr.io/r/base/files2.html" class="external-link">dir.create</a></span><span class="op">(</span><span class="va">figure_directory</span>, recursive <span class="op">=</span> <span class="cn">TRUE</span>, showWarnings <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span>
+<span>  <span class="fu">grDevices</span><span class="fu">::</span><span class="fu"><a href="https://rdrr.io/r/grDevices/png.html" class="external-link">png</a></span><span class="op">(</span></span>
+<span>    <span class="fu"><a href="https://rdrr.io/r/base/file.path.html" class="external-link">file.path</a></span><span class="op">(</span><span class="va">figure_directory</span>, <span class="va">filename</span><span class="op">)</span>,</span>
+<span>    width <span class="op">=</span> <span class="fl">1200L</span>,</span>
+<span>    height <span class="op">=</span> <span class="fl">900L</span>,</span>
+<span>    res <span class="op">=</span> <span class="fl">120L</span>,</span>
+<span>    type <span class="op">=</span> <span class="st">"cairo-png"</span>,</span>
+<span>    bg <span class="op">=</span> <span class="st">"white"</span></span>
+<span>  <span class="op">)</span></span>
+<span>  <span class="fu"><a href="https://rdrr.io/r/base/on.exit.html" class="external-link">on.exit</a></span><span class="op">(</span><span class="fu">grDevices</span><span class="fu">::</span><span class="fu"><a href="https://rdrr.io/r/grDevices/dev.html" class="external-link">dev.off</a></span><span class="op">(</span><span class="op">)</span><span class="op">)</span></span>
+<span>  <span class="fu">graphics</span><span class="fu">::</span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span></span>
+<span>    <span class="va">fit</span><span class="op">$</span><span class="va">embedding</span>,</span>
+<span>    col <span class="op">=</span> <span class="va">colors</span>,</span>
+<span>    pch <span class="op">=</span> <span class="fl">16</span>,</span>
+<span>    cex <span class="op">=</span> <span class="fl">0.45</span>,</span>
+<span>    xlab <span class="op">=</span> <span class="st">"LTSA 1"</span>,</span>
+<span>    ylab <span class="op">=</span> <span class="st">"LTSA 2"</span>,</span>
+<span>    main <span class="op">=</span> <span class="va">title</span></span>
+<span>  <span class="op">)</span></span>
+<span><span class="op">}</span></span>
+<span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/Random.html" class="external-link">set.seed</a></span><span class="op">(</span><span class="va">data_seed</span><span class="op">)</span></span>
+<span><span class="va">sample_count</span> <span class="op">&lt;-</span> <span class="kw">if</span> <span class="op">(</span><span class="va">smoke</span><span class="op">)</span> <span class="fl">2000L</span> <span class="kw">else</span> <span class="fl">10000L</span></span>
+<span><span class="va">s_curve</span> <span class="op">&lt;-</span> <span class="fu">snedata</span><span class="fu">::</span><span class="fu">s_curve_hole</span><span class="op">(</span>n_samples <span class="op">=</span> <span class="va">sample_count</span><span class="op">)</span></span>
+<span><span class="va">X</span> <span class="op">&lt;-</span> <span class="va">s_curve</span><span class="op">[</span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"x"</span>, <span class="st">"y"</span>, <span class="st">"z"</span><span class="op">)</span><span class="op">]</span></span>
+<span><span class="va">latent</span> <span class="op">&lt;-</span> <span class="fu">latent_coordinates</span><span class="op">(</span><span class="va">s_curve</span><span class="op">)</span></span>
+<span><span class="va">graph</span> <span class="op">&lt;-</span> <span class="fu">self_first_nnd</span><span class="op">(</span><span class="va">X</span>, <span class="va">n_neighbors</span>, <span class="va">neighbor_seed</span><span class="op">)</span></span>
+<span></span>
+<span><span class="va">narrow</span> <span class="op">&lt;-</span> <span class="fu">capture_fit</span><span class="op">(</span><span class="va">X</span>, <span class="va">graph</span>, eig_k <span class="op">=</span> <span class="fl">6L</span>, tol <span class="op">=</span> <span class="fl">1e-6</span><span class="op">)</span></span>
+<span><span class="va">strict_narrow</span> <span class="op">&lt;-</span> <span class="fu">capture_fit</span><span class="op">(</span><span class="va">X</span>, <span class="va">graph</span>, eig_k <span class="op">=</span> <span class="fl">6L</span>, tol <span class="op">=</span> <span class="fl">1e-8</span><span class="op">)</span></span>
+<span><span class="va">strict_wide</span> <span class="op">&lt;-</span> <span class="fu">capture_fit</span><span class="op">(</span><span class="va">X</span>, <span class="va">graph</span>, eig_k <span class="op">=</span> <span class="fl">18L</span>, tol <span class="op">=</span> <span class="fl">1e-8</span><span class="op">)</span></span>
+<span></span>
+<span><span class="va">summary_table</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/cbind.html" class="external-link">rbind</a></span><span class="op">(</span></span>
+<span>  <span class="fu">fit_summary</span><span class="op">(</span><span class="st">"narrow"</span>, <span class="va">narrow</span>, <span class="va">latent</span>, eig_k <span class="op">=</span> <span class="fl">6L</span>, tol <span class="op">=</span> <span class="fl">1e-6</span><span class="op">)</span>,</span>
+<span>  <span class="fu">fit_summary</span><span class="op">(</span></span>
+<span>    <span class="st">"strict_narrow"</span>,</span>
+<span>    <span class="va">strict_narrow</span>,</span>
+<span>    <span class="va">latent</span>,</span>
+<span>    eig_k <span class="op">=</span> <span class="fl">6L</span>,</span>
+<span>    tol <span class="op">=</span> <span class="fl">1e-8</span></span>
+<span>  <span class="op">)</span>,</span>
+<span>  <span class="fu">fit_summary</span><span class="op">(</span></span>
+<span>    <span class="st">"strict_wide"</span>,</span>
+<span>    <span class="va">strict_wide</span>,</span>
+<span>    <span class="va">latent</span>,</span>
+<span>    eig_k <span class="op">=</span> <span class="fl">18L</span>,</span>
+<span>    tol <span class="op">=</span> <span class="fl">1e-8</span></span>
+<span>  <span class="op">)</span></span>
+<span><span class="op">)</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/print.html" class="external-link">print</a></span><span class="op">(</span><span class="va">summary_table</span>, row.names <span class="op">=</span> <span class="cn">FALSE</span>, digits <span class="op">=</span> <span class="fl">7</span><span class="op">)</span></span>
+<span></span>
+<span><span class="va">successful</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/funprog.html" class="external-link">Filter</a></span><span class="op">(</span></span>
+<span>  <span class="kw">function</span><span class="op">(</span><span class="va">captured</span><span class="op">)</span> <span class="op">!</span><span class="fu"><a href="https://rdrr.io/r/base/class.html" class="external-link">inherits</a></span><span class="op">(</span><span class="va">captured</span><span class="op">$</span><span class="va">value</span>, <span class="st">"error"</span><span class="op">)</span>,</span>
+<span>  <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span><span class="va">narrow</span>, <span class="va">strict_narrow</span>, <span class="va">strict_wide</span><span class="op">)</span></span>
+<span><span class="op">)</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/stopifnot.html" class="external-link">stopifnot</a></span><span class="op">(</span></span>
+<span>  <span class="fu"><a href="https://rdrr.io/r/base/all.html" class="external-link">all</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/lapply.html" class="external-link">vapply</a></span><span class="op">(</span></span>
+<span>    <span class="va">successful</span>,</span>
+<span>    <span class="kw">function</span><span class="op">(</span><span class="va">captured</span><span class="op">)</span> <span class="va">captured</span><span class="op">$</span><span class="va">value</span><span class="op">$</span><span class="va">eigen</span><span class="op">$</span><span class="va">status</span> <span class="op">!=</span> <span class="st">"invalid"</span>,</span>
+<span>    <span class="fu"><a href="https://rdrr.io/r/base/logical.html" class="external-link">logical</a></span><span class="op">(</span><span class="fl">1</span><span class="op">)</span></span>
+<span>  <span class="op">)</span><span class="op">)</span>,</span>
+<span>  <span class="fu"><a href="https://rdrr.io/r/base/all.html" class="external-link">all</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/lapply.html" class="external-link">vapply</a></span><span class="op">(</span></span>
+<span>    <span class="va">successful</span>,</span>
+<span>    <span class="kw">function</span><span class="op">(</span><span class="va">captured</span><span class="op">)</span> <span class="va">captured</span><span class="op">$</span><span class="va">value</span><span class="op">$</span><span class="va">assembly</span><span class="op">$</span><span class="va">component_count</span> <span class="op">==</span> <span class="fl">1L</span>,</span>
+<span>    <span class="fu"><a href="https://rdrr.io/r/base/logical.html" class="external-link">logical</a></span><span class="op">(</span><span class="fl">1</span><span class="op">)</span></span>
+<span>  <span class="op">)</span><span class="op">)</span>,</span>
+<span>  <span class="fu"><a href="https://rdrr.io/r/base/all.html" class="external-link">all</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/lapply.html" class="external-link">vapply</a></span><span class="op">(</span></span>
+<span>    <span class="va">successful</span>,</span>
+<span>    <span class="kw">function</span><span class="op">(</span><span class="va">captured</span><span class="op">)</span> <span class="op">{</span></span>
+<span>      <span class="va">captured</span><span class="op">$</span><span class="va">value</span><span class="op">$</span><span class="va">assembly</span><span class="op">$</span><span class="va">rank_deficient_count</span> <span class="op">==</span> <span class="fl">0L</span></span>
+<span>    <span class="op">}</span>,</span>
+<span>    <span class="fu"><a href="https://rdrr.io/r/base/logical.html" class="external-link">logical</a></span><span class="op">(</span><span class="fl">1</span><span class="op">)</span></span>
+<span>  <span class="op">)</span><span class="op">)</span></span>
+<span><span class="op">)</span></span>
+<span></span>
+<span><span class="kw">if</span> <span class="op">(</span><span class="va">smoke</span><span class="op">)</span> <span class="op">{</span></span>
+<span>  <span class="fu"><a href="https://rdrr.io/r/base/stopifnot.html" class="external-link">stopifnot</a></span><span class="op">(</span></span>
+<span>    <span class="fu"><a href="https://rdrr.io/r/base/length.html" class="external-link">length</a></span><span class="op">(</span><span class="va">successful</span><span class="op">)</span> <span class="op">==</span> <span class="fl">3L</span>,</span>
+<span>    <span class="fu"><a href="https://rdrr.io/r/base/all.html" class="external-link">all</a></span><span class="op">(</span><span class="va">summary_table</span><span class="op">$</span><span class="va">min_latent_r_squared</span> <span class="op">&gt;</span> <span class="fl">0.95</span><span class="op">)</span></span>
+<span>  <span class="op">)</span></span>
+<span>  <span class="fu"><a href="https://rdrr.io/r/base/message.html" class="external-link">message</a></span><span class="op">(</span><span class="st">"Reduced smoke route passed; article figures were not written."</span><span class="op">)</span></span>
+<span><span class="op">}</span> <span class="kw">else</span> <span class="op">{</span></span>
+<span>  <span class="va">narrow_score</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/Extremes.html" class="external-link">min</a></span><span class="op">(</span><span class="fu">latent_r_squared</span><span class="op">(</span><span class="va">narrow</span><span class="op">$</span><span class="va">value</span><span class="op">$</span><span class="va">embedding</span>, <span class="va">latent</span><span class="op">)</span><span class="op">)</span></span>
+<span>  <span class="va">wide_score</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/Extremes.html" class="external-link">min</a></span><span class="op">(</span><span class="fu">latent_r_squared</span><span class="op">(</span><span class="va">strict_wide</span><span class="op">$</span><span class="va">value</span><span class="op">$</span><span class="va">embedding</span>, <span class="va">latent</span><span class="op">)</span><span class="op">)</span></span>
+<span>  <span class="fu"><a href="https://rdrr.io/r/base/stopifnot.html" class="external-link">stopifnot</a></span><span class="op">(</span></span>
+<span>    <span class="fu"><a href="https://rdrr.io/r/base/class.html" class="external-link">inherits</a></span><span class="op">(</span><span class="va">strict_narrow</span><span class="op">$</span><span class="va">value</span>, <span class="st">"error"</span><span class="op">)</span>,</span>
+<span>    <span class="fu"><a href="https://rdrr.io/r/base/grep.html" class="external-link">grepl</a></span><span class="op">(</span></span>
+<span>      <span class="st">"failed to converge enough LTSA candidate vectors"</span>,</span>
+<span>      <span class="fu"><a href="https://rdrr.io/r/base/conditions.html" class="external-link">conditionMessage</a></span><span class="op">(</span><span class="va">strict_narrow</span><span class="op">$</span><span class="va">value</span><span class="op">)</span>,</span>
+<span>      fixed <span class="op">=</span> <span class="cn">TRUE</span></span>
+<span>    <span class="op">)</span>,</span>
+<span>    <span class="va">narrow_score</span> <span class="op">&lt;</span> <span class="fl">0.25</span>,</span>
+<span>    <span class="va">wide_score</span> <span class="op">&gt;</span> <span class="fl">0.99</span>,</span>
+<span>    <span class="va">wide_score</span> <span class="op">-</span> <span class="va">narrow_score</span> <span class="op">&gt;</span> <span class="fl">0.75</span></span>
+<span>  <span class="op">)</span></span>
+<span></span>
+<span>  <span class="kw">if</span> <span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/nchar.html" class="external-link">nzchar</a></span><span class="op">(</span><span class="va">figure_directory</span><span class="op">)</span><span class="op">)</span> <span class="op">{</span></span>
+<span>    <span class="fu">draw_embedding</span><span class="op">(</span></span>
+<span>      <span class="va">narrow</span><span class="op">$</span><span class="va">value</span>,</span>
+<span>      <span class="va">s_curve</span><span class="op">$</span><span class="va">color</span>,</span>
+<span>      <span class="st">"s-curve-hole-eig-k-6.png"</span>,</span>
+<span>      <span class="st">"S-curve with hole, eig_k = 6"</span></span>
+<span>    <span class="op">)</span></span>
+<span>    <span class="fu">draw_embedding</span><span class="op">(</span></span>
+<span>      <span class="va">strict_wide</span><span class="op">$</span><span class="va">value</span>,</span>
+<span>      <span class="va">s_curve</span><span class="op">$</span><span class="va">color</span>,</span>
+<span>      <span class="st">"s-curve-hole-eig-k-18-tol-1e-8.png"</span>,</span>
+<span>      <span class="st">"S-curve with hole, eig_k = 18, tol = 1e-8"</span></span>
+<span>    <span class="op">)</span></span>
+<span>  <span class="op">}</span></span>
+<span>  <span class="fu"><a href="https://rdrr.io/r/base/message.html" class="external-link">message</a></span><span class="op">(</span><span class="st">"Full S-curve semantic checks passed."</span><span class="op">)</span></span>
+<span><span class="op">}</span></span>
+<span></span>
+<span><span class="va">versions</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/lapply.html" class="external-link">vapply</a></span><span class="op">(</span></span>
+<span>  <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"flotsam"</span>, <span class="st">"snedata"</span>, <span class="st">"rnndescent"</span>, <span class="st">"RSpectra"</span><span class="op">)</span>,</span>
+<span>  <span class="kw">function</span><span class="op">(</span><span class="va">package</span><span class="op">)</span> <span class="fu"><a href="https://rdrr.io/r/base/character.html" class="external-link">as.character</a></span><span class="op">(</span><span class="fu">utils</span><span class="fu">::</span><span class="fu"><a href="https://rdrr.io/r/utils/packageDescription.html" class="external-link">packageVersion</a></span><span class="op">(</span><span class="va">package</span><span class="op">)</span><span class="op">)</span>,</span>
+<span>  <span class="fu"><a href="https://rdrr.io/r/base/character.html" class="external-link">character</a></span><span class="op">(</span><span class="fl">1</span><span class="op">)</span></span>
+<span><span class="op">)</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/print.html" class="external-link">print</a></span><span class="op">(</span><span class="va">versions</span><span class="op">)</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/cat.html" class="external-link">cat</a></span><span class="op">(</span><span class="st">"R"</span>, <span class="fu"><a href="https://rdrr.io/r/base/character.html" class="external-link">as.character</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/numeric_version.html" class="external-link">getRversion</a></span><span class="op">(</span><span class="op">)</span><span class="op">)</span>, <span class="st">"\n"</span><span class="op">)</span></span></code></pre>
+</details>
 </div>
 <div class="section level2">
-<h2 id="assembly-diagnostics-and-normalized-ltsa">Assembly diagnostics and normalized LTSA<a class="anchor" aria-label="anchor" href="#assembly-diagnostics-and-normalized-ltsa"></a>
+<h2 id="tune-the-selected-backend-not-an-unspecified-route">Tune the selected backend, not an unspecified route<a class="anchor" aria-label="anchor" href="#tune-the-selected-backend-not-an-unspecified-route"></a>
 </h2>
-<div class="section level3">
-<h3 id="local-rank-route">Local rank route<a class="anchor" aria-label="anchor" href="#local-rank-route"></a>
-</h3>
-<p>Local tangent bases use a direct SVD when the number of input columns
-is no larger than the effective neighborhood size, and an
-eigendecomposition of the centered Gram matrix otherwise. The direct
-route thresholds singular values. The Gram route thresholds squared
-singular values more conservatively because forming a Gram matrix
-squares the condition number. This is a stability tradeoff: near the
-threshold, the same local geometry can have a lower reported numerical
-rank on the Gram route. A rank-deficiency warning reports the number of
-affected neighborhoods in <code>assembly$rank_deficient_count</code> and
-the minimum numerical rank in <code>assembly$min_local_rank</code>.
-Reconsider the neighborhood size or inspect the input for repeated or
-degenerate observations.</p>
-</div>
-<div class="section level3">
-<h3 id="effective-neighborhood-components">Effective-neighborhood components<a class="anchor" aria-label="anchor" href="#effective-neighborhood-components"></a>
-</h3>
-<p><code>assembly$component_count</code>,
-<code>assembly$component_sizes</code>, and
-<code>assembly$component_membership</code> describe connected components
-of the co-membership graph formed from the effective neighborhoods used
-in assembly. Disconnected components guarantee componentwise constant
-null directions. Use the sizes and membership to reconnect the
-effective-neighborhood graph or analyze the components separately.
-Connectedness does not rule out other weakly coupled or low-energy
-structure.</p>
-</div>
-<div class="section level3">
-<h3 id="normalized-ltsa">Normalized LTSA<a class="anchor" aria-label="anchor" href="#normalized-ltsa"></a>
-</h3>
-<p>With <code>normalize = TRUE</code>, <code>flotsam</code> solves</p>
-<p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>B</mi><mi>v</mi><mo>=</mo><mi>λ</mi><mi>D</mi><mi>v</mi><mo>,</mo><mspace width="2.0em"></mspace><mi>D</mi><mo>=</mo><mrow><mi mathvariant="normal">diag</mi><mo>⁡</mo></mrow><mo stretchy="false" form="prefix">(</mo><mi>B</mi><mo stretchy="false" form="postfix">)</mo><mo>,</mo></mrow><annotation encoding="application/x-tex">
-Bv = \lambda Dv, \qquad D = \operatorname{diag}(B),
-</annotation></semantics></math></p>
-<p>by diagonalizing
-<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msup><mi>D</mi><mrow><mi>−</mi><mn>1</mn><mi>/</mi><mn>2</mn></mrow></msup><mi>B</mi><msup><mi>D</mi><mrow><mi>−</mi><mn>1</mn><mi>/</mi><mn>2</mn></mrow></msup></mrow><annotation encoding="application/x-tex">D^{-1/2} B D^{-1/2}</annotation></semantics></math>
-in symmetric coordinates
-<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>u</mi><annotation encoding="application/x-tex">u</annotation></semantics></math>
-and returning mapped coordinates
-<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>v</mi><mo>=</mo><msup><mi>D</mi><mrow><mi>−</mi><mn>1</mn><mi>/</mi><mn>2</mn></mrow></msup><mi>u</mi></mrow><annotation encoding="application/x-tex">v = D^{-1/2}u</annotation></semantics></math>.
-Standard LTSA uses ordinary orthogonality and centering; normalized LTSA
-uses <code>D</code>-weighted constraints. The alignment energy is the
-same, but this is a different generalized problem, not merely a
-better-conditioned solve for the standard coordinates.</p>
-<p>The diagonal <code>D</code> is part of the LTSA generalized
-estimator, not ordinary graph degree. Normalized LTSA is not a graph-cut
-estimator.</p>
-</div>
-</div>
-<div class="section level2">
-<h2 id="convergence-controls">Convergence controls<a class="anchor" aria-label="anchor" href="#convergence-controls"></a>
-</h2>
-<p>For the requested RSpectra method, the main convergence controls are
-<code>tol</code>, <code>maxitr</code> and <code>ncv</code> and are
-passed directly to <code>ltsa</code>. <code>flotsam</code> defaults to
-<code>tol = 1e-6</code>, deliberately looser than RSpectra’s own
-<code>1e-10</code> default. Select RSpectra explicitly when supplying
-these controls:</p>
-<div class="sourceCode" id="cb10"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">ltsa_strict</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/ltsa.html">ltsa</a></span><span class="op">(</span></span>
+<p>If residuals or a hard backend failure point to solver accuracy,
+select the backend explicitly before passing its controls:</p>
+<div class="sourceCode" id="cb6"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="va">strict_fit</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/ltsa.html">ltsa</a></span><span class="op">(</span></span>
 <span>  <span class="va">swiss_roll</span>,</span>
 <span>  eig_method <span class="op">=</span> <span class="st">"rspectra"</span>,</span>
 <span>  eig_k <span class="op">=</span> <span class="fl">16</span>,</span>
@@ -357,63 +604,105 @@ these controls:</p>
 <span>  maxitr <span class="op">=</span> <span class="fl">5000</span>,</span>
 <span>  ncv <span class="op">=</span> <span class="fl">40</span></span>
 <span><span class="op">)</span></span></code></pre></div>
-<p>Backend-specific tuning is passed through <code>...</code>:</p>
+<p>The package default <code>tol = 1e-6</code> is looser than RSpectra’s
+own default. Moving from <code>1e-6</code> to <code>1e-8</code> is
+therefore <strong>tightening</strong> the tolerance. If that stricter
+solve cannot return the requested candidate span, increasing
+<code>eig_k</code> may help, as in the S-curve example; simply
+tightening <code>tol</code>, enlarging <code>ncv</code>, or raising the
+iteration limit does not recover a direction absent from the candidate
+span.</p>
+<p>Backend-specific controls passed through <code>...</code> are
+deliberately curated:</p>
 <ul>
 <li>
 <code>eig_method = "rspectra"</code>: <code>tol</code>,
-<code>maxitr</code>, and <code>ncv</code>.</li>
+<code>maxitr</code>, and <code>ncv</code>;</li>
 <li>
 <code>eig_method = "irlba"</code>: <code>tol</code>,
-<code>maxit</code>, and <code>reorth</code>.</li>
+<code>maxit</code>, and <code>reorth</code>; and</li>
 <li>
 <code>eig_method = "svdr"</code>: <code>tol</code>, <code>it</code>,
 and <code>extra</code>.</li>
 </ul>
-<p>This is a curated wrapper contract rather than every argument exposed
-by the underlying packages. The listed values are passed to their
-selected backend unchanged; unknown controls, controls for a different
-method, and backend-owned vector/count arguments are rejected.
-<code>dense_n</code> and <code>dense_fraction</code> belong only to
-<code>"auto"</code>, while <code>shift_eps</code> belongs only to
-explicit iterative methods. <code>resid_tol</code> and
-<code>gap_tol</code> are accepted in every mode and never change the
-selected route. Dense <code>"eig"</code>/<code>"eigen"</code> accepts
-only those diagnostic controls. <code>output = "B"</code> accepts no
-eigenanalysis controls in <code>...</code>.</p>
-<p>In the event of a convergence failure with stricter convergence, you
-may also need to increase <code>eig_k</code> (the number of eigenvectors
-returned before the Rayleigh-Ritz processing):</p>
-<div class="sourceCode" id="cb11"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">ltsa_wider</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/ltsa.html">ltsa</a></span><span class="op">(</span></span>
-<span>  <span class="va">swiss_roll</span>,</span>
-<span>  eig_k <span class="op">=</span> <span class="fl">32</span>,</span>
-<span>  output <span class="op">=</span> <span class="st">"result"</span></span>
-<span><span class="op">)</span></span></code></pre></div>
-<p>However the default is already quite generous, so usually tighter
-convergence is the answer with default <code>eig_k</code>.</p>
-<p>Use <code>output = "B"</code> to skip final eigenanalysis. With
-<code>normalize = FALSE</code>, the default, this returns the raw
-alignment matrix; with <code>normalize = TRUE</code>, it returns the
-normalized operator
+<p><code>resid_tol</code> and <code>gap_tol</code> change diagnostics,
+not the selected route. <code>dense_n</code> and
+<code>dense_fraction</code> apply only to
+<code>eig_method = "auto"</code>, while <code>shift_eps</code> applies
+only to an explicit iterative method. Unknown controls and controls for
+another backend are rejected.</p>
+<p>For a small diagnostic case, <code>eig_method = "eig"</code> (or its
+<code>"eigen"</code> alias) computes the full dense eigensystem and
+provides a useful eigenvalue or eigenspace reference. It is too
+expensive for large datasets, and repeated eigenspaces still make
+individual eigenvectors non-unique.</p>
+</div>
+<div class="section level2">
+<h2 id="why-eig_k-can-matter">Why <code>eig_k</code> can matter<a class="anchor" aria-label="anchor" href="#why-eig_k-can-matter"></a>
+</h2>
+<p><code>flotsam</code> reflects the alignment operator as
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>μ</mi><mi>I</mi><mo>−</mo><mi>B</mi></mrow><annotation encoding="application/x-tex">\mu I - B</annotation></semantics></math>,
+turning the lowest directions of
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>B</mi><annotation encoding="application/x-tex">B</annotation></semantics></math>
+into the largest algebraic directions requested from an iterative
+backend. This shifted-candidate approach was motivated by practical
+problems with clustered low eigenvalues and by a <a href="https://github.com/yixuan/spectra/issues/126" class="external-link">Spectra
+discussion</a>.</p>
+<p>After the candidate solve, a Rayleigh–Ritz step removes the known
+constant direction and polishes the requested span. It can resolve mixed
+or rotated vectors already present in that span, but it cannot recover
+an entirely missing direction. That is why a wider <code>eig_k</code>
+can change a result even when the requested <code>ndim</code> is
+unchanged.</p>
+<p>With <code>eig_method = "auto"</code>, <code>flotsam</code> uses
+dense <code><a href="https://rdrr.io/r/base/eigen.html" class="external-link">base::eigen()</a></code> when the input is small or the
+candidate request is a large fraction of the sample count; otherwise it
+uses RSpectra. <code>eigen$method</code> records the requested policy
+and <code>eigen$backend$name</code> records the backend that actually
+ran. Even on the dense route, <code>eig_k</code> bounds the candidate
+span passed to Rayleigh–Ritz.</p>
+<p>Use <code>output = "B"</code> to inspect the operator without running
+final eigenanalysis. With <code>normalize = FALSE</code> this returns
+the raw alignment matrix; with <code>normalize = TRUE</code> it returns
+the normalized operator used by the generalized estimator.</p>
+</div>
+<div class="section level2">
+<h2 id="normalization-changes-the-estimator">Normalization changes the estimator<a class="anchor" aria-label="anchor" href="#normalization-changes-the-estimator"></a>
+</h2>
+<p>With <code>normalize = TRUE</code>, <code>flotsam</code> solves</p>
+<p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>B</mi><mi>v</mi><mo>=</mo><mi>λ</mi><mi>D</mi><mi>v</mi><mo>,</mo><mspace width="2.0em"></mspace><mi>D</mi><mo>=</mo><mrow><mi mathvariant="normal">diag</mi><mo>⁡</mo></mrow><mo stretchy="false" form="prefix">(</mo><mi>B</mi><mo stretchy="false" form="postfix">)</mo><mo>,</mo></mrow><annotation encoding="application/x-tex">
+Bv = \lambda Dv, \qquad D = \operatorname{diag}(B),
+</annotation></semantics></math></p>
+<p>through the symmetric operator
 <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msup><mi>D</mi><mrow><mi>−</mi><mn>1</mn><mi>/</mi><mn>2</mn></mrow></msup><mi>B</mi><msup><mi>D</mi><mrow><mi>−</mi><mn>1</mn><mi>/</mi><mn>2</mn></mrow></msup></mrow><annotation encoding="application/x-tex">D^{-1/2} B D^{-1/2}</annotation></semantics></math>
-used by eigenanalysis:</p>
-<div class="sourceCode" id="cb12"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">raw_B</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/ltsa.html">ltsa</a></span><span class="op">(</span><span class="va">swiss_roll</span>, output <span class="op">=</span> <span class="st">"B"</span><span class="op">)</span></span>
-<span><span class="va">normalized_B</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/ltsa.html">ltsa</a></span><span class="op">(</span><span class="va">swiss_roll</span>, output <span class="op">=</span> <span class="st">"B"</span>, normalize <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span></code></pre></div>
-<p>If you use <code>eig_method = "irlba"</code> or
-<code>eig_method = "svdr"</code> then different functions in irlba will
-be used instead of RSpectra. They do not expose the same convergence
-metadata as RSpectra, so they rely on post-hoc residual diagnostics
-rather than hard backend convergence counts. For small diagnostic cases,
-<code>eig_method = "eig"</code> and <code>eig_method = "eigen"</code>
-are synonyms for base <code><a href="https://rdrr.io/r/base/eigen.html" class="external-link">eigen()</a></code>. The dense route avoids
-iterative convergence uncertainty and is useful as an eigenvalue or
-eigenspace reference, but repeated null or selected eigenspaces still
-make individual eigenvectors non-unique. It is very expensive and slow
-for all but the smallest datasets.</p>
-<p>Set <code>include_B = TRUE</code> with <code>output = "result"</code>
-if the detailed result should also carry the assembled unnormalized
-matrix.</p>
+and maps the selected vectors back. Standard LTSA uses ordinary
+orthogonality and centering; normalized LTSA uses
+<code>D</code>-weighted constraints. This is a different estimator, not
+merely a better-conditioned route to the same coordinates, and
+<code>D</code> is not ordinary graph degree.</p>
+<p>When comparing the two estimators, freeze and reuse the neighbor
+graph, reset the solver seed before each fit, and keep thread and solver
+settings equal. Then compare both spectral evidence and support. The <a href="spectral-blocks.html">spectral-block article</a> applies that
+protocol to MNIST and Fashion-MNIST.</p>
+</div>
+<div class="section level2">
+<h2 id="threading-and-cross-implementation-checks">Threading and cross-implementation checks<a class="anchor" aria-label="anchor" href="#threading-and-cross-implementation-checks"></a>
+</h2>
+<p><code>n_threads</code> controls computed-neighbor search;
+<code>n_assembly_threads</code> controls construction of the alignment
+matrix. Serial settings are the reproducible default. If outer LTSA
+assembly and the linked linear algebra library both use multiple
+threads, they can oversubscribe the machine. For MKL, one possible shell
+configuration is:</p>
+<div class="sourceCode" id="cb7"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb7-1"><a href="#cb7-1" tabindex="-1"></a><span class="bu">export</span> <span class="va">MKL_THREADING_LAYER</span><span class="op">=</span>GNU</span>
+<span id="cb7-2"><a href="#cb7-2" tabindex="-1"></a><span class="bu">export</span> <span class="va">MKL_NUM_THREADS</span><span class="op">=</span>1</span></code></pre></div>
+<p>The scikit-learn LTSA implementation uses exact neighbor-search
+strategies and dense eigenanalysis or ARPACK. <code>flotsam</code> can
+instead use approximate neighbor descent and shifted RSpectra or
+<code>irlba</code> candidate solves. A cross-implementation comparison
+is only diagnostic after matching the input, neighbor graph, requested
+dimensions, and tolerances as closely as the interfaces allow; otherwise
+a difference does not identify which stage caused it.</p>
 </div>
   </main><aside class="col-md-3"><nav id="toc" aria-label="Table of contents"><h2>On this page</h2>
     </nav></aside>

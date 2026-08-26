@@ -6,5 +6,5 @@
   Alignment](https://jlmelville.github.io/flotsam/articles/LTSA.md):
 - [Exploring LTSA spectral
   blocks](https://jlmelville.github.io/flotsam/articles/spectral-blocks.md):
-- [Numerical diagnostics and solver
-  notes](https://jlmelville.github.io/flotsam/articles/numerical-diagnostics.md):
+- [Diagnosing suspicious LTSA
+  results](https://jlmelville.github.io/flotsam/articles/numerical-diagnostics.md):

@@ -60,208 +60,272 @@
 
     
     
+<p>LTSA turns overlapping local tangent coordinates into a global
+embedding. This article explains that path and, in particular, which
+controls change the neighborhood graph, the alignment operator, the
+candidate eigensolve, or only the returned view. Use <a href="../reference/ltsa.html"><code>?ltsa</code></a> for exhaustive
+defaults and validation rules.</p>
 <div class="section level2">
-<h2 id="a-brief-description-of-ltsa">A Brief Description of LTSA<a class="anchor" aria-label="anchor" href="#a-brief-description-of-ltsa"></a>
+<h2 id="from-neighborhoods-to-an-embedding">From neighborhoods to an embedding<a class="anchor" aria-label="anchor" href="#from-neighborhoods-to-an-embedding"></a>
 </h2>
-<p>The mathematics and some of the descriptions of LTSA are not always
-very clear, but this is what happens:</p>
+<p>Let <code>X</code> be an
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>N</mi><mo>×</mo><mi>p</mi></mrow><annotation encoding="application/x-tex">N \times p</annotation></semantics></math>
+data matrix:
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>N</mi><annotation encoding="application/x-tex">N</annotation></semantics></math>
+observations in
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>p</mi><annotation encoding="application/x-tex">p</annotation></semantics></math>
+input features. Let
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>k</mi><annotation encoding="application/x-tex">k</annotation></semantics></math>
+be the neighborhood size and let
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>d</mi><annotation encoding="application/x-tex">d</annotation></semantics></math>
+be the requested local tangent dimension, supplied as
+<code>ndim</code>.</p>
 <ol style="list-style-type: decimal">
-<li>You have a dataset <code>X</code> with <code>N</code> items that you
-would like to reduce to <code>d</code> dimensions.</li>
-<li>Create an empty <code>N</code> x <code>N</code> matrix B (filled
-with zeros).</li>
-<li>For each item in the dataset, define a neighborhood, i.e. the
-<code>k</code>-nearest neighbors.</li>
-<li>Center the <code>k</code> x <code>p</code> neighborhood matrix and
-calculate its SVD.</li>
-<li>Let <code>U</code> contain the retained <strong>left</strong>
-singular vectors, which give tangent coordinates for the <code>k</code>
-observations. Create the local residual projector
-<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>W</mi><mo>=</mo><mi>I</mi><mo>−</mo><mn>𝟏</mn><msup><mn>𝟏</mn><mi>𝖳</mi></msup><mi>/</mi><mi>k</mi><mo>−</mo><mi>U</mi><msup><mi>U</mi><mi>𝖳</mi></msup></mrow><annotation encoding="application/x-tex">W = I - \mathbf{1}\mathbf{1}^{\mathsf T}/k - UU^{\mathsf T}</annotation></semantics></math>.</li>
-<li>Update the elements of the <code>N</code> x <code>N</code> matrix
-<code>B</code> with the values of <code>W</code> by adding the elements
-of <code>W</code> to the entries in <code>B</code> that correspond to
-the items in the neighborhood.</li>
-<li>Repeat for all items in the dataset.</li>
+<li><p>Find a
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>k</mi><annotation encoding="application/x-tex">k</annotation></semantics></math>-observation
+neighborhood for each row of <code>X</code>.</p></li>
+<li><p>Center each
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>k</mi><mo>×</mo><mi>p</mi></mrow><annotation encoding="application/x-tex">k \times p</annotation></semantics></math>
+neighborhood matrix and compute its singular value
+decomposition.</p></li>
+<li><p>Retain the first
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>d</mi><annotation encoding="application/x-tex">d</annotation></semantics></math><strong>left</strong> singular vectors in
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>U</mi><mi>i</mi></msub><annotation encoding="application/x-tex">U_i</annotation></semantics></math>.
+These give local tangent coordinates for the observations in
+neighborhood
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>i</mi><annotation encoding="application/x-tex">i</annotation></semantics></math>.</p></li>
 <li>
-<code>B</code> is now a symmetric positive-semidefinite LTSA
-alignment operator with the constant vector as a known null direction.
-Remove that direction and select the lowest <code>d</code> nonconstant
-directions for the embedding. The nullspace need not be one-dimensional,
-so there is not necessarily a unique smallest eigenvector.</li>
+<p>Form the local residual projector</p>
+<p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>W</mi><mi>i</mi></msub><mo>=</mo><msub><mi>I</mi><mi>k</mi></msub><mo>−</mo><mn>𝟏</mn><msup><mn>𝟏</mn><mi>𝖳</mi></msup><mi>/</mi><mi>k</mi><mo>−</mo><msub><mi>U</mi><mi>i</mi></msub><msubsup><mi>U</mi><mi>i</mi><mi>𝖳</mi></msubsup><mi>.</mi></mrow><annotation encoding="application/x-tex">
+W_i = I_k - \mathbf{1}\mathbf{1}^{\mathsf T}/k - U_iU_i^{\mathsf T}.
+</annotation></semantics></math></p>
+</li>
+<li><p>Add the entries of
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>W</mi><mi>i</mi></msub><annotation encoding="application/x-tex">W_i</annotation></semantics></math>
+into the corresponding rows and columns of an initially zero
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>N</mi><mo>×</mo><mi>N</mi></mrow><annotation encoding="application/x-tex">N \times N</annotation></semantics></math>
+matrix
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>B</mi><annotation encoding="application/x-tex">B</annotation></semantics></math>,
+then repeat for every neighborhood.</p></li>
+<li><p>Remove the known constant null direction and use the lowest
+nonconstant directions of
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>B</mi><annotation encoding="application/x-tex">B</annotation></semantics></math>
+for the global coordinates.</p></li>
 </ol>
-<div class="section level3">
-<h3 id="parameters">Parameters<a class="anchor" aria-label="anchor" href="#parameters"></a>
-</h3>
-<p>There’s only one function in <code>flotsam</code>: <code>ltsa</code>.
-Some parameters that may be worth modifying in roughly descending order
-of importance:</p>
-<ul>
-<li>
-<code>ndim</code>: The number of dimensions to reduce to. Usually 2
-for visualization.</li>
-<li>
-<code>spectral_dim</code>: The number of nonconstant modes to retain
-from the same LTSA operator. It defaults to <code>ndim</code>. Set it
-above <code>ndim</code> together with <code>output = "result"</code>
-when you want to inspect a larger low-frequency block without changing
-the local tangent dimension or rebuilding the operator. An expanded
-block can contain at most <code>N - 3</code> modes so the candidate span
-can also include the known null direction and one retained-boundary
-mode.</li>
-<li>
-<code>n_neighbors</code>: The number of neighbors to use for the
-local neighborhood. When computed neighbors are requested and this is
-omitted, the default is the smaller of <code>15</code> and the maximum
-permitted by <code>N</code> and <code>include_self</code>
-(<code>N</code> with self or <code>N - 1</code> without self). It must
-still be at least <code>ndim + 2</code>; data too small to meet that
-minimum produce an error. A value that is too low can leave disconnected
-effective-neighborhood components or poorly separated low-energy
-directions.</li>
-<li>
-<code>nn_method</code>: The method to use for finding nearest
-neighbors:
-<ul>
-<li>
-<code>"nnd"</code>: Use approximate nearest neighbors by Nearest
-Neighbor Descent. This is the default and appropriate for large
-datasets.</li>
-<li>
-<code>"exact"</code>: Use exact nearest neighbors by exhaustively
-comparing all items. Slow for large datasets.</li>
-<li>A precomputed nearest-neighbor index matrix, or a nearest-neighbor
-result object with an <code>idx</code> matrix. With
-<code>include_self = TRUE</code>, the shape is <code>N</code> x
-<code>n_neighbors</code> and every row contains its own index. With
-<code>include_self = FALSE</code>, the shape is <code>N</code> x
-(<code>n_neighbors + 1</code>), self must be in the first column, and
-that column is removed before assembly.</li>
-</ul>
-</li>
-<li>
-<code>include_self</code>: Whether to include the item itself as a
-neighbor. <a href="https://doi.org/10.1109/JSTARS.2017.2682189" class="external-link">Zhang
-and co-workers</a> suggest that this is in effect the main difference
-between LTSA and the Hessian Locally Linear Embedding (HLLE) method, so
-setting this to <code>FALSE</code> may allow emulating HLLE. Default is
-<code>TRUE</code>.</li>
-<li>
-<code>n_threads</code>: The number of threads to use for the nearest
-neighbor calculation. Default is <code>1</code>. The rnndescent backend
-treats <code>0</code> and <code>1</code> as serial execution; values
-greater than <code>1</code> request multithreaded execution.
-Multithreaded approximate searches need not reproduce an identical
-neighbor graph across runs.</li>
-<li>
-<code>n_assembly_threads</code>: The number of threads to use when
-constructing the LTSA matrix <code>B</code>. Default is <code>1</code>,
-which requests serial assembly and generally uses less temporary
-storage. Values greater than <code>1</code> request parallel
-construction of <code>B</code>, which trades additional storage for
-speed and may compound threaded-BLAS oversubscription. See the <a href="numerical-diagnostics.html#threading">threading warning</a>.</li>
-<li>
-<code>eig_method</code>: The method to use for finding eigenvalues.
-<ul>
-<li>
-<code>"auto"</code>: Use dense <code><a href="https://rdrr.io/r/base/eigen.html" class="external-link">base::eigen()</a></code> when
-<code>N &lt;= dense_n</code> or
-<code>eig_k &gt;= dense_fraction * N</code>, and otherwise use
-<code><a href="https://rdrr.io/pkg/RSpectra/man/eigs.html" class="external-link">RSpectra::eigs_sym()</a></code>. This is the default.</li>
-<li>
-<code>"rspectra"</code>: Always use
-<code><a href="https://rdrr.io/pkg/RSpectra/man/eigs.html" class="external-link">RSpectra::eigs_sym()</a></code>.</li>
-<li>
-<code>"irlba"</code>: Always use <code><a href="https://rdrr.io/pkg/irlba/man/irlba.html" class="external-link">irlba::irlba()</a></code> and
-post-hoc residual diagnostics.</li>
-<li>
-<code>"svdr"</code>: Always use <code><a href="https://rdrr.io/pkg/irlba/man/svdr.html" class="external-link">irlba::svdr()</a></code> and
-post-hoc residual diagnostics.</li>
-<li>
-<code>"eigen"</code> or <code>"eig"</code>: Use
-<code><a href="https://rdrr.io/r/base/eigen.html" class="external-link">base::eigen()</a></code>. This converts <code>B</code> to a dense
-matrix and computes the full eigensystem, then retains the lowest
-<code>eig_k</code> candidate vectors for Rayleigh–Ritz postprocessing.
-In terms of both memory usage and CPU time this is only feasible for
-small datasets, but it is useful as a diagnostic reference.</li>
-</ul>
-</li>
-<li>
-<code>eig_k</code>: The number of eigenvectors to return before
-Rayleigh–Ritz postprocessing and the final <code>spectral_dim</code>
-retention. If <code>NULL</code>, the default is
-<code>min(N - 1L, max(12, spectral_dim + 2))</code>. With
-<code>spectral_dim = ndim</code>, it must satisfy
-<code>ndim + 1 &lt;= eig_k &lt; N</code>; with an expanded block it must
-satisfy <code>spectral_dim + 2 &lt;= eig_k &lt; N</code>. Asking for
-more eigenvectors than necessary seems to improve the reliability of the
-final result: RSpectra may otherwise miss eigenvectors that are close to
-zero, or fail to converge if the tolerance is tightened. The default
-seems sufficiently generous for most cases. Dense eigenanalysis still
-uses <code>eig_k</code> to limit the candidate span passed to the
-postprocessing step. The “Numerical Diagnostics” article has more
-details.</li>
-<li>
-<code>normalize</code>: Whether to solve the generalized problem
-<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>B</mi><mi>v</mi><mo>=</mo><mi>λ</mi><mi>D</mi><mi>v</mi></mrow><annotation encoding="application/x-tex">Bv = \lambda Dv</annotation></semantics></math>,
-where
-<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>D</mi><mo>=</mo><mrow><mi mathvariant="normal">diag</mi><mo>⁡</mo></mrow><mo stretchy="false" form="prefix">(</mo><mi>B</mi><mo stretchy="false" form="postfix">)</mo></mrow><annotation encoding="application/x-tex">D = \operatorname{diag}(B)</annotation></semantics></math>.
-This is a different problem from standard LTSA, with
-<code>D</code>-weighted orthogonality and centering constraints, rather
-than merely a numerically conditioned route to the same
-coordinates.</li>
-<li>
-<code>output</code>: The type of output to return:
-<ul>
-<li>
-<code>"embedding"</code>: Return the embedding matrix. This is the
-default.</li>
-<li>
-<code>"result"</code>: Return a list containing the embedding,
-compact eigenanalysis diagnostics, assembly diagnostics, and optionally
-the assembled unnormalized LTSA matrix <code>B</code>. When
-<code>spectral_dim &gt; ndim</code>, <code>spectral_embedding</code>
-contains the larger fixed-operator block; <code>eigen$status</code>
-describes the displayed prefix and <code>eigen$spectral$status</code>
-describes the retained block.</li>
-<li>
-<code>"B"</code>: Skip final eigenanalysis and return the raw
-alignment matrix when <code>normalize = FALSE</code>, or the normalized
-operator
-<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msup><mi>D</mi><mrow><mi>−</mi><mn>1</mn><mi>/</mi><mn>2</mn></mrow></msup><mi>B</mi><msup><mi>D</mi><mrow><mi>−</mi><mn>1</mn><mi>/</mi><mn>2</mn></mrow></msup></mrow><annotation encoding="application/x-tex">D^{-1/2} B D^{-1/2}</annotation></semantics></math>
-when <code>normalize = TRUE</code>.</li>
-</ul>
-</li>
-<li>
-<code>include_B</code>: Whether to include the assembled
-unnormalized LTSA matrix <code>B</code> in the result. Under
-<code>eig_method = "auto"</code>, dense <code><a href="https://rdrr.io/r/base/eigen.html" class="external-link">base::eigen()</a></code> is
-selected when <code>N &lt;= 100</code> or
-<code>eig_k &gt;= 0.5 * N</code>; <code>dense_n</code> and
-<code>dense_fraction</code> change those thresholds. Otherwise automatic
-selection uses RSpectra. Explicit <code>"rspectra"</code>,
-<code>"irlba"</code>, and <code>"svdr"</code> requests always use the
-named backend, including for small inputs. With
-<code>output = "result"</code>, <code>eigen$method</code> records
-<code>"auto"</code> or the explicit canonical method
-(<code>"eigen"</code> is stored as <code>"eig"</code>), while
-<code>eigen$backend$name</code> records the backend that actually ran.
-The package uses <code>tol = 1e-6</code> for RSpectra, rather than
-RSpectra’s own <code>1e-10</code> default.</li>
-</ul>
-<p><code>dense_n</code> and <code>dense_fraction</code> are accepted
-only with <code>"auto"</code>. The curated backend controls are accepted
-only with their explicit backend, and <code>shift_eps</code> only with
-an explicit iterative method. <code>resid_tol</code> and
-<code>gap_tol</code> are non-routing diagnostics accepted in every mode;
-they are the only controls accepted by
-<code>"eig"</code>/<code>"eigen"</code>. <code>output = "B"</code>
-rejects all eigenanalysis controls in <code>...</code>.</p>
-<p>For practical solver and troubleshooting guidance, see the <a href="numerical-diagnostics.html">Numerical Diagnostics</a> article. For
-worked synthetic and real-image examples of inspecting extra modes from
-one fixed operator, see <a href="spectral-blocks.html">When the first
-LTSA coordinates are not the whole story</a>.</p>
+<p>The assembled
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>B</mi><annotation encoding="application/x-tex">B</annotation></semantics></math>
+is a symmetric positive-semidefinite alignment operator. Its constant
+vector is a known null direction, but its nullspace need not be
+one-dimensional. Disconnected effective neighborhoods or other
+degeneracies can therefore make “the smallest eigenvector”
+non-unique.</p>
+<p>This construction explains why <code>ndim</code> is more than a
+plotting choice. It sets the local tangent rank used inside every
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>W</mi><mi>i</mi></msub><annotation encoding="application/x-tex">W_i</annotation></semantics></math>,
+so changing it rebuilds
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>B</mi><annotation encoding="application/x-tex">B</annotation></semantics></math>.
+It also sets the number of coordinates in the ordinary returned
+<code>embedding</code>.</p>
 </div>
+<div class="section level2">
+<h2 id="follow-the-controls-through-the-pipeline">Follow the controls through the pipeline<a class="anchor" aria-label="anchor" href="#follow-the-controls-through-the-pipeline"></a>
+</h2>
+<pre class="text"><code>data + neighborhood controls + ndim
+                  |
+                  v
+         alignment matrix B
+                  |
+          normalize, if requested
+                  |
+                  v
+      eig_method + eig_k candidates
+                  |
+                  v
+      spectral_dim retained modes
+                  |
+                  v
+       first ndim modes displayed</code></pre>
+<table class="table">
+<colgroup>
+<col width="33%">
+<col width="33%">
+<col width="33%">
+</colgroup>
+<thead><tr class="header">
+<th>Control</th>
+<th>Stage it changes</th>
+<th>Consequence</th>
+</tr></thead>
+<tbody>
+<tr class="odd">
+<td>
+<code>n_neighbors</code>, <code>nn_method</code>,
+<code>include_self</code>
+</td>
+<td>Neighborhoods and assembly</td>
+<td>Change which local projectors contribute to
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>B</mi><annotation encoding="application/x-tex">B</annotation></semantics></math>
+</td>
+</tr>
+<tr class="even">
+<td><code>ndim</code></td>
+<td>Local tangent bases,
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>B</mi><annotation encoding="application/x-tex">B</annotation></semantics></math>,
+and displayed prefix</td>
+<td>Changes the estimator as well as the embedding dimension</td>
+</tr>
+<tr class="odd">
+<td><code>normalize</code></td>
+<td>Eigenproblem built from
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>B</mi><annotation encoding="application/x-tex">B</annotation></semantics></math>
+</td>
+<td>Selects ordinary or generalized LTSA</td>
+</tr>
+<tr class="even">
+<td>
+<code>eig_method</code> and backend controls</td>
+<td>Candidate computation</td>
+<td>Change how the fixed eigenproblem is solved</td>
+</tr>
+<tr class="odd">
+<td><code>eig_k</code></td>
+<td>Candidate span</td>
+<td>Gives Rayleigh–Ritz more directions without changing
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>B</mi><annotation encoding="application/x-tex">B</annotation></semantics></math>
+</td>
+</tr>
+<tr class="even">
+<td><code>spectral_dim</code></td>
+<td>Retained fixed-operator block</td>
+<td>Keeps extra modes without changing
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>B</mi><annotation encoding="application/x-tex">B</annotation></semantics></math>
+or <code>ndim</code>
+</td>
+</tr>
+<tr class="odd">
+<td>
+<code>output</code>, <code>include_B</code>
+</td>
+<td>Returned evidence</td>
+<td>Select an embedding, detailed result, operator, or included raw
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>B</mi><annotation encoding="application/x-tex">B</annotation></semantics></math>
+</td>
+</tr>
+</tbody>
+</table>
+<p>The most consequential distinction is among <code>ndim</code>,
+<code>spectral_dim</code>, and <code>eig_k</code>:</p>
+<ul>
+<li>Increase <code>ndim</code> only when the local manifold model itself
+should have a higher tangent dimension. This rebuilds the alignment
+operator.</li>
+<li>Increase <code>spectral_dim</code> with
+<code>output = "result"</code> when you want to inspect more modes from
+the existing operator. The ordinary <code>embedding</code> remains
+<code>ndim</code>-dimensional; the larger block is returned as
+<code>spectral_embedding</code>.</li>
+<li>Increase <code>eig_k</code> when the numerical candidate span may be
+too narrow. It does not retain more output by itself.</li>
+</ul>
+<p>For a manual expanded request, <code>eig_k</code> must leave room for
+the known constant direction and a mode beyond the retained boundary, so
+it must be at least <code>spectral_dim + 2</code>. The default chooses a
+suitable candidate width; see <a href="../reference/ltsa.html"><code>?ltsa</code></a> for its exact
+formula and all dimensional limits.</p>
+</div>
+<div class="section level2">
+<h2 id="choose-neighborhoods-before-solver-settings">Choose neighborhoods before solver settings<a class="anchor" aria-label="anchor" href="#choose-neighborhoods-before-solver-settings"></a>
+</h2>
+<p><code>nn_method = "nnd"</code> uses approximate nearest-neighbor
+descent and is the large-data default. <code>nn_method = "exact"</code>
+exhaustively compares observations and is useful for smaller
+deterministic cases. A precomputed 1-based neighbor index matrix, or an
+object with an <code>idx</code> matrix, lets several fits reuse one
+fixed graph. The reference page documents the required self-first
+shapes.</p>
+<p><code>n_neighbors</code> is the effective neighborhood size used in
+assembly and must be at least <code>ndim + 2</code>: after removing the
+constant and local tangent directions, each local projector needs a
+remaining residual direction. Too-small or poorly overlapping
+neighborhoods can produce disconnected effective-neighborhood components
+or weakly separated global directions. Larger neighborhoods change the
+local approximation rather than merely making the same calculation more
+accurate.</p>
+<p>With <code>include_self = FALSE</code>, a precomputed self-first
+matrix therefore has <code>n_neighbors + 1</code> columns: assembly
+removes the self column and uses the remaining <code>n_neighbors</code>
+observations. This changes the effective neighborhood definition; <a href="https://doi.org/10.1109/JSTARS.2017.2682189" class="external-link">work by Zhang and
+co-workers</a> relates that choice to Hessian Locally Linear Embedding.
+Treat it as an estimator choice, not a reproducibility switch.</p>
+</div>
+<div class="section level2">
+<h2 id="choose-the-eigenproblem-then-its-computation">Choose the eigenproblem, then its computation<a class="anchor" aria-label="anchor" href="#choose-the-eigenproblem-then-its-computation"></a>
+</h2>
+<p>Ordinary LTSA diagonalizes
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>B</mi><annotation encoding="application/x-tex">B</annotation></semantics></math>.
+With <code>normalize = TRUE</code>, <code>flotsam</code> instead
+solves</p>
+<p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>B</mi><mi>v</mi><mo>=</mo><mi>λ</mi><mi>D</mi><mi>v</mi><mo>,</mo><mspace width="2.0em"></mspace><mi>D</mi><mo>=</mo><mrow><mi mathvariant="normal">diag</mi><mo>⁡</mo></mrow><mo stretchy="false" form="prefix">(</mo><mi>B</mi><mo stretchy="false" form="postfix">)</mo><mo>,</mo></mrow><annotation encoding="application/x-tex">
+Bv = \lambda Dv, \qquad D = \operatorname{diag}(B),
+</annotation></semantics></math></p>
+<p>through
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msup><mi>D</mi><mrow><mi>−</mi><mn>1</mn><mi>/</mi><mn>2</mn></mrow></msup><mi>B</mi><msup><mi>D</mi><mrow><mi>−</mi><mn>1</mn><mi>/</mi><mn>2</mn></mrow></msup></mrow><annotation encoding="application/x-tex">D^{-1/2}BD^{-1/2}</annotation></semantics></math>
+and maps the selected coordinates back. The normalized formulation uses
+<code>D</code>-weighted orthogonality and centering. It is a different
+generalized estimator, not a conditioning-only route to the same
+coordinates, and <code>D</code> is not ordinary graph degree.</p>
+<p>After that choice, <code>eig_method = "auto"</code> uses dense
+<code><a href="https://rdrr.io/r/base/eigen.html" class="external-link">base::eigen()</a></code> for small or proportionally wide requests and
+otherwise uses RSpectra. Explicit <code>"rspectra"</code>,
+<code>"irlba"</code>, <code>"svdr"</code>, and dense <code>"eig"</code>
+requests always use the named backend. The detailed result keeps the
+requested policy in <code>eigen$method</code> and the backend that
+actually ran in <code>eigen$backend$name</code>.</p>
+<p>Backend convergence controls, dense-route thresholds, and diagnostic
+tolerances belong on the troubleshooting path rather than in this
+conceptual overview. See <a href="numerical-diagnostics.html">Diagnosing
+suspicious LTSA results</a> for the action associated with each status,
+message, gap, component, and rank field.</p>
+</div>
+<div class="section level2">
+<h2 id="decide-what-evidence-to-return">Decide what evidence to return<a class="anchor" aria-label="anchor" href="#decide-what-evidence-to-return"></a>
+</h2>
+<p>The default <code>output = "embedding"</code> returns the
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>N</mi><mo>×</mo></mrow><annotation encoding="application/x-tex">N \times</annotation></semantics></math><code>ndim</code> coordinate matrix. Use <code>output = "result"</code>
+when you need the evidence required to assess that map:</p>
+<div class="sourceCode" id="cb2"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="va">fit</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/ltsa.html">ltsa</a></span><span class="op">(</span><span class="va">X</span>, output <span class="op">=</span> <span class="st">"result"</span>, spectral_dim <span class="op">=</span> <span class="fl">4</span><span class="op">)</span></span>
+<span></span>
+<span><span class="va">fit</span><span class="op">$</span><span class="va">embedding</span></span>
+<span><span class="va">fit</span><span class="op">$</span><span class="va">spectral_embedding</span></span>
+<span><span class="va">fit</span><span class="op">$</span><span class="va">eigen</span><span class="op">$</span><span class="va">status</span></span>
+<span><span class="va">fit</span><span class="op">$</span><span class="va">eigen</span><span class="op">$</span><span class="va">messages</span></span>
+<span><span class="va">fit</span><span class="op">$</span><span class="va">assembly</span><span class="op">$</span><span class="va">component_count</span></span>
+<span><span class="va">fit</span><span class="op">$</span><span class="va">assembly</span><span class="op">$</span><span class="va">rank_deficient_count</span></span></code></pre></div>
+<p>When <code>spectral_dim &gt; ndim</code>, <code>eigen</code>
+describes the displayed prefix and <code>eigen$spectral</code> describes
+the retained block. The displayed embedding is exactly the first
+<code>ndim</code> columns of <code>spectral_embedding</code>.</p>
+<p>Use <code>output = "B"</code> to stop after the operator is ready. It
+returns raw
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>B</mi><annotation encoding="application/x-tex">B</annotation></semantics></math>
+for ordinary LTSA and the normalized operator used by eigenanalysis when
+<code>normalize = TRUE</code>. Use <code>include_B = TRUE</code> with
+<code>output = "result"</code> when a detailed result should also carry
+the assembled, unnormalized
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>B</mi><annotation encoding="application/x-tex">B</annotation></semantics></math>.</p>
+<p>Thread counts change resource use rather than the intended
+mathematical stage, with one important caveat: multithreaded approximate
+neighbor search need not reproduce an identical graph.
+<code>n_threads</code> controls computed-neighbor search;
+<code>n_assembly_threads</code> controls construction of
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>B</mi><annotation encoding="application/x-tex">B</annotation></semantics></math>.
+Serial settings are the reproducible default. The <a href="numerical-diagnostics.html#threading-and-cross-implementation-checks">threading
+guidance</a> also covers threaded-BLAS oversubscription.</p>
+<p>For a figure-led example of why local dimension and useful global
+coordinate count can differ, continue to <a href="spectral-blocks.html">Exploring LTSA spectral blocks</a>. Its
+circle example has a one-dimensional local tangent but needs a two-mode
+span to show the closed path.</p>
 </div>
   </main><aside class="col-md-3"><nav id="toc" aria-label="Table of contents"><h2>On this page</h2>
     </nav></aside>
