@@ -2,113 +2,176 @@
 title: "Local Tangent Space Alignment"
 ---
 
-# A Brief Description of LTSA
+LTSA turns overlapping local tangent coordinates into a global embedding. This
+article explains that path and, in particular, which controls change the
+neighborhood graph, the alignment operator, the candidate eigensolve, or only
+the returned view. Use [`?ltsa`](../reference/ltsa.html) for exhaustive
+defaults and validation rules.
 
-The mathematics and some of the descriptions of LTSA are not always very clear,
-but this is what happens:
+## From neighborhoods to an embedding
 
-1. You have a dataset `X` with `N` items that you would like to reduce to `d` dimensions.
-1. Create an empty `N` x `N` matrix B (filled with zeros).
-1. For each item in the dataset, define a neighborhood, i.e. the `k`-nearest neighbors.
-1. Center the `k` x `p` neighborhood matrix and calculate its SVD.
-1. Let `U` contain the retained **left** singular vectors, which give tangent coordinates for the
-`k` observations. Create the local residual projector
-$W = I - \mathbf{1}\mathbf{1}^{\mathsf T}/k - UU^{\mathsf T}$.
-1. Update the elements of the `N` x `N` matrix `B` with the values of `W` by adding the elements of
- `W` to the entries in `B` that correspond to the items in the neighborhood.
-1. Repeat for all items in the dataset.
-1. `B` is now a symmetric positive-semidefinite LTSA alignment operator with the constant vector
-as a known null direction. Remove that direction and select the lowest `d` nonconstant directions
-for the embedding. The nullspace need not be one-dimensional, so there is not necessarily a unique
-smallest eigenvector.
+Let `X` be an $N \times p$ data matrix: $N$ observations in $p$ input
+features. Let $k$ be the neighborhood size and let $d$ be the requested local
+tangent dimension, supplied as `ndim`.
 
-## Parameters
+1. Find a $k$-observation neighborhood for each row of `X`.
+2. Center each $k \times p$ neighborhood matrix and compute its singular value
+   decomposition.
+3. Retain the first $d$ **left** singular vectors in $U_i$. These give local
+   tangent coordinates for the observations in neighborhood $i$.
+4. Form the local residual projector
 
-There's only one function in `flotsam`: `ltsa`. Some parameters that may be worth modifying in
-roughly descending order of importance:
+   $$
+   W_i = I_k - \mathbf{1}\mathbf{1}^{\mathsf T}/k - U_iU_i^{\mathsf T}.
+   $$
 
-* `ndim`: The number of dimensions to reduce to. Usually 2 for visualization.
-* `spectral_dim`: The number of nonconstant modes to retain from the same LTSA
-  operator. It defaults to `ndim`. Set it above `ndim` together with
-  `output = "result"` when you want to inspect a larger low-frequency block
-  without changing the local tangent dimension or rebuilding the operator. An
-  expanded block can contain at most `N - 3` modes so the candidate span can
-  also include the known null direction and one retained-boundary mode.
-* `n_neighbors`: The number of neighbors to use for the local neighborhood. When computed neighbors
-  are requested and this is omitted, the default is the smaller of `15` and the maximum permitted by
-  `N` and `include_self` (`N` with self or `N - 1` without self). It must still be at least
-  `ndim + 2`; data too small to meet that minimum produce an error. A value that is too low can leave
-  disconnected effective-neighborhood components or poorly separated low-energy directions.
-* `nn_method`: The method to use for finding nearest neighbors:
-  * `"nnd"`: Use approximate nearest neighbors by Nearest Neighbor Descent. This is the default and 
-  appropriate for large datasets.
-  * `"exact"`: Use exact nearest neighbors by exhaustively comparing all items. Slow for large 
-  datasets.
-  * A precomputed nearest-neighbor index matrix, or a nearest-neighbor result object with an `idx`
-  matrix. With `include_self = TRUE`, the shape is `N` x `n_neighbors` and every row contains its
-  own index. With `include_self = FALSE`, the shape is `N` x (`n_neighbors + 1`), self must be in
-  the first column, and that column is removed before assembly.
-* `include_self`: Whether to include the item itself as a neighbor. 
-  [Zhang and co-workers](https://doi.org/10.1109/JSTARS.2017.2682189) suggest that this is in 
-  effect the main difference between LTSA and the Hessian Locally Linear Embedding (HLLE) method, 
-  so setting this to `FALSE` may allow emulating HLLE. Default is `TRUE`.
-* `n_threads`: The number of threads to use for the nearest neighbor calculation. Default is `1`.
-  The rnndescent backend treats `0` and `1` as serial execution; values greater than `1` request
-  multithreaded execution. Multithreaded approximate searches need not reproduce an identical
-  neighbor graph across runs.
-* `n_assembly_threads`: The number of threads to use when constructing the LTSA matrix `B`. Default 
-   is `1`, which requests serial assembly and generally uses less temporary storage. Values greater
-   than `1` request parallel construction of `B`, which trades additional storage for speed and may
-   compound threaded-BLAS oversubscription. See the
-   [threading warning](numerical-diagnostics.html#threading).
-* `eig_method`: The method to use for finding eigenvalues.
-  * `"auto"`: Use dense `base::eigen()` when `N <= dense_n` or
-  `eig_k >= dense_fraction * N`, and otherwise use `RSpectra::eigs_sym()`. This is the default.
-  * `"rspectra"`: Always use `RSpectra::eigs_sym()`.
-  * `"irlba"`: Always use `irlba::irlba()` and post-hoc residual diagnostics.
-  * `"svdr"`: Always use `irlba::svdr()` and post-hoc residual diagnostics.
-  * `"eigen"` or `"eig"`: Use `base::eigen()`. This converts `B` to a dense matrix and computes the
-  full eigensystem, then retains the lowest `eig_k` candidate vectors for Rayleigh--Ritz
-  postprocessing. In terms of both memory usage and CPU time this is only feasible for small
-  datasets, but it is useful as a diagnostic reference.
-* `eig_k`: The number of eigenvectors to return before Rayleigh--Ritz postprocessing and the final
-  `spectral_dim` retention. If `NULL`, the default is
-  `min(N - 1L, max(12, spectral_dim + 2))`. With `spectral_dim = ndim`, it must satisfy
-  `ndim + 1 <= eig_k < N`; with an expanded block it must satisfy
-  `spectral_dim + 2 <= eig_k < N`. Asking for more eigenvectors than necessary seems to improve the
-  reliability of the final result: RSpectra may otherwise miss eigenvectors that are close to zero,
-  or fail to converge if the tolerance is tightened. The default seems sufficiently generous for
-  most cases. Dense eigenanalysis still uses `eig_k` to limit the candidate span passed to the
-  postprocessing step. The "Numerical Diagnostics" article has more details.
-* `normalize`: Whether to solve the generalized problem $Bv = \lambda Dv$, where
-  $D = \operatorname{diag}(B)$. This is a different problem from standard LTSA, with `D`-weighted
-  orthogonality and centering constraints, rather than merely a numerically conditioned route to
-  the same coordinates.
-* `output`: The type of output to return:
-  * `"embedding"`: Return the embedding matrix. This is the default.
-  * `"result"`: Return a list containing the embedding, compact eigenanalysis diagnostics, assembly 
-    diagnostics, and optionally the assembled unnormalized LTSA matrix `B`. When
-    `spectral_dim > ndim`, `spectral_embedding` contains the larger fixed-operator block;
-    `eigen$status` describes the displayed prefix and `eigen$spectral$status` describes the
-    retained block.
-  * `"B"`: Skip final eigenanalysis and return the raw alignment matrix when `normalize = FALSE`, or
-    the normalized operator $D^{-1/2} B D^{-1/2}$ when `normalize = TRUE`.
-* `include_B`: Whether to include the assembled unnormalized LTSA matrix `B` in the result.
-Under `eig_method = "auto"`, dense `base::eigen()` is selected when `N <= 100` or
-`eig_k >= 0.5 * N`; `dense_n` and `dense_fraction` change those thresholds. Otherwise automatic
-selection uses RSpectra. Explicit `"rspectra"`, `"irlba"`, and `"svdr"` requests always use the
-named backend, including for small inputs. With `output = "result"`, `eigen$method` records
-`"auto"` or the explicit canonical method (`"eigen"` is stored as `"eig"`), while
-`eigen$backend$name` records the backend that actually ran. The package uses `tol = 1e-6` for
-RSpectra, rather than RSpectra's own `1e-10` default.
+5. Add the entries of $W_i$ into the corresponding rows and columns of an
+   initially zero $N \times N$ matrix $B$, then repeat for every neighborhood.
+6. Remove the known constant null direction and use the lowest nonconstant
+   directions of $B$ for the global coordinates.
 
-`dense_n` and `dense_fraction` are accepted only with `"auto"`. The curated backend controls are
-accepted only with their explicit backend, and `shift_eps` only with an explicit iterative method.
-`resid_tol` and `gap_tol` are non-routing diagnostics accepted in every mode; they are the only
-controls accepted by `"eig"`/`"eigen"`. `output = "B"` rejects all eigenanalysis controls in `...`.
+The assembled $B$ is a symmetric positive-semidefinite alignment operator. Its
+constant vector is a known null direction, but its nullspace need not be
+one-dimensional. Disconnected effective neighborhoods or other degeneracies
+can therefore make “the smallest eigenvector” non-unique.
 
-For practical solver and troubleshooting guidance, see the
-[Numerical Diagnostics](numerical-diagnostics.html) article.
-For worked synthetic and real-image examples of inspecting extra modes from
-one fixed operator, see
-[When the first LTSA coordinates are not the whole story](spectral-blocks.html).
+This construction explains why `ndim` is more than a plotting choice. It sets
+the local tangent rank used inside every $W_i$, so changing it rebuilds $B$.
+It also sets the number of coordinates in the ordinary returned `embedding`.
+
+## Follow the controls through the pipeline
+
+```text
+data + neighborhood controls + ndim
+                  |
+                  v
+         alignment matrix B
+                  |
+          normalize, if requested
+                  |
+                  v
+      eig_method + eig_k candidates
+                  |
+                  v
+      spectral_dim retained modes
+                  |
+                  v
+       first ndim modes displayed
+```
+
+| Control | Stage it changes | Consequence |
+|---|---|---|
+| `n_neighbors`, `nn_method`, `include_self` | Neighborhoods and assembly | Change which local projectors contribute to $B$ |
+| `ndim` | Local tangent bases, $B$, and displayed prefix | Changes the estimator as well as the embedding dimension |
+| `normalize` | Eigenproblem built from $B$ | Selects ordinary or generalized LTSA |
+| `eig_method` and backend controls | Candidate computation | Change how the fixed eigenproblem is solved |
+| `eig_k` | Candidate span | Gives Rayleigh--Ritz more directions without changing $B$ |
+| `spectral_dim` | Retained fixed-operator block | Keeps extra modes without changing $B$ or `ndim` |
+| `output`, `include_B` | Returned evidence | Select an embedding, detailed result, operator, or included raw $B$ |
+
+The most consequential distinction is among `ndim`, `spectral_dim`, and
+`eig_k`:
+
+- Increase `ndim` only when the local manifold model itself should have a
+  higher tangent dimension. This rebuilds the alignment operator.
+- Increase `spectral_dim` with `output = "result"` when you want to inspect
+  more modes from the existing operator. The ordinary `embedding` remains
+  `ndim`-dimensional; the larger block is returned as `spectral_embedding`.
+- Increase `eig_k` when the numerical candidate span may be too narrow. It
+  does not retain more output by itself.
+
+For a manual expanded request, `eig_k` must leave room for the known constant
+direction and a mode beyond the retained boundary, so it must be at least
+`spectral_dim + 2`. The default chooses a suitable candidate width; see
+[`?ltsa`](../reference/ltsa.html) for its exact formula and all dimensional
+limits.
+
+## Choose neighborhoods before solver settings
+
+`nn_method = "nnd"` uses approximate nearest-neighbor descent and is the
+large-data default. `nn_method = "exact"` exhaustively compares observations
+and is useful for smaller deterministic cases. A precomputed 1-based neighbor
+index matrix, or an object with an `idx` matrix, lets several fits reuse one
+fixed graph. The reference page documents the required self-first shapes.
+
+`n_neighbors` is the effective neighborhood size used in assembly and must be
+at least `ndim + 2`: after removing the constant and local tangent directions,
+each local projector needs a remaining residual direction. Too-small or poorly
+overlapping neighborhoods can produce disconnected effective-neighborhood
+components or weakly separated global directions. Larger neighborhoods change
+the local approximation rather than merely making the same calculation more
+accurate.
+
+With `include_self = FALSE`, a precomputed self-first matrix therefore has
+`n_neighbors + 1` columns: assembly removes the self column and uses the
+remaining `n_neighbors` observations. This changes the effective neighborhood
+definition; [work by Zhang and
+co-workers](https://doi.org/10.1109/JSTARS.2017.2682189) relates that choice to
+Hessian Locally Linear Embedding. Treat it as an estimator choice, not a
+reproducibility switch.
+
+## Choose the eigenproblem, then its computation
+
+Ordinary LTSA diagonalizes $B$. With `normalize = TRUE`, `flotsam` instead
+solves
+
+$$
+Bv = \lambda Dv, \qquad D = \operatorname{diag}(B),
+$$
+
+through $D^{-1/2}BD^{-1/2}$ and maps the selected coordinates back. The
+normalized formulation uses `D`-weighted orthogonality and centering. It is a
+different generalized estimator, not a conditioning-only route to the same
+coordinates, and `D` is not ordinary graph degree.
+
+After that choice, `eig_method = "auto"` uses dense `base::eigen()` for small
+or proportionally wide requests and otherwise uses RSpectra. Explicit
+`"rspectra"`, `"irlba"`, `"svdr"`, and dense `"eig"` requests always use the
+named backend. The detailed result keeps the requested policy in
+`eigen$method` and the backend that actually ran in `eigen$backend$name`.
+
+Backend convergence controls, dense-route thresholds, and diagnostic
+tolerances belong on the troubleshooting path rather than in this conceptual
+overview. See [Diagnosing suspicious LTSA results](numerical-diagnostics.html)
+for the action associated with each status, message, gap, component, and rank
+field.
+
+## Decide what evidence to return
+
+The default `output = "embedding"` returns the $N \times$ `ndim` coordinate
+matrix. Use `output = "result"` when you need the evidence required to assess
+that map:
+
+```r
+fit <- ltsa(X, output = "result", spectral_dim = 4)
+
+fit$embedding
+fit$spectral_embedding
+fit$eigen$status
+fit$eigen$messages
+fit$assembly$component_count
+fit$assembly$rank_deficient_count
+```
+
+When `spectral_dim > ndim`, `eigen` describes the displayed prefix and
+`eigen$spectral` describes the retained block. The displayed embedding is
+exactly the first `ndim` columns of `spectral_embedding`.
+
+Use `output = "B"` to stop after the operator is ready. It returns raw $B$ for
+ordinary LTSA and the normalized operator used by eigenanalysis when
+`normalize = TRUE`. Use `include_B = TRUE` with `output = "result"` when a
+detailed result should also carry the assembled, unnormalized $B$.
+
+Thread counts change resource use rather than the intended mathematical
+stage, with one important caveat: multithreaded approximate neighbor search
+need not reproduce an identical graph. `n_threads` controls computed-neighbor
+search; `n_assembly_threads` controls construction of $B$. Serial settings are
+the reproducible default. The
+[threading guidance](numerical-diagnostics.html#threading-and-cross-implementation-checks)
+also covers threaded-BLAS oversubscription.
+
+For a figure-led example of why local dimension and useful global coordinate
+count can differ, continue to
+[Exploring LTSA spectral blocks](spectral-blocks.html). Its circle example has
+a one-dimensional local tangent but needs a two-mode span to show the closed
+path.

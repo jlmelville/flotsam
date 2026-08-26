@@ -101,8 +101,9 @@ Three questions organize the diagnostics:
    inspect a small retained block, and measure how broadly each mode is
    supported.
 
-When comparing stochastic fits, reuse the same saved neighbor matrix, reset the
-eigensolver seed immediately before each fit, and keep thread settings equal.
+When comparing stochastic fits, reuse the same fixed in-memory neighbor matrix,
+reset the eigensolver seed immediately before each fit, and keep thread settings
+equal.
 
 ## A circle needs a spectral pair
 
@@ -133,6 +134,29 @@ circle_fit$eigen$values
 circle_fit$eigen$spectral$values
 circle_fit$eigen$status
 circle_fit$eigen$messages
+```
+
+```{r circle-witnesses, include=FALSE}
+circle_pair <- circle_fit$spectral_embedding[, 1:2, drop = FALSE]
+circle_pair_basis <- qr.Q(qr(circle_pair))
+circle_target <- scale(circle, center = TRUE, scale = FALSE)
+circle_target_residual <- circle_target -
+  circle_pair_basis %*% crossprod(circle_pair_basis, circle_target)
+circle_pair_gaps <- diff(circle_fit$eigen$ritz_values[1:3])
+
+stopifnot(
+  identical(
+    circle_fit$embedding,
+    circle_fit$spectral_embedding[, 1, drop = FALSE]
+  ),
+  sqrt(sum(circle_target_residual^2) / sum(circle_target^2)) < 1e-8,
+  circle_pair_gaps[[2L]] > 100 * circle_pair_gaps[[1L]],
+  circle_fit$eigen$status != "invalid",
+  circle_fit$eigen$spectral$status != "invalid",
+  circle_fit$assembly$component_count == 1L,
+  circle_fit$assembly$rank_deficient_count == 0L,
+  circle_fit$assembly$min_local_rank == 1L
+)
 ```
 
 ```{r circle-figure, echo=FALSE, fig.cap="The input circle, its one-dimensional LTSA display, the first two modes from the same operator, and the low spectrum. The mode pair follows the complete periodic progression."}
@@ -204,9 +228,10 @@ graphics::legend(
 graphics::par(old_par)
 ```
 
-Setting `ndim = 2` would build a two-dimensional local tangent model. Here,
-`spectral_dim = 2` keeps the original one-dimensional model and reveals its
-second global coordinate.
+Setting `ndim = 2` would build a two-dimensional local tangent model. This fit
+instead keeps `ndim = 1` and uses `spectral_dim = 4`: the first two retained
+modes reveal the global coordinate pair, while the next two expose its
+neighboring spectral context.
 
 ## COIL-20: a real periodic example
 
@@ -215,11 +240,15 @@ each object as it rotates. One object traces a closed, locally one-dimensional
 curve through pixel space, so the circle example predicts a spectral pair.
 
 At `k = 7`, mixing objects produces a disconnected neighbor graph, so we fit
-objects separately. A topology-only screen selected objects 4 and 1: their
-graphs are connected and locally cyclic, and they have the two lowest shortcut
-rates among the eligible objects. Each fit uses ordinary LTSA with `ndim = 1`,
-exact neighbors, and four retained modes. The coordinates come from pixels;
-pose supplies the point colors and thumbnail labels.
+objects separately. Objects 4 and 1 were fixed by an earlier topology-only
+screen run before any embedding. The screen required connected graphs,
+bidirectional local pose coverage, wraparound support, and at most one-sixth
+pose-order shortcut edges. Nine objects qualified, and ordering them by
+shortcut rate selected objects 4 and 1. The companion below reproduces these
+fixed-object fits and their spectral claims, not the earlier 20-object screen.
+Each fit uses ordinary LTSA with `ndim = 1`, exact neighbors, and four retained
+modes. The coordinates come from pixels; pose supplies the point colors and
+thumbnail labels.
 
 ![COIL-20 object 4. Modes 1 and 2 form a pose-ordered orbit, with thumbnails placed in the same radial direction as their observations.](figures/ltsa-spectral-block-coil-object-4.png)
 
@@ -266,7 +295,7 @@ should end, so read it together with the boundary gap.
 ## MNIST: a complementary view
 
 The 7,877 MNIST digit-1 images show how localization changes the interpretation
-of extra modes. Ordinary and normalized LTSA use the same saved neighbor
+of extra modes. Ordinary and normalized LTSA reuse the same fixed neighbor
 matrix, `ndim = 2`, `k = 15`, and four retained modes. Normalized LTSA changes
 the weighting through a generalized eigenproblem, giving a distinct estimator
 over the same graph.
@@ -308,7 +337,7 @@ Fashion-MNIST shows why a two-dimensional display should be read together with
 its support diagnostics, and how estimator choice can change both the map and
 the observations that dominate it. We fit trousers, dresses, and bags
 separately with ordinary LTSA, using `ndim = 2`, `k = 15`, and twelve retained
-modes. Each class uses one saved approximate-neighbor graph.
+modes. Each class uses one fixed approximate-neighbor graph in memory.
 
 Because dimensionality reduction is often judged through a two-dimensional
 scatterplot, we first inspect the ordinary modes 1--2 maps. For each class, the
@@ -326,7 +355,7 @@ adjacent numbered images identify the leverage maxima as atypical striped or
 noisy observations rather than representative garments.
 
 To isolate the effect of estimator weighting, we repeated each fit on the same
-data and saved graph, changing only to normalized LTSA. The normalized modes
+data and fixed graph, changing only to normalized LTSA. The normalized modes
 1--2 spans have block support `0.0898`, `0.0760`, and `0.327` for trousers,
 dresses, and bags. Their top-1% leverage masses fall to 27.2%, 32.3%, and 10.7%,
 with resolved mode 2--3 gaps of `0.00186`, `0.000427`, and `0.00159`.
@@ -402,7 +431,7 @@ establishing a universal estimator preference.
 Use `spectral_dim` when topology or a weak boundary gives you a reason to look
 past the displayed prefix. Read the block together with connectivity, rank,
 solver, gap, and support diagnostics. For details of the returned fields, see
-[Numerical diagnostics and solver notes](numerical-diagnostics.html).
+[Diagnosing suspicious LTSA results](numerical-diagnostics.html).
 
 Retaining a block supplies candidate coordinates; choosing which coordinates
 to display is a separate problem. [Independent Eigencoordinate
@@ -413,12 +442,22 @@ exposes the candidate modes needed to investigate it.
 
 ## Reproduce the real-data examples
 
-The complete script downloads the datasets with `snedata`, reuses saved
-neighbor matrices for estimator comparisons, fits the retained blocks, and
-draws the thumbnail and support plots. Install its extra dependencies with
-`pak::pak("jlmelville/snedata")` and `install.packages("rnndescent")`.
-Set `FLOTSAM_SPECTRAL_BLOCK_FIGURE_DIR` to a directory to save the five article
-diagnostics as PNG files; otherwise they draw on the current device.
+The complete script downloads the datasets with `snedata`, reuses fixed
+in-memory neighbor matrices for estimator comparisons, fits the retained
+blocks, checks the claims above, and draws the thumbnail and support plots.
+Install its extra dependencies with `pak::pak("jlmelville/snedata")` and
+`install.packages("rnndescent")`. Set `FLOTSAM_SPECTRAL_BLOCK_FIGURE_DIR` to a
+directory to write all ten real-data article figures with the exact filenames
+and dimensions declared in the script; otherwise they draw on the current
+device.
+
+From the package source tree, after installing the current package, this command
+regenerates the complete figure set and stops if a semantic invariant fails:
+
+```bash
+FLOTSAM_SPECTRAL_BLOCK_FIGURE_DIR=vignettes/articles/figures \
+  Rscript vignettes/articles/spectral-blocks-reproduction.R
+```
 
 ```{r reproduction-code, echo=FALSE, results="asis"}
 script_path <- file.path(
@@ -440,7 +479,7 @@ cat(
 
 The image examples use [COIL-20](https://cave.cs.columbia.edu/repository/COIL-20)
 (Sameer A. Nene, Shree K. Nayar, and Hiroshi Murase),
-[MNIST](https://yann.lecun.com/exdb/mnist/) (Yann LeCun, Corinna Cortes, and
+[MNIST](http://yann.lecun.com/exdb/mnist/) (Yann LeCun, Corinna Cortes, and
 Christopher J. C. Burges), and
 [Fashion-MNIST](https://arxiv.org/abs/1708.07747) (Han Xiao, Kashif Rasul, and
 Roland Vollgraf).

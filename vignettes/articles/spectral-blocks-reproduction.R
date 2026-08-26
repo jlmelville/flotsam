@@ -15,16 +15,60 @@ figure_directory <- Sys.getenv(
   unset = ""
 )
 
-open_output_figure <- function(filename, width, height) {
+article_figures <- data.frame(
+  filename = c(
+    "ltsa-spectral-block-coil-object-4.png",
+    "ltsa-spectral-block-coil-object-1.png",
+    "ltsa-spectral-block-mnist-ordinary-high-leverage.png",
+    "ltsa-spectral-block-mnist-normalized-display.png",
+    "ltsa-spectral-block-mnist-normalized-extra.png",
+    "ltsa-spectral-block-mnist-diagnostics.png",
+    "ltsa-spectral-block-fashion-display.png",
+    "ltsa-spectral-block-fashion-normalized-display.png",
+    "ltsa-spectral-block-fashion-diagnostics.png",
+    "ltsa-spectral-block-fashion-high-leverage.png"
+  ),
+  width = c(
+    1800L,
+    1800L,
+    2000L,
+    1800L,
+    1800L,
+    1800L,
+    2200L,
+    2200L,
+    2200L,
+    2500L
+  ),
+  height = c(
+    950L,
+    950L,
+    1100L,
+    1000L,
+    1000L,
+    650L,
+    1400L,
+    1400L,
+    1300L,
+    1600L
+  ),
+  res = c(150L, 150L, 180L, 150L, 150L, 150L, 180L, 180L, 180L, 180L)
+)
+
+open_output_figure <- function(filename) {
   if (!nzchar(figure_directory)) {
     return(FALSE)
+  }
+  specification <- article_figures[article_figures$filename == filename, ]
+  if (nrow(specification) != 1L) {
+    stop("Unknown or duplicated article figure specification: ", filename)
   }
   dir.create(figure_directory, recursive = TRUE, showWarnings = FALSE)
   grDevices::png(
     file.path(figure_directory, filename),
-    width = width,
-    height = height,
-    res = 180
+    width = specification$width,
+    height = specification$height,
+    res = specification$res
   )
   TRUE
 }
@@ -114,6 +158,58 @@ block_support_diagnostics <- function(vectors) {
     mass = mass,
     ordering = ordering
   )
+}
+
+top_one_percent_mode_mass <- function(vectors) {
+  vectors <- as.matrix(vectors)
+  vapply(
+    seq_len(ncol(vectors)),
+    function(column) {
+      energy <- vectors[, column]^2
+      energy <- energy / sum(energy)
+      top_count <- ceiling(0.01 * length(energy))
+      sum(sort(energy, decreasing = TRUE)[seq_len(top_count)])
+    },
+    numeric(1)
+  )
+}
+
+assert_fit_integrity <- function(fit, ndim, spectral_dim) {
+  stopifnot(
+    identical(dim(fit$embedding), c(nrow(fit$embedding), ndim)),
+    identical(
+      dim(fit$spectral_embedding),
+      c(nrow(fit$embedding), spectral_dim)
+    ),
+    identical(
+      fit$embedding,
+      fit$spectral_embedding[, seq_len(ndim), drop = FALSE]
+    ),
+    fit$eigen$status != "invalid",
+    fit$eigen$spectral$status != "invalid",
+    fit$eigen$rank >= ndim,
+    fit$eigen$spectral$rank >= spectral_dim,
+    fit$assembly$component_count == 1L,
+    fit$assembly$rank_deficient_count == 0L,
+    fit$assembly$min_local_rank >= ndim
+  )
+  if (
+    isTRUE(fit$eigen$backend$convergence_known) &&
+      !is.null(fit$eigen$backend$nconv)
+  ) {
+    stopifnot(fit$eigen$backend$nconv == fit$eigen$eig_k)
+  }
+  invisible(fit)
+}
+
+assert_selection <- function(selected, population_size, count) {
+  stopifnot(
+    length(selected) == count,
+    !anyDuplicated(selected),
+    all(selected >= 1L),
+    all(selected <= population_size)
+  )
+  invisible(selected)
 }
 
 central_window <- function(coordinates) {
@@ -605,7 +701,7 @@ draw_low_spectrum <- function(
     lty = boundary_lty,
     col = "grey45",
     bty = "n",
-    cex = 0.82
+    cex = 0.84
   )
 }
 
@@ -695,13 +791,20 @@ coil_fits <- lapply(coil_objects, function(object) {
     output = "result",
     spectral_dim = 4
   )
+  assert_fit_integrity(fit, ndim = 1L, spectral_dim = 4L)
+  pair_gaps <- diff(fit$eigen$ritz_values[seq_len(3L)])
+  stopifnot(pair_gaps[[2L]] > 10 * pair_gaps[[1L]])
   list(object = object, X = X, poses = poses, fit = fit)
 })
 
 plot_coil_orbit <- function(fit, X, poses, object) {
   coordinates <- fit$spectral_embedding[, 1:2, drop = FALSE]
+  x_range <- range(coordinates[, 1L])
+  y_range <- range(coordinates[, 2L])
   x_span <- diff(range(coordinates[, 1L]))
   y_span <- diff(range(coordinates[, 2L]))
+  xlim <- x_range + c(-0.46, 0.46) * x_span
+  ylim <- y_range + c(-0.46, 0.46) * y_span
   center <- colMeans(coordinates)
   selected <- match(seq.int(0L, 63L, by = 9L), poses)
   direction <- cbind(
@@ -709,13 +812,12 @@ plot_coil_orbit <- function(fit, X, poses, object) {
     (coordinates[selected, 2L] - center[[2L]]) / y_span
   )
   angle <- atan2(direction[, 2L], direction[, 1L])
+  plot_radius <- c(0.40 * diff(xlim), 0.40 * diff(ylim))
   centers <- cbind(
-    center[[1L]] + 0.62 * x_span * cos(angle),
-    center[[2L]] + 0.62 * y_span * sin(angle)
+    center[[1L]] + plot_radius[[1L]] * cos(angle),
+    center[[2L]] + plot_radius[[2L]] * sin(angle)
   )
 
-  xlim <- range(coordinates[, 1L]) + c(-0.46, 0.46) * x_span
-  ylim <- range(coordinates[, 2L]) + c(-0.46, 0.46) * y_span
   colors <- grDevices::hcl.colors(72L, "Spectral", rev = TRUE)
   graphics::plot(
     coordinates,
@@ -725,13 +827,15 @@ plot_coil_orbit <- function(fit, X, poses, object) {
     ylim = ylim,
     xlab = "LTSA mode 1",
     ylab = "LTSA mode 2",
-    main = paste("COIL-20 object", object, "rotational orbit")
+    main = paste0("COIL-20 object ", object, ": rotational orbit")
   )
   graphics::points(
     coordinates,
     pch = 21,
     bg = colors[poses + 1L],
-    col = "grey20"
+    col = "grey20",
+    cex = 1.25,
+    lwd = 0.45
   )
   for (index in seq_along(selected)) {
     row <- selected[[index]]
@@ -740,12 +844,25 @@ plot_coil_orbit <- function(fit, X, poses, object) {
       coordinates[row, 2L],
       centers[index, 1L],
       centers[index, 2L],
-      col = "grey45"
+      col = grDevices::adjustcolor("grey30", alpha.f = 0.7),
+      lwd = 0.8
     )
+  }
+  for (index in seq_along(selected)) {
+    row <- selected[[index]]
     width <- 0.19 * x_span
     height <- 0.19 * y_span
+    graphics::rect(
+      centers[index, 1L] - width / 2,
+      centers[index, 2L] - height / 2,
+      centers[index, 1L] + width / 2,
+      centers[index, 2L] + height / 2,
+      col = "white",
+      border = "grey35",
+      lwd = 0.8
+    )
     graphics::rasterImage(
-      pixel_raster(X[row, ], height = 128L, transpose = FALSE),
+      matrix(as.numeric(X[row, ]), nrow = 128L, ncol = 128L),
       centers[index, 1L] - width / 2,
       centers[index, 2L] - height / 2,
       centers[index, 1L] + width / 2,
@@ -762,26 +879,62 @@ plot_coil_orbit <- function(fit, X, poses, object) {
   }
 }
 
+draw_coil_low_spectrum <- function(fit, object) {
+  values <- fit$eigen$ritz_values[1:5]
+  graphics::plot(
+    seq_along(values),
+    values,
+    type = "b",
+    pch = 21,
+    bg = c("#D55E00", "#D55E00", "grey65", "grey65", "white"),
+    col = "grey25",
+    xaxt = "n",
+    xlab = "nonconstant Ritz mode",
+    ylab = "Ritz value",
+    main = paste0("Object ", object, ": low spectrum")
+  )
+  graphics::axis(1, at = seq_along(values))
+  graphics::abline(
+    v = c(1.5, 2.5, 4.5),
+    lty = c(3, 2, 3),
+    col = "grey45"
+  )
+  graphics::legend(
+    "topleft",
+    legend = c(
+      "displayed 1D boundary",
+      "periodic-pair boundary",
+      "retained block boundary"
+    ),
+    lty = c(3, 2, 3),
+    col = "grey45",
+    bty = "n",
+    cex = 0.86
+  )
+}
+
 for (coil_result in coil_fits) {
+  coil_figure_open <- open_output_figure(paste0(
+    "ltsa-spectral-block-coil-object-",
+    coil_result$object,
+    ".png"
+  ))
   old_par <- graphics::par(no.readonly = TRUE)
   graphics::layout(matrix(c(1L, 1L, 2L), nrow = 1L))
+  graphics::par(mar = c(4.4, 4.6, 3.2, 1.2))
   plot_coil_orbit(
     coil_result$fit,
     coil_result$X,
     coil_result$poses,
     coil_result$object
   )
-  draw_low_spectrum(
+  graphics::par(mar = c(4.4, 4.5, 3.2, 1.2))
+  draw_coil_low_spectrum(
     coil_result$fit,
-    paste("COIL-20 object", coil_result$object),
-    boundaries = c(1.5, 2.5, 4.5),
-    boundary_labels = c(
-      "displayed 1D boundary",
-      "periodic-pair boundary",
-      "retained boundary"
-    )
+    coil_result$object
   )
   graphics::par(old_par)
+  close_output_figure(coil_figure_open)
 }
 
 # MNIST digit 1 ---------------------------------------------------------
@@ -809,6 +962,8 @@ fit_mnist <- function(normalize) {
 
 mnist_ordinary <- fit_mnist(FALSE)
 mnist_normalized <- fit_mnist(TRUE)
+assert_fit_integrity(mnist_ordinary, ndim = 2L, spectral_dim = 4L)
+assert_fit_integrity(mnist_normalized, ndim = 2L, spectral_dim = 4L)
 mnist_ordinary_display <- block_support_diagnostics(
   mnist_ordinary$spectral_embedding[, 1:2, drop = FALSE]
 )
@@ -820,6 +975,21 @@ mnist_normalized_display <- block_support_diagnostics(
 )
 mnist_normalized_retained <- block_support_diagnostics(
   mnist_normalized$spectral_embedding
+)
+
+stopifnot(
+  mnist_ordinary_display$support < 0.001,
+  mnist_normalized_display$support > 0.1,
+  mnist_normalized_display$support > 100 * mnist_ordinary_display$support,
+  mnist_ordinary_display$top_one_percent_mass > 0.99,
+  mnist_normalized_display$top_one_percent_mass < 0.1,
+  mnist_ordinary_retained$support < 0.002,
+  mnist_normalized_retained$support > 0.01,
+  mnist_normalized_retained$support > mnist_ordinary_retained$support,
+  mnist_ordinary$eigen$diagnostics$scaled_boundary_gap < 1e-4,
+  mnist_normalized$eigen$diagnostics$scaled_boundary_gap > 1e-4,
+  mnist_ordinary$eigen$spectral$diagnostics$scaled_boundary_gap < 1e-4,
+  mnist_normalized$eigen$spectral$diagnostics$scaled_boundary_gap > 1e-4
 )
 
 print(data.frame(
@@ -846,10 +1016,9 @@ print(data.frame(
 ))
 
 mnist_selected <- mnist_ordinary_display$ordering[seq_len(16L)]
+assert_selection(mnist_selected, nrow(mnist_images), 16L)
 mnist_figure_open <- open_output_figure(
-  "ltsa-spectral-block-mnist-ordinary-high-leverage.png",
-  2000L,
-  1100L
+  "ltsa-spectral-block-mnist-ordinary-high-leverage.png"
 )
 old_par <- graphics::par(no.readonly = TRUE)
 graphics::layout(matrix(c(1L, 2L, 2L), nrow = 1L))
@@ -874,7 +1043,10 @@ graphics::title(main = "Top 16 observations by displayed-block leverage")
 graphics::par(old_par)
 close_output_figure(mnist_figure_open)
 
-plot_pair_with_images(
+mnist_normalized_display_open <- open_output_figure(
+  "ltsa-spectral-block-mnist-normalized-display.png"
+)
+mnist_normalized_display_selected <- plot_pair_with_images(
   mnist_normalized$spectral_embedding[, 1:2, drop = FALSE],
   mnist_images,
   height = 28L,
@@ -884,8 +1056,17 @@ plot_pair_with_images(
   main = "Normalized LTSA digit 1: modes 1 and 2",
   image_title = "Representative digits from the map"
 )
+close_output_figure(mnist_normalized_display_open)
+assert_selection(
+  mnist_normalized_display_selected,
+  nrow(mnist_images),
+  16L
+)
 
-plot_pair_with_images(
+mnist_normalized_extra_open <- open_output_figure(
+  "ltsa-spectral-block-mnist-normalized-extra.png"
+)
+mnist_normalized_extra_selected <- plot_pair_with_images(
   mnist_normalized$spectral_embedding[, 2:3, drop = FALSE],
   mnist_images,
   height = 28L,
@@ -895,19 +1076,87 @@ plot_pair_with_images(
   main = "Normalized LTSA digit 1: modes 2 and 3",
   image_title = "Representative digits from the map"
 )
+close_output_figure(mnist_normalized_extra_open)
+assert_selection(mnist_normalized_extra_selected, nrow(mnist_images), 16L)
 
+mnist_diagnostics_open <- open_output_figure(
+  "ltsa-spectral-block-mnist-diagnostics.png"
+)
 old_par <- graphics::par(no.readonly = TRUE)
 graphics::par(mfrow = c(1L, 3L), mar = c(4.2, 4.5, 3.3, 1))
-draw_low_spectrum(mnist_ordinary, "Ordinary LTSA low spectrum")
-draw_low_spectrum(mnist_normalized, "Normalized LTSA low spectrum")
-plot_support(
-  list(mnist_ordinary, mnist_normalized),
-  c("ordinary", "normalized"),
-  c("#D55E00", "#0072B2"),
-  "MNIST digit-1 mode support",
-  legend_position = "topright"
+draw_low_spectrum(
+  mnist_ordinary,
+  "Ordinary LTSA low spectrum",
+  boundary_labels = c("displayed 2D boundary", "retained 4D boundary")
+)
+draw_low_spectrum(
+  mnist_normalized,
+  "Normalized LTSA low spectrum",
+  boundary_labels = c("displayed 2D boundary", "retained 4D boundary")
+)
+mnist_ordinary_support <- effective_support_fraction(
+  mnist_ordinary$spectral_embedding
+)
+mnist_normalized_support <- effective_support_fraction(
+  mnist_normalized$spectral_embedding
+)
+graphics::plot(
+  seq_len(4L),
+  mnist_ordinary_support,
+  type = "b",
+  log = "y",
+  pch = 21,
+  bg = "#D55E00",
+  col = "#D55E00",
+  ylim = range(c(mnist_ordinary_support, mnist_normalized_support)),
+  xlim = c(1, 5.7),
+  xaxt = "n",
+  xlab = "nonconstant mode",
+  ylab = "effective support fraction (log scale)",
+  main = "Low modes need not be global"
+)
+graphics::axis(1, at = seq_len(4L))
+graphics::lines(
+  seq_len(4L),
+  mnist_normalized_support,
+  type = "b",
+  pch = 21,
+  bg = "#0072B2",
+  col = "#0072B2"
+)
+graphics::abline(h = 0.01, lty = 3, col = "grey45")
+graphics::legend(
+  "topright",
+  legend = c("ordinary", "normalized", "1% support"),
+  col = c("#D55E00", "#0072B2", "grey45"),
+  pch = c(21, 21, NA),
+  pt.bg = c("#D55E00", "#0072B2", NA),
+  lty = c(1, 1, 3),
+  bty = "n"
 )
 graphics::par(old_par)
+close_output_figure(mnist_diagnostics_open)
+
+mnist_selection_scopes <- data.frame(
+  panel = c(
+    "ordinary-high-leverage",
+    "normalized-display",
+    "normalized-extra"
+  ),
+  estimator = c("ordinary", "normalized", "normalized"),
+  modes = c("1:2", "1:2", "2:3"),
+  rule = c(
+    "top displayed-block leverage",
+    "central-region representative coverage",
+    "central-region representative coverage"
+  ),
+  count = c(
+    length(mnist_selected),
+    length(mnist_normalized_display_selected),
+    length(mnist_normalized_extra_selected)
+  )
+)
+print(mnist_selection_scopes, row.names = FALSE)
 
 # Fashion-MNIST ---------------------------------------------------------
 
@@ -937,6 +1186,8 @@ fashion_fits <- lapply(seq_along(fashion_classes), function(index) {
   }
   fit <- fit_fashion(FALSE)
   normalized_fit <- fit_fashion(TRUE)
+  assert_fit_integrity(fit, ndim = 2L, spectral_dim = 12L)
+  assert_fit_integrity(normalized_fit, ndim = 2L, spectral_dim = 12L)
   list(
     fit = fit,
     normalized_fit = normalized_fit,
@@ -954,6 +1205,30 @@ fashion_fits <- lapply(seq_along(fashion_classes), function(index) {
   )
 })
 names(fashion_fits) <- names(fashion_classes)
+
+fashion_ordinary_mode_support <- lapply(
+  fashion_fits,
+  function(result) effective_support_fraction(result$fit$spectral_embedding)
+)
+fashion_ordinary_mode_top_one_percent <- lapply(
+  fashion_fits,
+  function(result) {
+    top_one_percent_mode_mass(result$fit$spectral_embedding)
+  }
+)
+ordinary_mode_support <- unlist(
+  fashion_ordinary_mode_support,
+  use.names = FALSE
+)
+ordinary_mode_top_one_percent <- unlist(
+  fashion_ordinary_mode_top_one_percent,
+  use.names = FALSE
+)
+stopifnot(
+  min(ordinary_mode_support) >= 1 / nrow(fashion_fits[[1L]]$images) - 1e-12,
+  max(ordinary_mode_support) < 0.00015,
+  min(ordinary_mode_top_one_percent) > 0.998
+)
 
 fashion_display_summary <- do.call(
   rbind,
@@ -980,11 +1255,31 @@ fashion_display_summary <- do.call(
 )
 rownames(fashion_display_summary) <- NULL
 print(fashion_display_summary)
+ordinary_display_rows <- fashion_display_summary$estimator == "ordinary"
+normalized_display_rows <- !ordinary_display_rows
+stopifnot(
+  all(fashion_display_summary$support[ordinary_display_rows] < 0.001),
+  all(fashion_display_summary$support[normalized_display_rows] > 0.05),
+  all(
+    fashion_display_summary$support[normalized_display_rows] >
+      fashion_display_summary$support[ordinary_display_rows]
+  ),
+  all(
+    fashion_display_summary$top_one_percent_mass[ordinary_display_rows] > 0.999
+  ),
+  all(
+    fashion_display_summary$top_one_percent_mass[normalized_display_rows] < 0.4
+  ),
+  all(
+    fashion_display_summary$top_one_percent_mass[normalized_display_rows] <
+      fashion_display_summary$top_one_percent_mass[ordinary_display_rows]
+  ),
+  all(fashion_display_summary$boundary_gap[ordinary_display_rows] < 1e-4),
+  all(fashion_display_summary$boundary_gap[normalized_display_rows] > 1e-4)
+)
 
 fashion_display_open <- open_output_figure(
-  "ltsa-spectral-block-fashion-display.png",
-  2200L,
-  1400L
+  "ltsa-spectral-block-fashion-display.png"
 )
 old_par <- graphics::par(no.readonly = TRUE)
 graphics::layout(
@@ -992,10 +1287,13 @@ graphics::layout(
   heights = c(3, 1.2)
 )
 graphics::par(mar = c(4.2, 4.4, 3.2, 1.0))
+fashion_display_selected <- list()
 for (class_name in names(fashion_fits)) {
   result <- fashion_fits[[class_name]]
   coordinates <- result$fit$embedding
   selected <- result$display_block$ordering[seq_len(2L)]
+  assert_selection(selected, nrow(result$images), 2L)
+  fashion_display_selected[[class_name]] <- selected
   draw_full_embedding_panel(
     coordinates,
     selected,
@@ -1014,9 +1312,7 @@ graphics::par(old_par)
 close_output_figure(fashion_display_open)
 
 fashion_normalized_display_open <- open_output_figure(
-  "ltsa-spectral-block-fashion-normalized-display.png",
-  2200L,
-  1400L
+  "ltsa-spectral-block-fashion-normalized-display.png"
 )
 old_par <- graphics::par(no.readonly = TRUE)
 graphics::layout(
@@ -1024,10 +1320,13 @@ graphics::layout(
   heights = c(3, 1.2)
 )
 graphics::par(mar = c(4.2, 4.4, 3.2, 1.0))
+fashion_normalized_display_selected <- list()
 for (class_name in names(fashion_fits)) {
   result <- fashion_fits[[class_name]]
   coordinates <- result$normalized_fit$embedding
   selected <- result$normalized_display_block$ordering[seq_len(2L)]
+  assert_selection(selected, nrow(result$images), 2L)
+  fashion_normalized_display_selected[[class_name]] <- selected
   draw_full_embedding_panel(
     coordinates,
     selected,
@@ -1046,9 +1345,7 @@ graphics::par(old_par)
 close_output_figure(fashion_normalized_display_open)
 
 fashion_spectrum_open <- open_output_figure(
-  "ltsa-spectral-block-fashion-diagnostics.png",
-  2200L,
-  1300L
+  "ltsa-spectral-block-fashion-diagnostics.png"
 )
 old_par <- graphics::par(no.readonly = TRUE)
 graphics::par(mfrow = c(2L, 2L), mar = c(4.2, 4.5, 3.2, 1.0))
@@ -1092,14 +1389,32 @@ fashion_block_summary <- do.call(
 )
 rownames(fashion_block_summary) <- NULL
 print(fashion_block_summary)
+ordinary_block_rows <- fashion_block_summary$estimator == "ordinary"
+normalized_block_rows <- !ordinary_block_rows
+stopifnot(
+  all(fashion_block_summary$support[ordinary_block_rows] > 0.0015),
+  all(fashion_block_summary$support[ordinary_block_rows] < 0.002),
+  all(fashion_block_summary$support[normalized_block_rows] > 0.02),
+  all(
+    fashion_block_summary$support[normalized_block_rows] >
+      10 * fashion_block_summary$support[ordinary_block_rows]
+  ),
+  all(
+    fashion_block_summary$top_one_percent_mass[ordinary_block_rows] > 0.999
+  ),
+  all(
+    fashion_block_summary$top_one_percent_mass[normalized_block_rows] < 0.31
+  ),
+  all(fashion_block_summary$boundary_gap[ordinary_block_rows] < 1e-4),
+  all(fashion_block_summary$boundary_gap[normalized_block_rows] > 1e-4)
+)
 
 old_par <- graphics::par(no.readonly = TRUE)
 fashion_thumbnail_open <- open_output_figure(
-  "ltsa-spectral-block-fashion-high-leverage.png",
-  2500L,
-  1600L
+  "ltsa-spectral-block-fashion-high-leverage.png"
 )
 graphics::par(mfrow = c(6L, 1L), mar = c(2.4, 0.5, 2.1, 0.5))
+fashion_block_selected <- list()
 for (class_name in names(fashion_fits)) {
   result <- fashion_fits[[class_name]]
   blocks <- list(
@@ -1108,6 +1423,9 @@ for (class_name in names(fashion_fits)) {
   )
   for (estimator in names(blocks)) {
     selected <- blocks[[estimator]]$ordering[seq_len(12L)]
+    assert_selection(selected, nrow(result$images), 12L)
+    fashion_block_selected[[paste(class_name, estimator, sep = "-")]] <-
+      selected
     draw_ranked_thumbnail_row(
       result$images,
       selected,
@@ -1117,3 +1435,75 @@ for (class_name in names(fashion_fits)) {
 }
 graphics::par(old_par)
 close_output_figure(fashion_thumbnail_open)
+
+display_overlap <- vapply(
+  names(fashion_fits),
+  function(class_name) {
+    length(intersect(
+      fashion_display_selected[[class_name]],
+      fashion_normalized_display_selected[[class_name]]
+    ))
+  },
+  integer(1)
+)
+block_overlap <- vapply(
+  names(fashion_fits),
+  function(class_name) {
+    length(intersect(
+      fashion_block_selected[[paste(class_name, "ordinary", sep = "-")]],
+      fashion_block_selected[[paste(class_name, "normalized", sep = "-")]]
+    ))
+  },
+  integer(1)
+)
+normalized_display_ranks <- lapply(
+  names(fashion_fits),
+  function(class_name) {
+    result <- fashion_fits[[class_name]]
+    sort(match(
+      fashion_normalized_display_selected[[class_name]],
+      result$normalized_block$ordering
+    ))
+  }
+)
+names(normalized_display_ranks) <- names(fashion_fits)
+
+stopifnot(
+  identical(unname(display_overlap), c(0L, 0L, 0L)),
+  identical(unname(block_overlap), c(1L, 0L, 0L)),
+  identical(normalized_display_ranks$Trouser, c(1L, 2L)),
+  identical(normalized_display_ranks$Dress, c(59L, 62L)),
+  identical(normalized_display_ranks$Bag, c(3L, 4L))
+)
+
+fashion_selection_scopes <- data.frame(
+  class = rep(names(fashion_fits), each = 4L),
+  estimator = rep(
+    c("ordinary", "normalized", "ordinary", "normalized"),
+    times = 3L
+  ),
+  modes = rep(c("1:2", "1:2", "1:12", "1:12"), times = 3L),
+  rule = rep(
+    c(
+      "top displayed-block leverage",
+      "top displayed-block leverage",
+      "top retained-block leverage",
+      "top retained-block leverage"
+    ),
+    times = 3L
+  )
+)
+print(fashion_selection_scopes, row.names = FALSE)
+
+if (nzchar(figure_directory)) {
+  figure_paths <- file.path(figure_directory, article_figures$filename)
+  stopifnot(
+    all(file.exists(figure_paths)),
+    all(file.info(figure_paths)$size > 0)
+  )
+  message(
+    "Wrote all ",
+    length(figure_paths),
+    " spectral-block article figures."
+  )
+}
