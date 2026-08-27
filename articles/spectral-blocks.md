@@ -9,8 +9,9 @@ coordinates show its closed path.
 This article shows how to inspect them on a circle, COIL-20, MNIST, and
 Fashion-MNIST.
 
-Click any figure to open a larger version; click the enlarged image to
-close it.
+Click any figure to open a larger version; click the enlarged image or
+press Escape to close it. Keyboard users can focus a figure and press
+Enter or Space.
 
 ## Keep more modes from the same operator
 
