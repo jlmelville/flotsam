@@ -23,8 +23,8 @@ closed path.
 article shows how to inspect them on a circle, COIL-20, MNIST, and
 Fashion-MNIST.
 
-Click any figure to open a larger version; click the enlarged image to close
-it.
+Click any figure to open a larger version; click the enlarged image or press
+Escape to close it. Keyboard users can focus a figure and press Enter or Space.
 
 ## Keep more modes from the same operator
 
@@ -162,7 +162,8 @@ stopifnot(
 ```{r circle-figure, echo=FALSE, fig.cap="The input circle, its one-dimensional LTSA display, the first two modes from the same operator, and the low spectrum. The mode pair follows the complete periodic progression."}
 circle_colors <- grDevices::hcl.colors(
   nrow(circle),
-  palette = "Spectral",
+  # A cyclic palette makes the start and end of theta meet in color.
+  palette = "Dynamic",
   rev = TRUE
 )
 circle_values <- circle_fit$eigen$ritz_values[1:5]

@@ -1,37 +1,111 @@
 document.addEventListener("DOMContentLoaded", function() {
-  var images = document.querySelectorAll("body img");
+  var images = document.querySelectorAll(".template-article main img");
+
   images.forEach(function(img) {
     img.style.cursor = "zoom-in";
-    img.onclick = function() {
+    img.tabIndex = 0;
+    img.setAttribute("role", "button");
+    img.setAttribute("aria-haspopup", "dialog");
+    img.setAttribute("aria-label", figureActionLabel(img));
+
+    img.addEventListener("click", function(event) {
+      event.preventDefault();
       showImageInModal(img);
-    };
+    });
+
+    img.addEventListener("keydown", function(event) {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        showImageInModal(img);
+      }
+    });
   });
+
+  function figureActionLabel(img) {
+    if (img.alt) {
+      return "Enlarge figure: " + img.alt;
+    }
+    return "Enlarge figure";
+  }
+
+  function showImageInModal(imgElement) {
+    if (document.querySelector("[data-figure-modal]")) {
+      return;
+    }
+
+    var previousOverflow = document.body.style.overflow;
+    var modal = document.createElement("div");
+    modal.setAttribute("data-figure-modal", "");
+    modal.setAttribute("role", "dialog");
+    modal.setAttribute("aria-modal", "true");
+    modal.setAttribute(
+      "aria-label",
+      imgElement.alt ? "Enlarged figure: " + imgElement.alt : "Enlarged figure"
+    );
+    modal.style.position = "fixed";
+    modal.style.inset = "0";
+    modal.style.padding = "2rem";
+    modal.style.backgroundColor = "rgba(0,0,0,0.88)";
+    modal.style.display = "flex";
+    modal.style.justifyContent = "center";
+    modal.style.alignItems = "center";
+    modal.style.zIndex = "1080";
+    modal.style.cursor = "zoom-out";
+
+    var fullImage = document.createElement("img");
+    fullImage.src = imgElement.getAttribute("src");
+    fullImage.alt = imgElement.alt;
+    fullImage.style.maxWidth = "calc(100vw - 4rem)";
+    fullImage.style.maxHeight = "calc(100vh - 4rem)";
+    fullImage.style.objectFit = "contain";
+    fullImage.style.cursor = "zoom-out";
+    modal.appendChild(fullImage);
+
+    var closeButton = document.createElement("button");
+    closeButton.type = "button";
+    closeButton.setAttribute("aria-label", "Close enlarged figure");
+    closeButton.textContent = "\u00d7";
+    closeButton.style.position = "absolute";
+    closeButton.style.top = "0.5rem";
+    closeButton.style.right = "0.75rem";
+    closeButton.style.border = "0";
+    closeButton.style.background = "transparent";
+    closeButton.style.color = "white";
+    closeButton.style.fontSize = "2.5rem";
+    closeButton.style.lineHeight = "1";
+    closeButton.style.cursor = "pointer";
+    modal.appendChild(closeButton);
+
+    function closeModal() {
+      if (!modal.isConnected) {
+        return;
+      }
+      document.removeEventListener("keydown", handleModalKeydown);
+      document.body.style.overflow = previousOverflow;
+      modal.remove();
+      imgElement.focus();
+    }
+
+    function handleModalKeydown(event) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        closeModal();
+      } else if (event.key === "Tab") {
+        event.preventDefault();
+        closeButton.focus();
+      }
+    }
+
+    modal.addEventListener("click", function(event) {
+      if (event.target === modal || event.target === fullImage) {
+        closeModal();
+      }
+    });
+    closeButton.addEventListener("click", closeModal);
+    document.addEventListener("keydown", handleModalKeydown);
+
+    document.body.style.overflow = "hidden";
+    document.body.appendChild(modal);
+    closeButton.focus();
+  }
 });
-
-function showImageInModal(imgElement) {
-  var modal = document.createElement("div");
-  modal.style.position = "fixed";
-  modal.style.top = "0";
-  modal.style.left = "0";
-  modal.style.width = "100%";
-  modal.style.height = "100%";
-  modal.style.backgroundColor = "rgba(0,0,0,0.8)";
-  modal.style.display = "flex";
-  modal.style.justifyContent = "center";
-  modal.style.alignItems = "center";
-  modal.style.zIndex = "1000";
-  modal.style.cursor = "zoom-out";
-
-  var fullImage = document.createElement("img");
-  fullImage.src = imgElement.getAttribute("src");
-  fullImage.alt = imgElement.alt;
-  fullImage.style.maxWidth = "100%";
-  fullImage.style.maxHeight = "100%";
-  modal.appendChild(fullImage);
-
-  modal.onclick = function() {
-    document.body.removeChild(modal);
-  };
-
-  document.body.appendChild(modal);
-}
