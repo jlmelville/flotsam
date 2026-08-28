@@ -100,9 +100,11 @@ suggests that this is in effect the main difference between LTSA and the
 Hessian Locally Linear Embedding (HLLE) method, so setting this to \code{FALSE}
 may allow emulating the HLLE method.}
 
-\item{normalize}{If \code{TRUE}, use the normalized LTSA formulation described in
-the "Normalized LTSA" section, including for \code{output = "B"}. The default
-is \code{FALSE}, which uses the standard LTSA formulation.}
+\item{normalize}{If \code{TRUE}, rescale LTSA according to how often and how
+strongly each observation enters the local alignment calculations. This
+can produce an embedding that is less concentrated on a few observations.
+The default is \code{FALSE}. See the "Normalized LTSA" section for details,
+including the behavior of \code{output = "B"}.}
 
 \item{n_threads}{Nonnegative number of threads for nearest-neighbor
 calculation. For reproducibility, set \code{n_threads = 1} (the default). This
