@@ -135,9 +135,11 @@ ltsa(
 
 - normalize:
 
-  If `TRUE`, use the normalized LTSA formulation described in the
-  "Normalized LTSA" section, including for `output = "B"`. The default
-  is `FALSE`, which uses the standard LTSA formulation.
+  If `TRUE`, rescale LTSA according to how often and how strongly each
+  observation enters the local alignment calculations. This can produce
+  an embedding that is less concentrated on a few observations. The
+  default is `FALSE`. See the "Normalized LTSA" section for details,
+  including the behavior of `output = "B"`.
 
 - n_threads:
 
