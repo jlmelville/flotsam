@@ -3,6 +3,7 @@
 .RData
 .Ruserdata
 flotsam.Rproj
+.DS_Store
 **/*DONTCHECKMEIN*
 plans/
 /.pkgdown-preview/
