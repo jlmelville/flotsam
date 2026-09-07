@@ -33,6 +33,21 @@ for required_command in "${required_commands[@]}"; do
   fi
 done
 
+required_formatter_version=21.1.8
+formatter_version_output=$(clang-format --version)
+if [[ $formatter_version_output =~ clang-format\ version\ ([0-9]+\.[0-9]+\.[0-9]+) ]]; then
+  formatter_version=${BASH_REMATCH[1]}
+else
+  printf '%s: unable to determine clang-format version from: %s\n' \
+    "${0##*/}" "$formatter_version_output" >&2
+  exit 1
+fi
+if [[ $formatter_version != "$required_formatter_version" ]]; then
+  printf '%s: clang-format %s is required, found %s\n' \
+    "${0##*/}" "$required_formatter_version" "$formatter_version" >&2
+  exit 1
+fi
+
 r_include=$(Rscript --vanilla -e 'cat(R.home("include"))')
 cpp11_include=$(Rscript --vanilla -e 'cat(system.file("include", package = "cpp11"))')
 if [[ ! -d "$r_include" ]]; then

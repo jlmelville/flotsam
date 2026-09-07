@@ -8,6 +8,7 @@ on:
       - inst/include/**
       - src/**
       - tools/native-quality.sh
+      - tools/requirements-clang-format.txt
       - tools/tsan-ltsa.sh
       - tools/tsan-ltsa.cpp
   pull_request:
@@ -19,6 +20,7 @@ on:
       - inst/include/**
       - src/**
       - tools/native-quality.sh
+      - tools/requirements-clang-format.txt
       - tools/tsan-ltsa.sh
       - tools/tsan-ltsa.cpp
   workflow_dispatch:
@@ -55,7 +57,18 @@ jobs:
       - name: Install native tools
         run: |
           sudo apt-get update
-          sudo apt-get install --yes clang clang-format shellcheck
+          sudo apt-get install --yes clang python3-venv shellcheck
+
+      - name: Install clang-format 21.1.8
+        run: |
+          formatter_venv="$RUNNER_TEMP/clang-format-venv"
+          python3 -m venv "$formatter_venv"
+          "$formatter_venv/bin/python" -m pip install \
+            --require-hashes \
+            --only-binary=:all: \
+            --no-deps \
+            --requirement tools/requirements-clang-format.txt
+          printf '%s\n' "$formatter_venv/bin" >> "$GITHUB_PATH"
 
       - name: Check shell scripts
         run: |
