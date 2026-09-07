@@ -17,12 +17,7 @@
 #include <R_ext/BLAS.h>
 #include <R_ext/Lapack.h>
 
-#include "pforr.h"
-
-struct CompactEntry {
-  int row;
-  double value;
-};
+#include "ltsa_parallel_reduce.h"
 
 struct SparseComponents {
   std::vector<int> i;

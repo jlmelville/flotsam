@@ -42,24 +42,6 @@ struct TriangularSlotPlan {
   std::vector<std::size_t> slot_offsets;
 };
 
-struct ReduceWorkspace {
-  explicit ReduceWorkspace(std::size_t n_obs)
-      : row_sums(checked_vector_size<double>(
-                     n_obs, "parallel LTSA reduction row sums"),
-                 0.0),
-        row_seen(checked_vector_size<int>(
-                     n_obs, "parallel LTSA reduction row markers"),
-                 -1) {
-    touched_rows.reserve(checked_vector_size<int>(
-        std::min(n_obs, static_cast<std::size_t>(1024)),
-        "parallel LTSA reduction touched rows"));
-  }
-
-  std::vector<double> row_sums;
-  std::vector<int> row_seen;
-  std::vector<int> touched_rows;
-};
-
 void fill_flat_neighbors_zero_based_ptr(const int *value_ptr,
                                         std::size_t offset, std::size_t n_nbrs,
                                         std::vector<int> &out) {
@@ -230,45 +212,6 @@ struct ParallelTriangularFillWorker {
   }
 };
 
-struct ColumnReduceWorker {
-  const std::vector<std::size_t> *column_starts;
-  const std::vector<std::size_t> *column_counts;
-  const std::vector<int> *raw_rows;
-  const std::vector<double> *raw_values;
-  std::vector<std::vector<CompactEntry>> *reduced_columns;
-  std::vector<ReduceWorkspace> *workspaces;
-
-  void operator()(std::size_t begin, std::size_t end, std::size_t chunk_id) {
-    ReduceWorkspace &workspace = (*workspaces)[chunk_id];
-
-    for (std::size_t col = begin; col < end; col++) {
-      const int marker = static_cast<int>(col);
-      workspace.touched_rows.clear();
-      const std::size_t start = (*column_starts)[col];
-      const std::size_t count = (*column_counts)[col];
-      for (std::size_t pos = start; pos < start + count; pos++) {
-        const int row = (*raw_rows)[pos];
-        if (workspace.row_seen[row] != marker) {
-          workspace.row_seen[row] = marker;
-          workspace.row_sums[row] = 0.0;
-          workspace.touched_rows.push_back(row);
-        }
-        workspace.row_sums[row] += (*raw_values)[pos];
-      }
-
-      std::sort(workspace.touched_rows.begin(), workspace.touched_rows.end());
-      std::vector<CompactEntry> &out = (*reduced_columns)[col];
-      out.reserve(workspace.touched_rows.size());
-      for (const int row : workspace.touched_rows) {
-        const double value = workspace.row_sums[row];
-        if (value != 0.0) {
-          out.push_back(CompactEntry{row, value});
-        }
-      }
-    }
-  }
-};
-
 std::vector<std::vector<CompactEntry>>
 reduce_raw_columns_parallel(const std::vector<std::size_t> &column_starts,
                             const std::vector<std::size_t> &column_counts,
@@ -281,16 +224,21 @@ reduce_raw_columns_parallel(const std::vector<std::size_t> &column_starts,
   std::vector<std::vector<CompactEntry>> reduced_columns(
       checked_vector_size<std::vector<CompactEntry>>(
           n_obs, "parallel LTSA reduced column containers"));
-  std::vector<ReduceWorkspace> workspaces;
-  workspaces.reserve(checked_vector_size<ReduceWorkspace>(
-      ranges.size(), "parallel LTSA reduction workspaces"));
+  checked_vector_size<double>(n_obs, "parallel LTSA reduction row sums");
+  checked_vector_size<int>(n_obs, "parallel LTSA reduction row markers");
+  checked_vector_size<int>(std::min(n_obs, static_cast<std::size_t>(1024)),
+                           "parallel LTSA reduction touched rows");
+  std::vector<flotsam_detail::ParallelReduceWorkspace> workspaces;
+  workspaces.reserve(
+      checked_vector_size<flotsam_detail::ParallelReduceWorkspace>(
+          ranges.size(), "parallel LTSA reduction workspaces"));
   for (std::size_t chunk = 0; chunk < ranges.size(); chunk++) {
     workspaces.emplace_back(n_obs);
   }
 
-  ColumnReduceWorker worker{&column_starts, &column_counts,   &raw_rows,
-                            &raw_values,    &reduced_columns, &workspaces};
-  pforr::parallel_for_indexed(0, n_obs, worker, n_threads, 1);
+  flotsam_detail::reduce_raw_columns_parallel_core(
+      column_starts, column_counts, raw_rows, raw_values, reduced_columns,
+      workspaces, n_threads);
   cpp11::check_user_interrupt();
   return reduced_columns;
 }

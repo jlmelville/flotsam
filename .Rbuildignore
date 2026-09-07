@@ -16,5 +16,6 @@
 ^pkgdown$
 ^\.pkgdown-preview$
 ^plans$
+^tools$
 ^revdep$
 ^.*\/*DONTCHECKMEIN.*$

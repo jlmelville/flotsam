@@ -1,0 +1,78 @@
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - .clang-format
+      - .github/workflows/native-quality.yaml
+      - DESCRIPTION
+      - inst/include/**
+      - src/**
+      - tools/native-quality.sh
+      - tools/tsan-ltsa.sh
+      - tools/tsan-ltsa.cpp
+  pull_request:
+    branches: [main, master]
+    paths:
+      - .clang-format
+      - .github/workflows/native-quality.yaml
+      - DESCRIPTION
+      - inst/include/**
+      - src/**
+      - tools/native-quality.sh
+      - tools/tsan-ltsa.sh
+      - tools/tsan-ltsa.cpp
+  workflow_dispatch:
+
+name: native-quality
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  native-quality:
+    name: Native quality
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
+        with:
+          persist-credentials: false
+
+      - name: Set up R
+        uses: r-lib/actions/setup-r@465b7d8e732ca3921382b1674c59bada9cbf3399 # v2
+        with:
+          use-public-rspm: true
+
+      - name: Install cpp11
+        uses: r-lib/actions/setup-r-dependencies@465b7d8e732ca3921382b1674c59bada9cbf3399 # v2
+        with:
+          extra-packages: any::cpp11
+
+      - name: Install native tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes clang clang-format shellcheck
+
+      - name: Check shell scripts
+        run: |
+          bash -n tools/native-quality.sh tools/tsan-ltsa.sh
+          shellcheck tools/native-quality.sh tools/tsan-ltsa.sh
+
+      - name: Run native quality checks
+        run: tools/native-quality.sh
+
+  thread-sanitizer:
+    name: ThreadSanitizer
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
+        with:
+          persist-credentials: false
+
+      - name: Exercise parallel column reduction
+        run: tools/tsan-ltsa.sh
