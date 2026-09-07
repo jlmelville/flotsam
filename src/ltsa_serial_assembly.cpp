@@ -16,6 +16,9 @@ assemble_local_weights(const cpp11::doubles_matrix<> &x,
   if (static_cast<std::size_t>(x.nrow()) != n_obs) {
     cpp11::stop("Inconsistent input and neighborhood dimensions");
   }
+  if (x.ncol() == 0) {
+    cpp11::stop("X must contain at least one column");
+  }
 
   const auto max_int =
       static_cast<std::size_t>(std::numeric_limits<int>::max());
@@ -28,13 +31,17 @@ assemble_local_weights(const cpp11::doubles_matrix<> &x,
 
   int rank_deficient_count = 0;
   int min_local_rank = ndim;
-  const bool use_gram_workspace =
-      x.ncol() != 0 && static_cast<std::size_t>(x.ncol()) > n_neighbors;
-  const double *x_data = use_gram_workspace ? REAL(x.data()) : nullptr;
+  const bool use_svd_workspace =
+      static_cast<std::size_t>(x.ncol()) <= n_neighbors;
+  const double *x_data = REAL(x.data());
   std::vector<double> row_major_x;
   bool use_row_major_gram = false;
+  std::unique_ptr<SvdLocalWeightsWorkspace> svd_workspace;
   std::unique_ptr<GramLocalWeightsWorkspace> gram_workspace;
-  if (use_gram_workspace) {
+  if (use_svd_workspace) {
+    svd_workspace.reset(new SvdLocalWeightsWorkspace(
+        n_neighbors, static_cast<std::size_t>(x.ncol()), ndim));
+  } else {
     if (row_major_copy_within_limit(n_obs, static_cast<std::size_t>(x.ncol()),
                                     ROW_MAJOR_COPY_LIMIT_BYTES)) {
       try {
@@ -53,33 +60,47 @@ assemble_local_weights(const cpp11::doubles_matrix<> &x,
   }
 
   for (std::size_t obs = 0; obs < n_obs; obs++) {
-    const std::size_t offset = obs * n_neighbors;
-
-    if (use_gram_workspace) {
-      fill_flat_neighbors_zero_based(transposed_neighbor_indices, offset,
-                                     n_neighbors,
-                                     gram_workspace->neighbor_indices);
-      int rank = compute_local_weights_gram_workspace(
-          x_data, n_obs, *gram_workspace,
-          use_row_major_gram ? &row_major_x : nullptr);
-      if (rank < ndim) {
-        rank_deficient_count++;
-        min_local_rank = std::min(min_local_rank, rank);
-      }
-      builder.append_prechecked_neighborhood(gram_workspace->neighbor_indices,
-                                             gram_workspace->weights);
-    } else {
-      std::vector<int> local_neighbor_indices = flat_neighbors_zero_based(
-          transposed_neighbor_indices, offset, n_neighbors);
-      LocalWeights local =
-          compute_local_weights_by_shape(x, local_neighbor_indices, ndim);
-      if (local.rank < ndim) {
-        rank_deficient_count++;
-        min_local_rank = std::min(min_local_rank, local.rank);
-      }
-      builder.append_prechecked_neighborhood(local_neighbor_indices,
-                                             local.weights);
+    if (obs % 64 == 0) {
+      cpp11::check_user_interrupt();
     }
+    const std::size_t offset = obs * n_neighbors;
+    int rank = 0;
+    int computation_status = LOCAL_WEIGHTS_COMPUTATION_OK;
+    int info = 0;
+    std::vector<int> *neighbor_indices = nullptr;
+    std::vector<double> *weights = nullptr;
+
+    if (use_svd_workspace) {
+      neighbor_indices = &svd_workspace->neighbor_indices;
+      weights = &svd_workspace->weights;
+      fill_flat_neighbors_zero_based(transposed_neighbor_indices, offset,
+                                     n_neighbors, *neighbor_indices);
+      info = compute_local_weights_svd_workspace(x_data, n_obs, *svd_workspace,
+                                                 rank, computation_status);
+    } else {
+      neighbor_indices = &gram_workspace->neighbor_indices;
+      weights = &gram_workspace->weights;
+      fill_flat_neighbors_zero_based(transposed_neighbor_indices, offset,
+                                     n_neighbors, *neighbor_indices);
+      info = compute_local_weights_gram_workspace(
+          x_data, n_obs, *gram_workspace,
+          use_row_major_gram ? &row_major_x : nullptr, rank,
+          computation_status);
+    }
+    if (info != 0) {
+      cpp11::stop("LAPACK %s failed at neighborhood %d with info = %d",
+                  use_svd_workspace ? "dgesdd" : "dsyev",
+                  static_cast<int>(obs + 1), info);
+    }
+    if (computation_status != LOCAL_WEIGHTS_COMPUTATION_OK) {
+      stop_local_weights_computation(computation_status,
+                                     static_cast<int>(obs + 1));
+    }
+    if (rank < ndim) {
+      rank_deficient_count++;
+      min_local_rank = std::min(min_local_rank, rank);
+    }
+    builder.append_prechecked_neighborhood(*neighbor_indices, *weights);
   }
 
   SparseComponents components = builder.finalize_sparse_components();

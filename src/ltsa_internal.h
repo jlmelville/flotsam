@@ -30,9 +30,9 @@ struct SparseComponents {
   std::vector<double> x;
 };
 
-struct LocalWeights {
-  std::vector<double> weights;
-  int rank = 0;
+enum LocalWeightsComputationStatus {
+  LOCAL_WEIGHTS_COMPUTATION_OK = 0,
+  LOCAL_WEIGHTS_COMPUTATION_NONFINITE = 1
 };
 
 constexpr std::size_t ROW_MAJOR_COPY_LIMIT_BYTES =
@@ -56,6 +56,28 @@ std::size_t checked_vector_size_mul(std::size_t lhs, std::size_t rhs,
   return lhs * rhs;
 }
 
+struct SvdLocalWeightsWorkspace {
+  SvdLocalWeightsWorkspace(std::size_t n_nbrs, std::size_t n_features,
+                           int ndim);
+
+  std::size_t n_nbrs_size;
+  std::size_t n_features_size;
+  int n_nbrs;
+  int n_features;
+  int min_dim;
+  int requested_basis_size;
+  std::vector<int> neighbor_indices;
+  std::vector<int> basis_columns;
+  std::vector<double> centered;
+  std::vector<double> a;
+  std::vector<double> d;
+  std::vector<double> u;
+  std::vector<double> vt;
+  std::vector<double> work;
+  std::vector<int> iwork;
+  std::vector<double> weights;
+};
+
 struct GramLocalWeightsWorkspace {
   GramLocalWeightsWorkspace(std::size_t n_nbrs, std::size_t n_features,
                             int ndim, bool use_row_major);
@@ -68,7 +90,6 @@ struct GramLocalWeightsWorkspace {
   std::vector<int> neighbor_indices;
   std::vector<double> centered;
   std::vector<double> row_buffer;
-  std::vector<double> col_means;
   std::vector<double> gram;
   std::vector<double> values;
   std::vector<double> work;
@@ -88,29 +109,29 @@ void checked_ndim(int ndim);
 
 int checked_lapack_dim(std::size_t value, const char *name);
 
-std::vector<int>
-flat_neighbors_zero_based(const cpp11::integers &transposed_neighbor_indices,
-                          std::size_t offset, std::size_t n_nbrs);
-
 void fill_flat_neighbors_zero_based(
     const cpp11::integers &transposed_neighbor_indices, std::size_t offset,
     std::size_t n_nbrs, std::vector<int> &out);
 
-void fill_centered_neighborhood_column_major(
+bool fill_centered_neighborhood_column_major(
     const double *x_data, std::size_t n_obs,
     const std::vector<int> &neighbor_indices, std::vector<double> &centered,
     std::size_t n_features);
 
-void fill_centered_neighborhood_row_major(
+bool fill_centered_neighborhood_row_major(
     const std::vector<double> &row_major,
     const std::vector<int> &neighbor_indices, std::vector<double> &row_buffer,
-    std::vector<double> &col_means, std::vector<double> &centered,
-    std::size_t n_features);
+    std::vector<double> &centered, std::size_t n_features);
+
+int clean_local_basis(std::size_t n_nbrs, std::vector<int> &basis_columns,
+                      std::vector<double> &basis);
 
 void fill_weights_from_basis(std::size_t n_nbrs,
                              const std::vector<int> &basis_columns,
                              const std::vector<double> &basis,
                              std::vector<double> &weights);
+
+[[noreturn]] void stop_local_weights_computation(int status, int neighborhood);
 
 int select_local_basis_columns(const std::vector<double> &values, int n_values,
                                int n_nbrs, int n_features,
@@ -132,15 +153,15 @@ void make_row_major_copy(const double *x_data, std::size_t n_obs,
                          std::size_t n_features,
                          std::vector<double> &row_major);
 
+int compute_local_weights_svd_workspace(const double *x_data, std::size_t n_obs,
+                                        SvdLocalWeightsWorkspace &workspace,
+                                        int &rank, int &computation_status);
+
 int compute_local_weights_gram_workspace(const double *x_data,
                                          std::size_t n_obs,
                                          GramLocalWeightsWorkspace &workspace,
-                                         const std::vector<double> *row_major);
-
-LocalWeights
-compute_local_weights_by_shape(const cpp11::doubles_matrix<> &x,
-                               const std::vector<int> &neighbor_indices,
-                               int ndim);
+                                         const std::vector<double> *row_major,
+                                         int &rank, int &computation_status);
 
 std::size_t checked_size_add(std::size_t lhs, std::size_t rhs,
                              const char *message);

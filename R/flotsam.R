@@ -96,7 +96,10 @@
 #'   null direction and a boundary mode after the retained block. Larger values
 #'   give the Rayleigh-Ritz postprocessing a wider candidate span. Dense
 #'   eigenanalysis computes the full eigensystem, then retains the lowest
-#'   `eig_k` candidate vectors for that postprocessing.
+#'   `eig_k` candidate vectors for that postprocessing. After an iterative
+#'   convergence failure, try a bounded larger value explicitly; `ltsa()` does
+#'   not retry automatically, and a wider request can cost substantially more
+#'   without succeeding.
 #' @param output What to return:
 #'   * `"embedding"` Return the embedding matrix. This is the default.
 #'   * `"result"` Return a list containing the embedding, compact eigenanalysis

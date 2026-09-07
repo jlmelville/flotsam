@@ -10,6 +10,9 @@ public:
             checked_vector_size<std::size_t>(n_obs, "component tree sizes"),
             1) {
     for (std::size_t obs = 0; obs < n_obs; obs++) {
+      if (obs % 64 == 0) {
+        cpp11::check_user_interrupt();
+      }
       parent_[obs] = static_cast<int>(obs);
     }
   }
@@ -69,6 +72,9 @@ private:
   EffectiveComponentSet components(n_obs_size);
   const int *indices = INTEGER(transposed_neighbor_indices.data());
   for (std::size_t obs = 0; obs < n_obs_size; obs++) {
+    if (obs % 64 == 0) {
+      cpp11::check_user_interrupt();
+    }
     const std::size_t offset = obs * n_neighbors_size;
     const int representative =
         checked_zero_based_neighbor_index(indices[offset], n_obs_size);
@@ -86,6 +92,9 @@ private:
   std::vector<int> sizes;
   sizes.reserve(checked_vector_size<int>(n_obs_size, "component sizes"));
   for (std::size_t obs = 0; obs < n_obs_size; obs++) {
+    if (obs % 64 == 0) {
+      cpp11::check_user_interrupt();
+    }
     const int root = components.find_root(static_cast<int>(obs));
     if (root_labels[root] < 0) {
       root_labels[root] = static_cast<int>(sizes.size());

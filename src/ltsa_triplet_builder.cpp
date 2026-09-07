@@ -20,6 +20,9 @@ TripletAssemblyBuilder::TripletAssemblyBuilder(
       n_neighbors_, "serial LTSA neighborhood indices"));
 
   for (std::size_t obs = 0; obs < n_obs_; obs++) {
+    if (obs % 64 == 0) {
+      cpp11::check_user_interrupt();
+    }
     std::size_t offset = obs * n_neighbors_;
     for (std::size_t local = 0; local < n_neighbors_; local++) {
       const int idx = checked_zero_based_neighbor_index(
@@ -89,6 +92,9 @@ SparseComponents TripletAssemblyBuilder::finalize_sparse_components() {
   expand_canonical_to_full(row_sums, row_seen, touched_rows);
 
   for (std::size_t col = 0; col < n_obs_; col++) {
+    if (col % 64 == 0) {
+      cpp11::check_user_interrupt();
+    }
     auto &entries = full_columns_[col];
     // Canonical collapse emits at most one row <= col entry per pair.
     // Symmetric expansion adds at most one distinct row > col entry, so the
@@ -133,6 +139,9 @@ void TripletAssemblyBuilder::expand_canonical_to_full(
     std::vector<double> &row_sums, std::vector<int> &row_seen,
     std::vector<int> &touched_rows) {
   for (std::size_t col = 0; col < n_obs_; col++) {
+    if (col % 64 == 0) {
+      cpp11::check_user_interrupt();
+    }
     auto &entries = canonical_columns_[col];
     const int col_marker = static_cast<int>(col);
     touched_rows.clear();

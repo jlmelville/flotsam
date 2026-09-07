@@ -5,81 +5,26 @@ namespace {
 struct ParallelLocalWeightsWorkspace {
   ParallelLocalWeightsWorkspace(std::size_t n_nbrs, std::size_t n_features,
                                 int ndim, bool use_svd, bool use_row_major)
-      : n_nbrs_size(n_nbrs), n_features_size(n_features),
-        n_nbrs(checked_lapack_dim(n_nbrs, "n_neighbors")),
-        n_features(checked_lapack_dim(n_features, "ncol(X)")),
-        route_svd(use_svd), min_dim(std::min(this->n_nbrs, this->n_features)),
-        requested_basis_size(std::min(ndim, min_dim)),
-        neighbor_indices(checked_vector_size<int>(
-            n_nbrs, "parallel LTSA neighborhood indices")),
-        centered(checked_vector_size_mul<double>(
-            n_nbrs, n_features,
-            "parallel LTSA centered neighborhood workspace")),
-        weights(checked_vector_size_mul<double>(
-            n_nbrs, n_nbrs, "parallel LTSA local weights")) {
-    basis_columns.reserve(
-        checked_vector_size<int>(static_cast<std::size_t>(requested_basis_size),
-                                 "parallel LTSA retained local basis"));
-
-    if (route_svd) {
-      svd_a.resize(checked_vector_size_mul<double>(
-          n_nbrs, n_features, "parallel LTSA dgesdd matrix workspace"));
-      d.resize(checked_vector_size<double>(static_cast<std::size_t>(min_dim),
-                                           "parallel LTSA singular values"));
-      u.resize(checked_vector_size_mul<double>(
-          n_nbrs, static_cast<std::size_t>(min_dim),
-          "parallel LTSA left singular vectors"));
-      vt.resize(checked_vector_size_mul<double>(
-          static_cast<std::size_t>(min_dim), n_features,
-          "parallel LTSA right singular vectors"));
-      iwork.resize(checked_vector_size_mul<int>(
-          8, static_cast<std::size_t>(min_dim),
-          "parallel LTSA dgesdd integer workspace"));
-      svd_work.resize(checked_vector_size<double>(
-          static_cast<std::size_t>(query_dgesdd_workspace(
-              this->n_nbrs, this->n_features, min_dim, svd_a, d, u, vt, iwork)),
-          "parallel LTSA dgesdd workspace"));
+      : route_svd(use_svd) {
+    if (use_svd) {
+      svd.reset(new SvdLocalWeightsWorkspace(n_nbrs, n_features, ndim));
     } else {
-      if (use_row_major) {
-        row_buffer.resize(checked_vector_size_mul<double>(
-            n_nbrs, n_features,
-            "parallel LTSA row-major neighborhood workspace"));
-        col_means.resize(checked_vector_size<double>(
-            n_features, "parallel LTSA column means"));
-      }
-      gram.resize(checked_vector_size_mul<double>(
-          n_nbrs, n_nbrs, "parallel LTSA Gram workspace"));
-      values.resize(checked_vector_size<double>(
-          n_nbrs, "parallel LTSA Gram eigenvalues"));
-      gram_work.resize(checked_vector_size<double>(
-          static_cast<std::size_t>(
-              query_dsyev_workspace(this->n_nbrs, gram, values)),
-          "parallel LTSA dsyev workspace"));
+      gram.reset(new GramLocalWeightsWorkspace(n_nbrs, n_features, ndim,
+                                               use_row_major));
     }
   }
 
-  std::size_t n_nbrs_size;
-  std::size_t n_features_size;
-  int n_nbrs;
-  int n_features;
+  std::vector<int> &neighbor_indices() {
+    return route_svd ? svd->neighbor_indices : gram->neighbor_indices;
+  }
+
+  const std::vector<double> &weights() const {
+    return route_svd ? svd->weights : gram->weights;
+  }
+
   bool route_svd;
-  int min_dim;
-  int requested_basis_size;
-  std::vector<int> neighbor_indices;
-  std::vector<int> basis_columns;
-  std::vector<double> centered;
-  std::vector<double> weights;
-  std::vector<double> row_buffer;
-  std::vector<double> col_means;
-  std::vector<double> gram;
-  std::vector<double> values;
-  std::vector<double> gram_work;
-  std::vector<double> svd_a;
-  std::vector<double> d;
-  std::vector<double> u;
-  std::vector<double> vt;
-  std::vector<double> svd_work;
-  std::vector<int> iwork;
+  std::unique_ptr<SvdLocalWeightsWorkspace> svd;
+  std::unique_ptr<GramLocalWeightsWorkspace> gram;
 };
 
 struct ParallelWorkerDiagnostics {
@@ -88,6 +33,7 @@ struct ParallelWorkerDiagnostics {
   int failed_step = 0;
   int failed_info = 0;
   int failed_obs = -1;
+  int computation_status = LOCAL_WEIGHTS_COMPUTATION_OK;
 };
 
 struct TriangularSlotPlan {
@@ -122,82 +68,6 @@ void fill_flat_neighbors_zero_based_ptr(const int *value_ptr,
   }
 }
 
-int compute_svd_weights_workspace(ParallelLocalWeightsWorkspace &workspace,
-                                  int &rank) {
-  std::copy(workspace.centered.begin(), workspace.centered.end(),
-            workspace.svd_a.begin());
-
-  char jobz = 'S';
-  int m = workspace.n_nbrs;
-  int n = workspace.n_features;
-  int lda = workspace.n_nbrs;
-  int ldu = workspace.n_nbrs;
-  int ldvt = workspace.min_dim;
-  int lwork = static_cast<int>(workspace.svd_work.size());
-  int info = 0;
-
-  F77_CALL(dgesdd)(&jobz, &m, &n, workspace.svd_a.data(), &lda,
-                   workspace.d.data(), workspace.u.data(), &ldu,
-                   workspace.vt.data(), &ldvt, workspace.svd_work.data(),
-                   &lwork, workspace.iwork.data(), &info FCONE);
-  if (info != 0) {
-    return info;
-  }
-
-  rank = select_local_basis_columns(
-      workspace.d, workspace.min_dim, workspace.n_nbrs, workspace.n_features,
-      workspace.requested_basis_size, false, workspace.basis_columns);
-
-  fill_weights_from_basis(workspace.n_nbrs_size, workspace.basis_columns,
-                          workspace.u, workspace.weights);
-  return 0;
-}
-
-int compute_gram_weights_workspace_info(
-    const double *x_data, std::size_t n_obs,
-    ParallelLocalWeightsWorkspace &workspace,
-    const std::vector<double> *row_major, int &rank) {
-  if (row_major != nullptr) {
-    fill_centered_neighborhood_row_major(
-        *row_major, workspace.neighbor_indices, workspace.row_buffer,
-        workspace.col_means, workspace.centered, workspace.n_features_size);
-  } else {
-    fill_centered_neighborhood_column_major(
-        x_data, n_obs, workspace.neighbor_indices, workspace.centered,
-        workspace.n_features_size);
-  }
-
-  char uplo = 'U';
-  char trans = 'N';
-  double alpha = 1.0;
-  double beta = 0.0;
-  int n = workspace.n_nbrs;
-  int k = workspace.n_features;
-  int lda = workspace.n_nbrs;
-  int ldc = workspace.n_nbrs;
-  F77_CALL(dsyrk)(&uplo, &trans, &n, &k, &alpha, workspace.centered.data(),
-                  &lda, &beta, workspace.gram.data(), &ldc FCONE FCONE);
-
-  char jobz = 'V';
-  int info = 0;
-  int lwork = static_cast<int>(workspace.gram_work.size());
-  F77_CALL(dsyev)(&jobz, &uplo, &n, workspace.gram.data(), &n,
-                  workspace.values.data(), workspace.gram_work.data(), &lwork,
-                  &info FCONE FCONE);
-  if (info != 0) {
-    return info;
-  }
-
-  rank = select_local_basis_columns(workspace.values, workspace.n_nbrs,
-                                    workspace.n_nbrs, workspace.n_features,
-                                    workspace.requested_basis_size, true,
-                                    workspace.basis_columns);
-
-  fill_weights_from_basis(workspace.n_nbrs_size, workspace.basis_columns,
-                          workspace.gram, workspace.weights);
-  return 0;
-}
-
 int compute_parallel_local_weights(const double *x_data, std::size_t n_obs,
                                    ParallelLocalWeightsWorkspace &workspace,
                                    const std::vector<double> *row_major,
@@ -207,13 +77,17 @@ int compute_parallel_local_weights(const double *x_data, std::size_t n_obs,
   rank = 0;
   int info = 0;
   if (workspace.route_svd) {
-    fill_centered_neighborhood_column_major(
-        x_data, n_obs, workspace.neighbor_indices, workspace.centered,
-        workspace.n_features_size);
-    info = compute_svd_weights_workspace(workspace, rank);
+    info = compute_local_weights_svd_workspace(
+        x_data, n_obs, *workspace.svd, rank, diagnostics.computation_status);
   } else {
-    info = compute_gram_weights_workspace_info(x_data, n_obs, workspace,
-                                               row_major, rank);
+    info = compute_local_weights_gram_workspace(x_data, n_obs, *workspace.gram,
+                                                row_major, rank,
+                                                diagnostics.computation_status);
+  }
+
+  if (diagnostics.computation_status != LOCAL_WEIGHTS_COMPUTATION_OK) {
+    diagnostics.failed_obs = static_cast<int>(obs + 1);
+    return diagnostics.computation_status;
   }
 
   if (info != 0) {
@@ -262,6 +136,9 @@ TriangularSlotPlan assign_triangular_two_pass_slots_flat(const int *value_ptr,
   std::vector<int> neighbor_indices(
       checked_vector_size<int>(n_nbrs, "parallel LTSA neighborhood indices"));
   for (std::size_t obs = 0; obs < n_obs; obs++) {
+    if (obs % 64 == 0) {
+      cpp11::check_user_interrupt();
+    }
     const std::size_t offset = obs * n_nbrs;
 
     for (std::size_t local = 0; local < n_nbrs; local++) {
@@ -292,6 +169,9 @@ TriangularSlotPlan assign_triangular_two_pass_slots_flat(const int *value_ptr,
           "triangular LTSA column starts"),
       0);
   for (std::size_t col = 0; col < n_obs; col++) {
+    if (col % 64 == 0) {
+      cpp11::check_user_interrupt();
+    }
     plan.column_starts[col + 1] =
         checked_size_add(plan.column_starts[col], plan.column_counts[col],
                          "Too many triangular LTSA contributions to stage");
@@ -317,11 +197,13 @@ struct ParallelTriangularFillWorker {
   void operator()(std::size_t begin, std::size_t end, std::size_t chunk_id) {
     ParallelLocalWeightsWorkspace &workspace = (*workspaces)[chunk_id];
     ParallelWorkerDiagnostics &worker_diagnostics = (*diagnostics)[chunk_id];
+    std::vector<int> &neighbor_indices = workspace.neighbor_indices();
+    const std::vector<double> &weights = workspace.weights();
 
     for (std::size_t obs = begin; obs < end; obs++) {
       const std::size_t offset = obs * n_nbrs;
       fill_flat_neighbors_zero_based_ptr(value_ptr, offset, n_nbrs,
-                                         workspace.neighbor_indices);
+                                         neighbor_indices);
       int local_rank = 0;
       if (compute_parallel_local_weights(x_data, n_obs, workspace, row_major,
                                          ndim, worker_diagnostics, obs,
@@ -332,8 +214,8 @@ struct ParallelTriangularFillWorker {
       const std::size_t obs_tri_offset = obs * tri_count;
       for (std::size_t local_col = 0; local_col < n_nbrs; local_col++) {
         for (std::size_t local_row = 0; local_row <= local_col; local_row++) {
-          const int global_row = workspace.neighbor_indices[local_row];
-          const int global_col = workspace.neighbor_indices[local_col];
+          const int global_row = neighbor_indices[local_row];
+          const int global_col = neighbor_indices[local_col];
           const int row = std::min(global_row, global_col);
           const int col = std::max(global_row, global_col);
           const std::size_t pair_offset =
@@ -341,8 +223,7 @@ struct ParallelTriangularFillWorker {
           const std::size_t pos =
               (*column_starts)[col] + (*slot_offsets)[pair_offset];
           (*raw_rows)[pos] = row;
-          (*raw_values)[pos] =
-              workspace.weights[local_col * n_nbrs + local_row];
+          (*raw_values)[pos] = weights[local_col * n_nbrs + local_row];
         }
       }
     }
@@ -410,6 +291,7 @@ reduce_raw_columns_parallel(const std::vector<std::size_t> &column_starts,
   ColumnReduceWorker worker{&column_starts, &column_counts,   &raw_rows,
                             &raw_values,    &reduced_columns, &workspaces};
   pforr::parallel_for_indexed(0, n_obs, worker, n_threads, 1);
+  cpp11::check_user_interrupt();
   return reduced_columns;
 }
 
@@ -421,6 +303,9 @@ void expand_canonical_columns_to_full(
                                        "parallel LTSA full column counts"),
       0);
   for (std::size_t col = 0; col < canonical_columns.size(); col++) {
+    if (col % 64 == 0) {
+      cpp11::check_user_interrupt();
+    }
     for (const CompactEntry &entry : canonical_columns[col]) {
       full_column_counts[col] =
           checked_size_add(full_column_counts[col], 1,
@@ -433,11 +318,17 @@ void expand_canonical_columns_to_full(
     }
   }
   for (std::size_t col = 0; col < full_columns.size(); col++) {
+    if (col % 64 == 0) {
+      cpp11::check_user_interrupt();
+    }
     full_columns[col].reserve(checked_vector_size<CompactEntry>(
         full_column_counts[col], "parallel LTSA full compact column"));
   }
 
   for (std::size_t col = 0; col < canonical_columns.size(); col++) {
+    if (col % 64 == 0) {
+      cpp11::check_user_interrupt();
+    }
     for (const CompactEntry &entry : canonical_columns[col]) {
       full_columns[col].push_back(entry);
       if (entry.row != static_cast<int>(col)) {
@@ -466,6 +357,9 @@ finalize_compact_columns(const std::vector<std::vector<CompactEntry>> &columns,
   touched_rows.reserve(1024);
 
   for (std::size_t col = 0; col < n_obs; col++) {
+    if (col % 64 == 0) {
+      cpp11::check_user_interrupt();
+    }
     const int marker = static_cast<int>(col);
     touched_rows.clear();
     for (const CompactEntry &entry : columns[col]) {
@@ -523,6 +417,10 @@ void stop_on_parallel_worker_failure(
     const std::vector<ParallelWorkerDiagnostics> &diagnostics) {
   for (std::size_t worker = 0; worker < diagnostics.size(); worker++) {
     const ParallelWorkerDiagnostics &current = diagnostics[worker];
+    if (current.computation_status != LOCAL_WEIGHTS_COMPUTATION_OK) {
+      stop_local_weights_computation(current.computation_status,
+                                     current.failed_obs);
+    }
     if (current.failed_step != 0) {
       const char *routine = current.failed_step == 1 ? "dgesdd" : "dsyev";
       cpp11::stop("LAPACK %s failed in LTSA assembly worker %d at neighborhood "
@@ -625,6 +523,7 @@ void stop_on_parallel_worker_failure(
                                       &worker_diagnostics};
 
   pforr::parallel_for_indexed(0, n_obs, worker, requested_thread_count, 1);
+  cpp11::check_user_interrupt();
   stop_on_parallel_worker_failure(worker_diagnostics);
 
   SparseComponents components = finalize_triangular_two_pass_raw(
