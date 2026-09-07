@@ -131,7 +131,7 @@ circle_fit$eigen$spectral$values
 circle_fit$eigen$status
 #> [1] "warning"
 circle_fit$eigen$messages
-#> [1] "Weak Ritz boundary gap after the selected block: 1.293e-17 < 1e-04."
+#> [1] "Weak Ritz boundary gap after the selected block: 3.687e-18 < 1e-04."
 ```
 
 ![The input circle, its one-dimensional LTSA display, the first two

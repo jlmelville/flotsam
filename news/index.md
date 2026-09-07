@@ -13,6 +13,12 @@
   neighborhood graphs.
 - Serial sparse-matrix finalization now avoids a redundant aggregation
   pass while preserving the exact LTSA matrix construction.
+- Fixed numerical errors in local LTSA projection for constant and
+  nearly constant neighborhoods and for inputs at very small or large
+  scales.
+- LTSA assembly now checks for user interrupts during serial processing
+  and parallel preparation and finalization. Serial assembly also reuses
+  its SVD workspace across neighborhoods.
 - `output = "B"` now honors `normalize`: it returns the raw LTSA
   alignment matrix by default and the normalized operator supplied to
   eigenanalysis when `normalize = TRUE`, while still skipping
@@ -37,11 +43,11 @@
   canonical method, while `eigen$backend$name` records the backend that
   actually ran.
 - New argument: `eig_k`, controls the number of eigenvectors to return
-  before the Rayleigh-Ritz processing step and final `ndim` return.
-  Increasing the total number of eigenvectors to return seems to work
-  better than other parameters in cases where there are clusters of
-  eigenvalues: RSpectra may entirely miss one of these results even if
-  it reports full convergence.
+  before the Rayleigh-Ritz processing step and final `ndim` return. A
+  larger candidate span can rescue some clustered or incompletely
+  converged fixed-operator solves, but can also be expensive and remain
+  unsuccessful; increase it explicitly and report the retry rather than
+  treating a wider span as a universal default.
 - New argument: `output`. `output = "result"` returns compact
   eigenanalysis and assembly diagnostics. `output = "B"` replaces the
   older `ret_B = TRUE` argument.

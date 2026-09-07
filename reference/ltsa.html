@@ -126,7 +126,10 @@ satisfy <code>spectral_dim + 2 &lt;= eig_k &lt; n</code>, leaving room for both 
 null direction and a boundary mode after the retained block. Larger values
 give the Rayleigh-Ritz postprocessing a wider candidate span. Dense
 eigenanalysis computes the full eigensystem, then retains the lowest
-<code>eig_k</code> candidate vectors for that postprocessing.</p></dd>
+<code>eig_k</code> candidate vectors for that postprocessing. After an iterative
+convergence failure, try a bounded larger value explicitly; <code>ltsa()</code> does
+not retry automatically, and a wider request can cost substantially more
+without succeeding.</p></dd>
 
 
 <dt id="arg-output">output<a class="anchor" aria-label="anchor" href="#arg-output"></a></dt>

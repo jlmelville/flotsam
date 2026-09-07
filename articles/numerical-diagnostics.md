@@ -75,8 +75,8 @@ data.frame(
   )
 )
 #>       scope  status boundary_gap max_scaled_residual
-#> 1 displayed warning   1.2355e-06          4.4757e-07
-#> 2  retained warning   2.9753e-05          4.4757e-07
+#> 1 displayed warning   1.2355e-06          4.3791e-07
+#> 2  retained warning   2.9753e-05          4.3791e-07
 
 diagnostic_fit$eigen$messages
 #> [1] "Weak Ritz boundary gap after the selected block: 1.235e-06 < 1e-04."
