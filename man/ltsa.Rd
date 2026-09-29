@@ -46,6 +46,9 @@ nearest-neighbor graph. Can be one of:
 Slow for large datasets.
 \item A precomputed nearest-neighbor index matrix.
 \item A nearest-neighbor result object with an \code{idx} matrix.
+\item A square sparse adjacency matrix from the Matrix package, with the same
+number of neighbors in every row. See "Precomputed neighbor input" for
+the format.
 }}
 
 \item{eig_method}{How to carry out the final eigendecomposition. Possible
@@ -188,6 +191,18 @@ with an \code{idx} matrix. With \code{include_self = TRUE}, each row must includ
 own row index and have \code{n_neighbors} columns. With \code{include_self = FALSE},
 the first column must contain the row index and is dropped before LTSA
 assembly, so the matrix must have \code{n_neighbors + 1} columns.
+
+Alternatively, supply a square sparse adjacency matrix from the Matrix
+package. This still needs to represent a k-nearest neighbor graph, so the
+matrix must have one row and column per observation in \code{X}. Each nonzero
+off-diagonal entry in row \code{i}, column \code{j} makes observation \code{j} a neighbor
+of observation \code{i}. Edge weights are otherwise ignored. Every row must have
+the same number of nonzero off-diagonal entries.
+
+\code{include_self} determines whether each observation belongs to its own
+neighborhood. Diagonal entries in the matrix won't affect this. If you supply
+\code{n_neighbors}, the number of entries must match this, taking into account
+the effect of \code{include_self}.
 }
 
 \section{Assembly resources}{

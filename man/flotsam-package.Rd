@@ -30,5 +30,10 @@ Authors:
   \item James Melville \email{jlmelville@gmail.com} [copyright holder]
 }
 
+Other contributors:
+\itemize{
+  \item David Oliver [contributor]
+}
+
 }
 \keyword{internal}

@@ -41,6 +41,18 @@
 #' the first column must contain the row index and is dropped before LTSA
 #' assembly, so the matrix must have `n_neighbors + 1` columns.
 #'
+#' Alternatively, supply a square sparse adjacency matrix from the Matrix 
+#' package. This still needs to represent a k-nearest neighbor graph, so the
+#' matrix must have one row and column per observation in `X`. Each nonzero 
+#' off-diagonal entry in row `i`, column `j` makes observation `j` a neighbor
+#' of observation `i`. Edge weights are otherwise ignored. Every row must have
+#' the same number of nonzero off-diagonal entries.
+#'
+#' `include_self` determines whether each observation belongs to its own 
+#' neighborhood. Diagonal entries in the matrix won't affect this. If you supply 
+#' `n_neighbors`, the number of entries must match this, taking into account 
+#' the effect of `include_self`.
+#'
 #' @section Assembly resources:
 #' Serial assembly generally uses less temporary storage. Parallel assembly
 #' trades additional storage for speed and may compound threaded-BLAS
@@ -71,6 +83,9 @@
 #'   Slow for large datasets.
 #'   * A precomputed nearest-neighbor index matrix.
 #'   * A nearest-neighbor result object with an `idx` matrix.
+#'   * A square sparse adjacency matrix from the Matrix package, with the same
+#'     number of neighbors in every row. See "Precomputed neighbor input" for
+#'     the format.
 #' @param eig_method How to carry out the final eigendecomposition. Possible
 #'   values are:
 #'    * `"auto"` Use dense [base::eigen()] when `n <= dense_n` or

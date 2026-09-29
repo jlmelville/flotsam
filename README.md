@@ -25,8 +25,13 @@ pak::pak("jlmelville/flotsam")
 
 `ltsa()` accepts a numeric matrix or a data frame; non-numeric data-frame columns are ignored.
 The size of the k-nearest neighbor graph that determines neighborhood size is controlled by
-`n_neighbors` and must be at least `ndim + 2`. Approximate nearest neighbor search is carried out,
-so for reproducibility use `set.seed` and set `n_threads = 1`.
+`n_neighbors` and must be at least `ndim + 2`. By default, approximate nearest neighbor search is
+carried out, which has a stochastic component, so for reproducibility use `set.seed` and set
+`n_threads = 1` or use `nn_method = "exact"` although this may only be feasible for smaller
+datasets (in terms of number of observations or features).
+
+To reuse a neighbor graph, pass an index matrix or a sparse adjacency matrix to `nn_method`. Sparse graphs must have the same number of neighbors in every row.
+
 ## Example
 
 ``` r
@@ -58,9 +63,8 @@ plot(swiss_unrolled, col = phi)
 
 ## Current Status
 
-*June 27 2026*: Version 0.0.0.9002 is a big re-write compared to the initial release, adding
-multi-threaded C++ local-weight construction, triangular sparse matrix assembly, and Rayleigh-Ritz
-postprocessing for more reliable final eigenanalysis.
+*September 28 2026* Version 0.0.0.9003 adds support for sparse adjacency matrices as neighbor
+graphs.
 
 ## See Also
 

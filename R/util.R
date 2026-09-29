@@ -259,7 +259,7 @@ validate_precomputed_neighbors <- function(
   expected_ncol <- if (include_self) n_neighbors else n_neighbors + 1L
   if (ncol(nn_idx) != expected_ncol) {
     stop(
-      "ncol(nn_method) must match n_neighbors and include_self",
+      "Precomputed neighborhood size must match n_neighbors and include_self",
       call. = FALSE
     )
   }

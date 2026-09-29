@@ -1,4 +1,8 @@
 resolve_neighbor_input <- function(nn_method) {
+  if (methods::is(nn_method, "sparseMatrix")) {
+    return(list(nn_method = "nnd", nn_idx = sparse_neighbor_indices(nn_method)))
+  }
+
   if (is.matrix(nn_method)) {
     return(list(nn_method = "nnd", nn_idx = nn_method))
   }
@@ -8,6 +12,43 @@ resolve_neighbor_input <- function(nn_method) {
   }
 
   list(nn_method = nn_method, nn_idx = NULL)
+}
+
+# Based on the implementation proposed by David Oliver in #26.
+sparse_neighbor_indices <- function(graph) {
+  if (nrow(graph) != ncol(graph)) {
+    stop("Sparse nearest-neighbor graph must be square", call. = FALSE)
+  }
+
+  # Combine duplicate triplet entries first: their values may cancel to zero.
+  graph <- methods::as(graph, "CsparseMatrix")
+  if (anyNA(graph) || any(is.infinite(graph))) {
+    stop(
+      "Sparse nearest-neighbor graph must contain only finite values",
+      call. = FALSE
+    )
+  }
+
+  # Include entries implied by symmetric or triangular storage without densifying.
+  support <- methods::as(graph != 0, "generalMatrix")
+  indices <- which(support, arr.ind = TRUE)
+  indices <- indices[indices[, 1L] != indices[, 2L], , drop = FALSE]
+  counts <- tabulate(indices[, 1L], nbins = nrow(graph))
+  if (length(unique(counts)) > 1L) {
+    stop(
+      "Sparse nearest-neighbor graph must have the same number of nonzero ",
+      "off-diagonal entries in every row",
+      call. = FALSE
+    )
+  }
+
+  nn_idx <- matrix(
+    indices[order(indices[, 1L]), 2L],
+    nrow = nrow(graph),
+    byrow = TRUE
+  )
+  # Keep each row's own index first; assembly drops it when include_self is FALSE.
+  cbind(seq_len(nrow(graph)), nn_idx)
 }
 
 prepare_neighbors <- function(

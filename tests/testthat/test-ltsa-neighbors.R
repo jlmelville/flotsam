@@ -443,7 +443,7 @@ test_that("precomputed neighbor graph validation rejects invalid graphs", {
       nn_method = nn_idx,
       output = "B"
     ),
-    "ncol\\(nn_method\\)"
+    "neighborhood size must match n_neighbors"
   )
 
   bad <- nn_idx
