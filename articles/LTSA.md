@@ -1,160 +1,218 @@
 # Local Tangent Space Alignment
 
-LTSA turns overlapping local tangent coordinates into a global
-embedding. This article explains that path and, in particular, which
-controls change the neighborhood graph, the alignment operator, the
-candidate eigensolve, or only the returned view. Use
-[`?ltsa`](https://jlmelville.github.io/flotsam/reference/ltsa.md) for
-exhaustive defaults and validation rules.
+Local Tangent Space Alignment (LTSA) starts with a useful idea: even if
+a dataset curves through a high-dimensional space, a small enough piece
+of it may be reasonably flat. So we can use PCA to describe each point’s
+neighborhood, then fit those local descriptions together into one
+embedding. The local PCA gives us the “tangent space”; fitting the
+pieces together gives us the “alignment”.
 
-## From neighborhoods to an embedding
+Here I’ll go through how that works and what it means for using
+[`ltsa()`](https://jlmelville.github.io/flotsam/reference/ltsa.md).
+There are three different parameters concerned with counting dimensions,
+which might seem a bit enthusiastic. They do have different jobs,
+though, and understanding those jobs can save some confusion when an
+embedding doesn’t look the way you expected. The [`ltsa()`
+reference](https://jlmelville.github.io/flotsam/reference/ltsa.md) has
+the full list of arguments and defaults.
 
-Let `X` be an $`N \times p`$ data matrix: $`N`$ observations in $`p`$
-input features. Let $`k`$ be the neighborhood size and let $`d`$ be the
-requested local tangent dimension, supplied as `ndim`.
+## Local PCA
 
-1.  Find a $`k`$-observation neighborhood for each row of `X`.
+Let’s start with a data matrix $`X`$ containing $`N`$ observations in
+$`p`$ columns. For each observation, find a neighborhood of $`k`$
+observations, where $`k`$ is `n_neighbors`. We’ll come back to exactly
+what counts as a neighbor below.
 
-2.  Center each $`k \times p`$ neighborhood matrix and compute its
-    singular value decomposition.
+Center the columns of each $`k \times p`$ neighborhood matrix and
+compute its singular value decomposition. Keep the first $`d`$ left
+singular vectors, where $`d`$ is `ndim`, and put them in a
+$`k \times d`$ matrix $`U_i`$ for neighborhood $`i`$. These describe how
+the observations are arranged along the local tangent directions. We
+want the **left** singular vectors because they give us one row per
+observation; the right singular vectors describe directions in the
+original feature space. For the alignment, we only need the space
+spanned by these local coordinates, so we don’t multiply them by the
+singular values as we would to get ordinary PCA scores.
 
-3.  Retain the first $`d`$**left** singular vectors in $`U_i`$. These
-    give local tangent coordinates for the observations in neighborhood
-    $`i`$.
+So far we have done a lot of small PCAs. Each has its own coordinate
+system, and an observation can appear in several neighborhoods. We now
+need to find global coordinates that agree as well as possible with all
+those local descriptions.
 
-4.  Form the local residual projector
+## Putting the neighborhoods together
 
-    ``` math
-    W_i = I_k - \mathbf{1}\mathbf{1}^{\mathsf T}/k - U_iU_i^{\mathsf T}.
-    ```
+For each neighborhood, form the matrix
 
-5.  Add the entries of $`W_i`$ into the corresponding rows and columns
-    of an initially zero $`N \times N`$ matrix $`B`$, then repeat for
-    every neighborhood.
-
-6.  Remove the known constant null direction and use the lowest
-    nonconstant directions of $`B`$ for the global coordinates.
-
-The assembled $`B`$ is a symmetric positive-semidefinite alignment
-operator. Its constant vector is a known null direction, but its
-nullspace need not be one-dimensional. Disconnected effective
-neighborhoods or other degeneracies can therefore make “the smallest
-eigenvector” non-unique.
-
-This construction explains why `ndim` is more than a plotting choice. It
-sets the local tangent rank used inside every $`W_i`$, so changing it
-rebuilds $`B`$. It also sets the number of coordinates in the ordinary
-returned `embedding`.
-
-## Follow the controls through the pipeline
-
-``` text
-data + neighborhood controls + ndim
-                  |
-                  v
-         alignment matrix B
-                  |
-          normalize, if requested
-                  |
-                  v
-      eig_method + eig_k candidates
-                  |
-                  v
-      spectral_dim retained modes
-                  |
-                  v
-       first ndim modes displayed
+``` math
+W_i = I_k - \mathbf{1}\mathbf{1}^{\mathsf{T}}/k - U_iU_i^{\mathsf{T}},
 ```
 
-| Control | Stage it changes | Consequence |
+where $`I_k`$ is the $`k \times k`$ identity matrix and $`\mathbf{1}`$
+is a column of $`k`$ ones. The middle term removes the mean, and the
+final term removes the part explained by the local tangent coordinates.
+What remains is the residual: the part that doesn’t fit our local
+description. This makes $`W_i`$ a *residual projector*.
+
+Now create an initially zero $`N \times N`$ matrix $`B`$. Add the
+entries of each $`W_i`$ to the rows and columns of $`B`$ belonging to
+that neighborhood’s observations. Overlapping neighborhoods contribute
+to the same entries, so $`B`$ brings all the local constraints together.
+This is the LTSA *alignment matrix*.
+
+If $`v`$ contains one proposed global coordinate for every observation,
+then $`v^{\mathsf{T}}Bv`$ measures the total squared residual across the
+neighborhoods. For a vector of unit length, small values mean that the
+coordinate fits the local tangent spaces well. To find such coordinates,
+we use eigenvectors of $`B`$ associated with its smallest eigenvalues.
+$`B`$ is symmetric and positive semidefinite, so those eigenvalues are
+non-negative, apart from numerical rounding.
+
+There is one particularly unhelpful solution: give every observation the
+same coordinate. Its residual is zero, but as a visualization it leaves
+rather a lot to the imagination. `flotsam` removes this known constant
+direction and uses the lowest remaining eigenvectors as coordinates.
+
+The constant direction isn’t necessarily the only one with a zero
+eigenvalue. Disconnected groups of neighborhoods, or other degeneracies,
+can give us several. So “discard the smallest eigenvector” isn’t quite a
+sufficient recipe: there may be no unique smallest eigenvector to
+discard. This is one reason to look at the diagnostics as well as the
+plot.
+
+## Choosing the neighbors
+
+The local approximation depends on which observations go into each
+neighborhood. `nn_method = "nnd"` is the default and uses approximate
+nearest-neighbor descent, making it useful for larger datasets. For
+smaller examples, `nn_method = "exact"` compares all observations
+exhaustively and gives us exact, deterministic neighbors.
+
+You can also reuse a neighbor graph across fits by passing it as
+`nn_method`. This can be a 1-based neighbor index matrix, an object
+containing an `idx` matrix, or a sparse adjacency matrix from the Matrix
+package. A sparse graph must have the same number of off-diagonal
+neighbors in every row; the edge weights are ignored. See the
+[reference](https://jlmelville.github.io/flotsam/reference/ltsa.md) for
+the input formats.
+
+How many neighbors? We need at least `ndim + 2`: one direction is taken
+up by the constant vector, `ndim` more by the tangent space, and we need
+something left over for the residual. That is only a minimum. Small
+neighborhoods that don’t overlap enough can leave disconnected groups or
+global directions that are hard to distinguish. Increasing `n_neighbors`
+may help, but it also asks a flat local approximation to cover a larger
+piece of the data. It changes the model, so more neighbors aren’t
+automatically better.
+
+### Are you your own neighbor?
+
+By default, yes: `include_self = TRUE` includes each observation in its
+own neighborhood. With `include_self = FALSE`, the observation is left
+out, but `n_neighbors` still counts the observations actually used in
+the local PCA. A precomputed self-first index matrix therefore needs
+`n_neighbors + 1` columns: the first column contains the observation
+itself and is removed before assembly.
+
+This apparently small bookkeeping choice also has a mathematical
+connection: [work by Zhang and
+co-workers](https://doi.org/10.1109/TCYB.2017.2655338) relates it to
+Hessian Locally Linear Embedding. For our purposes, the thing to
+remember is that it changes the neighborhoods used to build $`B`$.
+
+## How many dimensions?
+
+Usually, asking a dimensionality reduction method for two dimensions
+means you want a scatter plot. In LTSA, `ndim = 2` also says that each
+neighborhood should be approximated by a two-dimensional tangent space.
+Changing `ndim` changes every $`W_i`$, and hence $`B`$. We have changed
+the local model before we even get to choosing the global coordinates.
+
+Those two dimension counts don’t always need to agree. A circle has a
+one-dimensional tangent, but we need two coordinates to show the
+complete loop. Setting `ndim = 2` would change the local model just to
+get that second coordinate.
+
+This is where `spectral_dim` comes in. It lets us keep more eigenvectors
+from the same $`B`$, leaving `ndim` alone. With `output = "result"`, the
+first `ndim` coordinates go into `embedding`, and the larger set goes
+into `spectral_embedding`. The [spectral blocks
+article](https://jlmelville.github.io/flotsam/articles/spectral-blocks.md)
+shows this with a circle, then moves on to some less cooperative
+datasets.
+
+The third parameter, `eig_k`, controls how many candidate vectors the
+eigensolver supplies. These go through a Rayleigh–Ritz step, which finds
+the best approximate eigenvectors within the space spanned by those
+candidates. A larger `eig_k` gives that step more room to work; it
+doesn’t change $`B`$ or ask for more output coordinates.
+
+| Parameter | What it counts | When to change it |
 |----|----|----|
-| `n_neighbors`, `nn_method`, `include_self` | Neighborhoods and assembly | Change which local projectors contribute to $`B`$ |
-| `ndim` | Local tangent bases, $`B`$, and displayed prefix | Changes the estimator as well as the embedding dimension |
-| `normalize` | Eigenproblem built from $`B`$ | Selects ordinary or generalized LTSA |
-| `eig_method` and backend controls | Candidate computation | Change how the fixed eigenproblem is solved |
-| `eig_k` | Candidate span | Gives Rayleigh–Ritz more directions without changing $`B`$ |
-| `spectral_dim` | Retained fixed-operator block | Keeps extra modes without changing $`B`$ or `ndim` |
-| `output`, `include_B` | Returned evidence | Select an embedding, detailed result, operator, or included raw $`B`$ |
+| `ndim` | Local tangent directions and returned embedding columns | You want a different local dimension |
+| `spectral_dim` | Global coordinates retained from the same alignment matrix | You want to inspect more of the spectrum |
+| `eig_k` | Candidate vectors available to the numerical calculation | The solver may need a larger candidate space |
 
-The most consequential distinction is among `ndim`, `spectral_dim`, and
-`eig_k`:
+Most of the time you can leave `eig_k` at its default. If you set it
+yourself when requesting `spectral_dim > ndim`, it must be at least
+`spectral_dim + 2`. That leaves room for the known constant direction
+and one mode beyond the retained set, so we can check the eigenvalue gap
+where we stop keeping coordinates.
 
-- Increase `ndim` only when the local manifold model itself should have
-  a higher tangent dimension. This rebuilds the alignment operator.
-- Increase `spectral_dim` with `output = "result"` when you want to
-  inspect more modes from the existing operator. The ordinary
-  `embedding` remains `ndim`-dimensional; the larger block is returned
-  as `spectral_embedding`.
-- Increase `eig_k` when the numerical candidate span may be too narrow.
-  It does not retain more output by itself.
+## Normalization
 
-For a manual expanded request, `eig_k` must leave room for the known
-constant direction and a mode beyond the retained boundary, so it must
-be at least `spectral_dim + 2`. The default chooses a suitable candidate
-width.
-
-## Choose neighborhoods before solver settings
-
-`nn_method = "nnd"` uses approximate nearest-neighbor descent and is the
-large-data default. `nn_method = "exact"` exhaustively compares
-observations and is useful for smaller deterministic cases. To reuse one
-graph across several fits, pass a precomputed 1-based neighbor index
-matrix, an object with an `idx` matrix, or a sparse adjacency matrix
-from the Matrix package as `nn_method`. Sparse graphs must have the same
-number of neighbors in every row; edge weights are ignored. The
-[`ltsa()`
-reference](https://jlmelville.github.io/flotsam/reference/ltsa.md)
-explains the input formats and how `include_self` affects neighborhood
-size.
-
-`n_neighbors` is the effective neighborhood size used in assembly and
-must be at least `ndim + 2`: after removing the constant and local
-tangent directions, each local projector needs a remaining residual
-direction. Too-small or poorly overlapping neighborhoods can produce
-disconnected effective-neighborhood components or weakly separated
-global directions. Larger neighborhoods change the local approximation
-rather than merely making the same calculation more accurate.
-
-With `include_self = FALSE`, a precomputed self-first index matrix
-therefore has `n_neighbors + 1` columns: assembly removes the self
-column and uses the remaining `n_neighbors` observations. This changes
-the effective neighborhood definition; [work by Zhang an
-co-workers](https://doi.org/10.1109/JSTARS.2017.2682189) relates that
-choice to Hessian Locally Linear Embedding.
-
-## Choose the eigenproblem, then its computation
-
-Ordinary LTSA diagonalizes $`B`$. With `normalize = TRUE`, `flotsam`
-instead solves
+So far we have been finding eigenvectors of $`B`$ directly. With
+`normalize = TRUE`, we instead solve the generalized eigenvalue problem
 
 ``` math
 Bv = \lambda Dv, \qquad D = \operatorname{diag}(B),
 ```
 
-through $`D^{-1/2}BD^{-1/2}`$ and maps the selected coordinates back.
-The normalized formulation uses `D`-weighted orthogonality and
-centering.
+where $`D`$ is a diagonal matrix containing the diagonal entries of
+$`B`$. In practice, `flotsam` finds eigenvectors of the symmetric matrix
+$`D^{-1/2}BD^{-1/2}`$, then multiplies them by $`D^{-1/2}`$ to get the
+coordinates back in the generalized problem.
 
-After that choice, `eig_method = "auto"` uses dense
-[`base::eigen()`](https://rdrr.io/r/base/eigen.html) for small or
-proportionally wide requests and otherwise uses RSpectra. Explicit
-`"rspectra"`, `"irlba"`, `"svdr"`, and dense `"eig"` requests always use
-the named backend. The detailed result keeps the requested policy in
-`eigen$method` and the backend that actually ran in
+The [Laplacian Eigenmaps section of my spectral methods
+notes](https://jlmelville.github.io/smallvis/spectral.html#laplacian-eigenmaps)
+walks through this conversion from a generalized to an ordinary
+eigenvalue problem. The same algebra applies here, with $`B`$ replacing
+the graph Laplacian and $`D`$ containing the diagonal of $`B`$ rather
+than graph degrees.
+
+The coordinates are now centered and orthogonal using weights from
+$`D`$. This changes the embedding we are asking for, rather than just
+providing another way to compute ordinary LTSA.
+
+## Computing the eigenvectors
+
+Once we have chosen the neighborhoods, tangent dimension, and
+normalization, we have specified the mathematical problem. `eig_method`
+chooses how to solve it.
+
+The default, `eig_method = "auto"`, uses dense
+[`base::eigen()`](https://rdrr.io/r/base/eigen.html) for small datasets
+or when we ask for a large fraction of the available eigenvectors.
+Otherwise it uses RSpectra. Explicit requests for `"rspectra"`,
+`"irlba"`, `"svdr"`, or dense `"eig"` always use the named method. If
+you want to check what happened, a detailed result records the requested
+method in `eigen$method` and the backend that actually ran in
 `eigen$backend$name`.
 
-Backend convergence controls, dense-route thresholds, and diagnostic
-tolerances belong on the troubleshooting path rather than in this
-conceptual overview. See [Diagnosing suspicious LTSA
+There are also controls for convergence, the thresholds used by
+`"auto"`, and diagnostic tolerances. If you need to investigate those,
+[Diagnosing suspicious LTSA
 results](https://jlmelville.github.io/flotsam/articles/numerical-diagnostics.md)
-for the action associated with each status, message, gap, component, and
-rank field.
+connects the status, message, eigenvalue gap, component, and rank
+diagnostics to things you can try.
 
-## Decide what evidence to return
+## Getting more than a picture
 
-The default `output = "embedding"` returns the $`N \times`$`ndim`
-coordinate matrix. Use `output = "result"` when you need the evidence
-required to assess that map:
+By default,
+[`ltsa()`](https://jlmelville.github.io/flotsam/reference/ltsa.md)
+returns a coordinate matrix with $`N`$ rows and `ndim` columns. To see
+how the calculation went, use `output = "result"`. For example, given a
+data matrix `X`, this keeps the default two-dimensional tangent model
+and embedding while retaining four global coordinates:
 
 ``` r
 
@@ -168,26 +226,31 @@ fit$assembly$component_count
 fit$assembly$rank_deficient_count
 ```
 
-When `spectral_dim > ndim`, `eigen` describes the displayed prefix and
-`eigen$spectral` describes the retained block. The displayed embedding
-is exactly the first `ndim` columns of `spectral_embedding`.
+The displayed embedding is exactly the first `ndim` columns of
+`spectral_embedding`. When we keep extra coordinates like this, `eigen`
+describes the displayed embedding and `eigen$spectral` describes the
+larger set. That lets us check whether a two-dimensional view is well
+determined even when we have retained a larger, more stable group of
+directions.
 
-Use `output = "B"` to stop after the operator is ready. It returns raw
-$`B`$ for ordinary LTSA and the normalized operator used by
-eigenanalysis when `normalize = TRUE`. Use `include_B = TRUE` with
-`output = "result"` when a detailed result should also carry the
-assembled, unnormalized $`B`$.
+If you want to work with the matrix yourself, `output = "B"` stops
+before eigenanalysis and returns $`B`$, or $`D^{-1/2}BD^{-1/2}`$ when
+`normalize = TRUE`. Alternatively, use `include_B = TRUE` with
+`output = "result"` to include the raw, unnormalized $`B`$ alongside the
+embedding and diagnostics.
 
-Thread counts change resource use rather than the intended mathematical
-stage, with one important caveat: multithreaded approximate neighbor
-search need not reproduce an identical graph. `n_threads` controls
-computed-neighbor search; `n_assembly_threads` controls construction of
-$`B`$. Serial settings are the reproducible default. The [threading
+## Using more cores
+
+`n_threads` controls neighbor search, while `n_assembly_threads`
+controls construction of $`B`$. Both default to serial execution. More
+threads change how the work is carried out, with one qualification:
+multithreaded approximate neighbor search need not produce exactly the
+same graph on each run, so the embedding can change too. If you are
+comparing settings, reusing a precomputed graph removes that source of
+variation.
+
+The [threading
 guidance](https://jlmelville.github.io/flotsam/articles/numerical-diagnostics.html#threading-and-cross-implementation-checks)
-also covers threaded-BLAS oversubscription.
-
-For a figure-led example of why local dimension and useful global
-coordinate count can differ, continue to [Exploring LTSA spectral
-blocks](https://jlmelville.github.io/flotsam/articles/spectral-blocks.md).
-Its circle example has a one-dimensional local tangent but needs a
-two-mode span to show the closed path.
+also covers what happens when BLAS wants to use several cores at the
+same time as the assembly code. More threads aren’t automatically better
+here either.
