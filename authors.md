@@ -4,18 +4,20 @@
 
 - **James Melville**. Author, maintainer, copyright holder.
 
+- **David Oliver**. Contributor.
+
 ## Citation
 
 Source:
 [`DESCRIPTION`](https://github.com/jlmelville/flotsam/blob/main/DESCRIPTION)
 
 Melville J (2026). *flotsam: Fast LOcal Tangent Space Alignment Method*.
-R package version 0.0.0.9002, <https://jlmelville.github.io/flotsam/>.
+R package version 0.0.0.9003, <https://jlmelville.github.io/flotsam/>.
 
     @Manual{,
       title = {flotsam: Fast LOcal Tangent Space Alignment Method},
       author = {James Melville},
       year = {2026},
-      note = {R package version 0.0.0.9002},
+      note = {R package version 0.0.0.9003},
       url = {https://jlmelville.github.io/flotsam/},
     }

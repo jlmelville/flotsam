@@ -1,5 +1,12 @@
 # Changelog
 
+## flotsam 0.0.0.9003
+
+- [`ltsa()`](https://jlmelville.github.io/flotsam/reference/ltsa.md) now
+  accepts sparse adjacency matrices as input to `nn_method`. Thanks to
+  [David Oliver](https://github.com/doliv071) for the suggestion and
+  conversion helper (<https://github.com/jlmelville/flotsam/issues/26>).
+
 ## flotsam 0.0.0.9002
 
 - [`ltsa()`](https://jlmelville.github.io/flotsam/reference/ltsa.md) can

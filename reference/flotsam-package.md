@@ -27,3 +27,7 @@ holder\]
 Authors:
 
 - James Melville <jlmelville@gmail.com> \[copyright holder\]
+
+Other contributors:
+
+- David Oliver \[contributor\]

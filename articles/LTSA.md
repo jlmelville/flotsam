@@ -91,18 +91,21 @@ The most consequential distinction is among `ndim`, `spectral_dim`, and
 For a manual expanded request, `eig_k` must leave room for the known
 constant direction and a mode beyond the retained boundary, so it must
 be at least `spectral_dim + 2`. The default chooses a suitable candidate
-width; see
-[`?ltsa`](https://jlmelville.github.io/flotsam/reference/ltsa.md) for
-its exact formula and all dimensional limits.
+width.
 
 ## Choose neighborhoods before solver settings
 
 `nn_method = "nnd"` uses approximate nearest-neighbor descent and is the
 large-data default. `nn_method = "exact"` exhaustively compares
-observations and is useful for smaller deterministic cases. A
-precomputed 1-based neighbor index matrix, or an object with an `idx`
-matrix, lets several fits reuse one fixed graph. The reference page
-documents the required self-first shapes.
+observations and is useful for smaller deterministic cases. To reuse one
+graph across several fits, pass a precomputed 1-based neighbor index
+matrix, an object with an `idx` matrix, or a sparse adjacency matrix
+from the Matrix package as `nn_method`. Sparse graphs must have the same
+number of neighbors in every row; edge weights are ignored. The
+[`ltsa()`
+reference](https://jlmelville.github.io/flotsam/reference/ltsa.md)
+explains the input formats and how `include_self` affects neighborhood
+size.
 
 `n_neighbors` is the effective neighborhood size used in assembly and
 must be at least `ndim + 2`: after removing the constant and local
@@ -112,13 +115,12 @@ disconnected effective-neighborhood components or weakly separated
 global directions. Larger neighborhoods change the local approximation
 rather than merely making the same calculation more accurate.
 
-With `include_self = FALSE`, a precomputed self-first matrix therefore
-has `n_neighbors + 1` columns: assembly removes the self column and uses
-the remaining `n_neighbors` observations. This changes the effective
-neighborhood definition; [work by Zhang and
+With `include_self = FALSE`, a precomputed self-first index matrix
+therefore has `n_neighbors + 1` columns: assembly removes the self
+column and uses the remaining `n_neighbors` observations. This changes
+the effective neighborhood definition; [work by Zhang an
 co-workers](https://doi.org/10.1109/JSTARS.2017.2682189) relates that
-choice to Hessian Locally Linear Embedding. Treat it as an estimator
-choice, not a reproducibility switch.
+choice to Hessian Locally Linear Embedding.
 
 ## Choose the eigenproblem, then its computation
 
@@ -131,9 +133,7 @@ Bv = \lambda Dv, \qquad D = \operatorname{diag}(B),
 
 through $`D^{-1/2}BD^{-1/2}`$ and maps the selected coordinates back.
 The normalized formulation uses `D`-weighted orthogonality and
-centering. It is a different generalized estimator, not a
-conditioning-only route to the same coordinates, and `D` is not ordinary
-graph degree.
+centering.
 
 After that choice, `eig_method = "auto"` uses dense
 [`base::eigen()`](https://rdrr.io/r/base/eigen.html) for small or

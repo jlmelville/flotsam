@@ -9,7 +9,7 @@ for dimensionality reduction."></head><body>
 
     <a class="navbar-brand me-2" href="../index.html">flotsam</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">0.0.0.9002</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">0.0.0.9003</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -94,6 +94,9 @@ nearest-neighbor graph. Can be one of:</p><ul><li><p><code>"nnd"</code> Approxim
 Slow for large datasets.</p></li>
 <li><p>A precomputed nearest-neighbor index matrix.</p></li>
 <li><p>A nearest-neighbor result object with an <code>idx</code> matrix.</p></li>
+<li><p>A square sparse adjacency matrix from the Matrix package, with the same
+number of neighbors in every row. See "Precomputed neighbor input" for
+the format.</p></li>
 </ul></dd>
 
 
@@ -254,6 +257,16 @@ with an <code>idx</code> matrix. With <code>include_self = TRUE</code>, each row
 own row index and have <code>n_neighbors</code> columns. With <code>include_self = FALSE</code>,
 the first column must contain the row index and is dropped before LTSA
 assembly, so the matrix must have <code>n_neighbors + 1</code> columns.</p>
+<p>Alternatively, supply a square sparse adjacency matrix from the Matrix
+package. This still needs to represent a k-nearest neighbor graph, so the
+matrix must have one row and column per observation in <code>X</code>. Each nonzero
+off-diagonal entry in row <code>i</code>, column <code>j</code> makes observation <code>j</code> a neighbor
+of observation <code>i</code>. Edge weights are otherwise ignored. Every row must have
+the same number of nonzero off-diagonal entries.</p>
+<p><code>include_self</code> determines whether each observation belongs to its own
+neighborhood. Diagonal entries in the matrix won't affect this. If you supply
+<code>n_neighbors</code>, the number of entries must match this, taking into account
+the effect of <code>include_self</code>.</p>
     </div>
     <div class="section level2">
     <h2 id="assembly-resources">Assembly resources<a class="anchor" aria-label="anchor" href="#assembly-resources"></a></h2>

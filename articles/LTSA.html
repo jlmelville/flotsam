@@ -20,7 +20,7 @@
 
     <a class="navbar-brand me-2" href="../index.html">flotsam</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">0.0.0.9002</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">0.0.0.9003</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -230,8 +230,7 @@ too narrow. It does not retain more output by itself.</li>
 <p>For a manual expanded request, <code>eig_k</code> must leave room for
 the known constant direction and a mode beyond the retained boundary, so
 it must be at least <code>spectral_dim + 2</code>. The default chooses a
-suitable candidate width; see <a href="../reference/ltsa.html"><code>?ltsa</code></a> for its exact
-formula and all dimensional limits.</p>
+suitable candidate width.</p>
 </div>
 <div class="section level2">
 <h2 id="choose-neighborhoods-before-solver-settings">Choose neighborhoods before solver settings<a class="anchor" aria-label="anchor" href="#choose-neighborhoods-before-solver-settings"></a>
@@ -239,10 +238,13 @@ formula and all dimensional limits.</p>
 <p><code>nn_method = "nnd"</code> uses approximate nearest-neighbor
 descent and is the large-data default. <code>nn_method = "exact"</code>
 exhaustively compares observations and is useful for smaller
-deterministic cases. A precomputed 1-based neighbor index matrix, or an
-object with an <code>idx</code> matrix, lets several fits reuse one
-fixed graph. The reference page documents the required self-first
-shapes.</p>
+deterministic cases. To reuse one graph across several fits, pass a
+precomputed 1-based neighbor index matrix, an object with an
+<code>idx</code> matrix, or a sparse adjacency matrix from the Matrix
+package as <code>nn_method</code>. Sparse graphs must have the same
+number of neighbors in every row; edge weights are ignored. The <a href="../reference/ltsa.html"><code>ltsa()</code> reference</a> explains
+the input formats and how <code>include_self</code> affects neighborhood
+size.</p>
 <p><code>n_neighbors</code> is the effective neighborhood size used in
 assembly and must be at least <code>ndim + 2</code>: after removing the
 constant and local tangent directions, each local projector needs a
@@ -252,11 +254,12 @@ or weakly separated global directions. Larger neighborhoods change the
 local approximation rather than merely making the same calculation more
 accurate.</p>
 <p>With <code>include_self = FALSE</code>, a precomputed self-first
-matrix therefore has <code>n_neighbors + 1</code> columns: assembly
-removes the self column and uses the remaining <code>n_neighbors</code>
-observations. This changes the effective neighborhood definition; <a href="https://doi.org/10.1109/JSTARS.2017.2682189" class="external-link">work by Zhang and
-co-workers</a> relates that choice to Hessian Locally Linear Embedding.
-Treat it as an estimator choice, not a reproducibility switch.</p>
+index matrix therefore has <code>n_neighbors + 1</code> columns:
+assembly removes the self column and uses the remaining
+<code>n_neighbors</code> observations. This changes the effective
+neighborhood definition; <a href="https://doi.org/10.1109/JSTARS.2017.2682189" class="external-link">work by Zhang an
+co-workers</a> relates that choice to Hessian Locally Linear
+Embedding.</p>
 </div>
 <div class="section level2">
 <h2 id="choose-the-eigenproblem-then-its-computation">Choose the eigenproblem, then its computation<a class="anchor" aria-label="anchor" href="#choose-the-eigenproblem-then-its-computation"></a>
@@ -271,9 +274,7 @@ Bv = \lambda Dv, \qquad D = \operatorname{diag}(B),
 <p>through
 <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msup><mi>D</mi><mrow><mi>−</mi><mn>1</mn><mi>/</mi><mn>2</mn></mrow></msup><mi>B</mi><msup><mi>D</mi><mrow><mi>−</mi><mn>1</mn><mi>/</mi><mn>2</mn></mrow></msup></mrow><annotation encoding="application/x-tex">D^{-1/2}BD^{-1/2}</annotation></semantics></math>
 and maps the selected coordinates back. The normalized formulation uses
-<code>D</code>-weighted orthogonality and centering. It is a different
-generalized estimator, not a conditioning-only route to the same
-coordinates, and <code>D</code> is not ordinary graph degree.</p>
+<code>D</code>-weighted orthogonality and centering.</p>
 <p>After that choice, <code>eig_method = "auto"</code> uses dense
 <code><a href="https://rdrr.io/r/base/eigen.html" class="external-link">base::eigen()</a></code> for small or proportionally wide requests and
 otherwise uses RSpectra. Explicit <code>"rspectra"</code>,
