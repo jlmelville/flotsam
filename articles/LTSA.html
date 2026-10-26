@@ -60,18 +60,31 @@
 
     
     
-<p>Local Tangent Space Alignment (LTSA) starts with a useful idea: even
-if a dataset curves through a high-dimensional space, a small enough
-piece of it may be reasonably flat. So we can use PCA to describe each
-point’s neighborhood, then fit those local descriptions together into
-one embedding. The local PCA gives us the “tangent space”; fitting the
-pieces together gives us the “alignment”.</p>
-<p>Here I’ll go through how that works and what it means for using
-<code><a href="../reference/ltsa.html">ltsa()</a></code>. There are three different parameters concerned with
-counting dimensions, which might seem a bit enthusiastic. They do have
-different jobs, though, and understanding those jobs can save some
-confusion when an embedding doesn’t look the way you expected. The <a href="../reference/ltsa.html"><code>ltsa()</code> reference</a> has the
-full list of arguments and defaults.</p>
+<p>Here’s one recipe for building an embedding of a dataset in a
+lower-dimensional space:</p>
+<ul>
+<li>Find a neighborhood (a <em>patch</em>) around each observation.</li>
+<li>Create an approximate local <em>chart</em>: a map from each
+neighborhood to coordinates in the lower-dimensional space.</li>
+<li>Transform each chart’s coordinates into a global coordinate system.
+Because a given point can appear in several charts, the coordinates for
+the same point in different charts need to agree as much as
+possible.</li>
+</ul>
+<p>A collection of charts that cover a manifold is called an
+<em>atlas</em> and finding the transformations that relate the charts is
+the <em>global alignment</em> problem. Technically, because we are
+sampling points from the actual manifold, the charts and the atlas are
+only approximate, but this should give a sense of the vocabulary used in
+the literature.</p>
+<p><a href="https://arxiv.org/abs/cs/0212008" class="external-link">Local Tangent Space
+Alignment</a> (LTSA), by Zhang and Zha, goes about this by finding the
+nearest neighbors of each observation and using PCA to create the
+charts. It then chooses global coordinates that minimize the
+disagreement with those charts. With suitable constraints to keep the
+embedding from collapsing, this becomes an eigenvalue problem. Let’s see
+how that happens, then connect the calculation to the choices available
+in <code>flotsam</code>.</p>
 <div class="section level2">
 <h2 id="local-pca">Local PCA<a class="anchor" aria-label="anchor" href="#local-pca"></a>
 </h2>
@@ -79,20 +92,20 @@ full list of arguments and defaults.</p>
 <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>X</mi><annotation encoding="application/x-tex">X</annotation></semantics></math>
 containing
 <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>N</mi><annotation encoding="application/x-tex">N</annotation></semantics></math>
-observations in
+observations in rows and
 <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>p</mi><annotation encoding="application/x-tex">p</annotation></semantics></math>
-columns. For each observation, find a neighborhood of
+features in columns. For each observation, find a neighborhood of
 <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>k</mi><annotation encoding="application/x-tex">k</annotation></semantics></math>
 observations, where
 <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>k</mi><annotation encoding="application/x-tex">k</annotation></semantics></math>
-is <code>n_neighbors</code>. We’ll come back to exactly what counts as a
-neighbor below.</p>
+is <code>n_neighbors</code>. By default, this count includes the
+observation itself.</p>
 <p>Center the columns of each
 <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>k</mi><mo>×</mo><mi>p</mi></mrow><annotation encoding="application/x-tex">k \times p</annotation></semantics></math>
 neighborhood matrix and compute its singular value decomposition. Keep
-the first
+the
 <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>d</mi><annotation encoding="application/x-tex">d</annotation></semantics></math>
-left singular vectors, where
+left singular vectors associated with the largest singular values, where
 <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>d</mi><annotation encoding="application/x-tex">d</annotation></semantics></math>
 is <code>ndim</code>, and put them in a
 <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>k</mi><mo>×</mo><mi>d</mi></mrow><annotation encoding="application/x-tex">k \times d</annotation></semantics></math>
@@ -101,74 +114,446 @@ matrix
 for neighborhood
 <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>i</mi><annotation encoding="application/x-tex">i</annotation></semantics></math>.
 These describe how the observations are arranged along the local tangent
-directions. We want the <strong>left</strong> singular vectors because
-they give us one row per observation; the right singular vectors
-describe directions in the original feature space. For the alignment, we
-only need the space spanned by these local coordinates, so we don’t
-multiply them by the singular values as we would to get ordinary PCA
-scores.</p>
-<p>So far we have done a lot of small PCAs. Each has its own coordinate
-system, and an observation can appear in several neighborhoods. We now
-need to find global coordinates that agree as well as possible with all
-those local descriptions.</p>
+directions.</p>
+<p>For now, assume the neighborhood has at least
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>d</mi><annotation encoding="application/x-tex">d</annotation></semantics></math>
+nonzero singular values. The columns of
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>U</mi><mi>i</mi></msub><annotation encoding="application/x-tex">U_i</annotation></semantics></math>
+are then centered and orthonormal:</p>
+<p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msubsup><mn>𝟏</mn><mi>k</mi><mi>𝖳</mi></msubsup><msub><mi>U</mi><mi>i</mi></msub><mo>=</mo><mn>0</mn><mo>,</mo><mspace width="2.0em"></mspace><msubsup><mi>U</mi><mi>i</mi><mi>𝖳</mi></msubsup><msub><mi>U</mi><mi>i</mi></msub><mo>=</mo><msub><mi>I</mi><mi>d</mi></msub><mo>,</mo></mrow><annotation encoding="application/x-tex">
+\mathbf{1}_k^{\mathsf T}U_i = 0, \qquad U_i^{\mathsf T}U_i = I_d,
+</annotation></semantics></math></p>
+<p>where
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mn>𝟏</mn><mi>k</mi></msub><annotation encoding="application/x-tex">\mathbf{1}_k</annotation></semantics></math>
+is a column of
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>k</mi><annotation encoding="application/x-tex">k</annotation></semantics></math>
+ones and
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>I</mi><mi>d</mi></msub><annotation encoding="application/x-tex">I_d</annotation></semantics></math>
+is the
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>d</mi><mo>×</mo><mi>d</mi></mrow><annotation encoding="application/x-tex">d \times d</annotation></semantics></math>
+identity matrix. Ordinary PCA scores would also multiply these columns
+by their singular values, but for alignment we can work with
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>U</mi><mi>i</mi></msub><annotation encoding="application/x-tex">U_i</annotation></semantics></math>
+alone (we’ll see why when we write down the fit). If you are following
+along with the paper, it puts observations in columns, so our left
+singular vectors correspond to its right singular vectors.</p>
+<p>So far we have done a lot of small PCAs. We now need to find global
+coordinates that agree as well as possible with all those local
+descriptions. Each observation gets one global position, however many
+charts it appears in. We can think of alignment as choosing one
+transformation per neighborhood, with those shared observations tying
+the transformations together.</p>
+</div>
+<div class="section level2">
+<h2 id="what-are-we-trying-to-align">What are we trying to align?<a class="anchor" aria-label="anchor" href="#what-are-we-trying-to-align"></a>
+</h2>
+<p>Each local PCA gives us coordinates in a tangent plane. We want to
+relate those coordinates to one global coordinate system.</p>
+<p>The paper motivates this using a first-order Taylor approximation:
+over a small enough neighborhood, the smooth relationship between
+tangent-plane coordinates and the desired global coordinates can be
+approximated by a linear transformation plus a translation. This is an
+<em>affine transformation</em>. It allows stretching and shearing as
+well as rotations, reflections and translations, so LTSA can fit local
+coordinate changes that do not preserve distances.</p>
+<p>To add some notation to the discussion, put the proposed global
+coordinates in an
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>N</mi><mo>×</mo><mi>d</mi></mrow><annotation encoding="application/x-tex">N \times d</annotation></semantics></math>
+matrix
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>Y</mi><annotation encoding="application/x-tex">Y</annotation></semantics></math>,
+with one observation per row. Let
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>Y</mi><mi>i</mi></msub><annotation encoding="application/x-tex">Y_i</annotation></semantics></math>
+contain the
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>k</mi><annotation encoding="application/x-tex">k</annotation></semantics></math>
+rows belonging to neighborhood
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>i</mi><annotation encoding="application/x-tex">i</annotation></semantics></math>,
+in the same order as the rows of
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>U</mi><mi>i</mi></msub><annotation encoding="application/x-tex">U_i</annotation></semantics></math>.
+These are coordinates we are trying to find.</p>
+<p>Within this neighborhood, we want to be able to write</p>
+<p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>Y</mi><mi>i</mi></msub><mo>≈</mo><msub><mn>𝟏</mn><mi>k</mi></msub><msubsup><mi>c</mi><mi>i</mi><mi>𝖳</mi></msubsup><mo>+</mo><msub><mi>U</mi><mi>i</mi></msub><msub><mi>A</mi><mi>i</mi></msub><mo>,</mo></mrow><annotation encoding="application/x-tex">
+Y_i \approx \mathbf{1}_k c_i^{\mathsf T} + U_i A_i,
+</annotation></semantics></math></p>
+<p>where
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>c</mi><mi>i</mi></msub><annotation encoding="application/x-tex">c_i</annotation></semantics></math>
+is a vector of
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>d</mi><annotation encoding="application/x-tex">d</annotation></semantics></math>
+offsets and
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>A</mi><mi>i</mi></msub><annotation encoding="application/x-tex">A_i</annotation></semantics></math>
+is a
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>d</mi><mo>×</mo><mi>d</mi></mrow><annotation encoding="application/x-tex">d \times d</annotation></semantics></math>
+matrix. Multiplying by
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>A</mi><mi>i</mi></msub><annotation encoding="application/x-tex">A_i</annotation></semantics></math>
+does the linear transformation, and
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mn>𝟏</mn><mi>k</mi></msub><msubsup><mi>c</mi><mi>i</mi><mi>𝖳</mi></msubsup></mrow><annotation encoding="application/x-tex">\mathbf{1}_k c_i^{\mathsf T}</annotation></semantics></math>
+adds the same translation to every observation in the neighborhood. Each
+neighborhood gets its own
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>c</mi><mi>i</mi></msub><annotation encoding="application/x-tex">c_i</annotation></semantics></math>
+and
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>A</mi><mi>i</mi></msub><annotation encoding="application/x-tex">A_i</annotation></semantics></math>.</p>
+<p>Because the transformation
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>A</mi><mi>i</mi></msub><annotation encoding="application/x-tex">A_i</annotation></semantics></math>
+allows for stretching and shearing, we can use
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>U</mi><mi>i</mi></msub><annotation encoding="application/x-tex">U_i</annotation></semantics></math>
+directly, rather than multiplying its columns by their singular values
+as we would for PCA scores. That multiplication just rescales the local
+coordinate axes, but that scaling is absorbed into
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>A</mi><mi>i</mi></msub><annotation encoding="application/x-tex">A_i</annotation></semantics></math>.</p>
+</div>
+<div class="section level2">
+<h2 id="measuring-the-misfit">Measuring the misfit<a class="anchor" aria-label="anchor" href="#measuring-the-misfit"></a>
+</h2>
+<p>We now have
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>N</mi><annotation encoding="application/x-tex">N</annotation></semantics></math>
+affine transformations to fit, one per neighborhood, with shared
+observations tying the fits together. For a proposed global embedding
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>Y</mi><annotation encoding="application/x-tex">Y</annotation></semantics></math>,
+each transformation must try to reproduce the corresponding rows
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>Y</mi><mi>i</mi></msub><annotation encoding="application/x-tex">Y_i</annotation></semantics></math>.</p>
+<p>For each neighborhood, we want to find the affine transformation that
+brings its local chart as close to
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>Y</mi><mi>i</mi></msub><annotation encoding="application/x-tex">Y_i</annotation></semantics></math>
+as possible in the least-squares sense. The differences between the
+proposed coordinates and the transformed chart form the <em>residual
+matrix</em>
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>R</mi><mi>i</mi></msub><annotation encoding="application/x-tex">R_i</annotation></semantics></math>,</p>
+<p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>R</mi><mi>i</mi></msub><mo>=</mo><msub><mi>Y</mi><mi>i</mi></msub><mo>−</mo><msub><mn>𝟏</mn><mi>k</mi></msub><msubsup><mi>c</mi><mi>i</mi><mi>𝖳</mi></msubsup><mo>−</mo><msub><mi>U</mi><mi>i</mi></msub><msub><mi>A</mi><mi>i</mi></msub><mi>.</mi></mrow><annotation encoding="application/x-tex">
+R_i = Y_i-\mathbf{1}_k c_i^{\mathsf T}-U_iA_i.
+</annotation></semantics></math></p>
+<p>Like
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>Y</mi><mi>i</mi></msub><annotation encoding="application/x-tex">Y_i</annotation></semantics></math>
+and
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>U</mi><mi>i</mi></msub><annotation encoding="application/x-tex">U_i</annotation></semantics></math>,
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>R</mi><mi>i</mi></msub><annotation encoding="application/x-tex">R_i</annotation></semantics></math>
+is a
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>k</mi><mo>×</mo><mi>d</mi></mrow><annotation encoding="application/x-tex">k \times d</annotation></semantics></math>
+matrix: one row per observation and one column per embedding axis. Each
+entry is a proposed coordinate minus the corresponding coordinate
+predicted by the affine fit. To get the best transformation, we minimize
+its squared Frobenius norm,
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mo stretchy="false" form="postfix">∥</mo><msub><mi>R</mi><mi>i</mi></msub><msubsup><mo stretchy="false" form="postfix">∥</mo><mi>F</mi><mn>2</mn></msubsup></mrow><annotation encoding="application/x-tex">\|R_i\|_F^2</annotation></semantics></math>
+(the sum of the squared errors across all observations and embedding
+axes).</p>
+<p>Working with
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>U</mi><mi>i</mi></msub><annotation encoding="application/x-tex">U_i</annotation></semantics></math>
+makes the best fit easy to compute. Because the columns of
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>U</mi><mi>i</mi></msub><annotation encoding="application/x-tex">U_i</annotation></semantics></math>
+are centered, the best translation is given by the column means of
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>Y</mi><mi>i</mi></msub><annotation encoding="application/x-tex">Y_i</annotation></semantics></math>.
+Because the columns of
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>U</mi><mi>i</mi></msub><annotation encoding="application/x-tex">U_i</annotation></semantics></math>
+are orthonormal, the best linear fit is the projection of each column of
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>Y</mi><mi>i</mi></msub><annotation encoding="application/x-tex">Y_i</annotation></semantics></math>
+onto the space spanned by those columns. The fitted translation and
+coefficient matrix are:</p>
+<p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>c</mi><mi>i</mi></msub><mo>=</mo><mfrac><mn>1</mn><mi>k</mi></mfrac><msubsup><mi>Y</mi><mi>i</mi><mi>𝖳</mi></msubsup><msub><mn>𝟏</mn><mi>k</mi></msub><mo>,</mo><mspace width="2.0em"></mspace><msub><mi>A</mi><mi>i</mi></msub><mo>=</mo><msubsup><mi>U</mi><mi>i</mi><mi>𝖳</mi></msubsup><msub><mi>Y</mi><mi>i</mi></msub><mi>.</mi></mrow><annotation encoding="application/x-tex">
+c_i = \frac{1}{k}Y_i^{\mathsf T}\mathbf{1}_k,
+\qquad A_i = U_i^{\mathsf T}Y_i.
+</annotation></semantics></math></p>
+<p>Substituting these into the residual gives us:</p>
+<p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mtable><mtr><mtd columnalign="right" style="text-align: right; padding-right: 0"><msub><mi>R</mi><mi>i</mi></msub></mtd><mtd columnalign="left" style="text-align: left; padding-left: 0"><mo>=</mo><msub><mi>Y</mi><mi>i</mi></msub><mo>−</mo><mfrac><mrow><msub><mn>𝟏</mn><mi>k</mi></msub><msubsup><mn>𝟏</mn><mi>k</mi><mi>𝖳</mi></msubsup></mrow><mi>k</mi></mfrac><msub><mi>Y</mi><mi>i</mi></msub><mo>−</mo><msub><mi>U</mi><mi>i</mi></msub><msubsup><mi>U</mi><mi>i</mi><mi>𝖳</mi></msubsup><msub><mi>Y</mi><mi>i</mi></msub></mtd></mtr><mtr><mtd columnalign="right" style="text-align: right; padding-right: 0"></mtd><mtd columnalign="left" style="text-align: left; padding-left: 0"><mo>=</mo><mrow><mo stretchy="true" form="prefix">(</mo><msub><mi>I</mi><mi>k</mi></msub><mo>−</mo><mfrac><mrow><msub><mn>𝟏</mn><mi>k</mi></msub><msubsup><mn>𝟏</mn><mi>k</mi><mi>𝖳</mi></msubsup></mrow><mi>k</mi></mfrac><mo>−</mo><msub><mi>U</mi><mi>i</mi></msub><msubsup><mi>U</mi><mi>i</mi><mi>𝖳</mi></msubsup><mo stretchy="true" form="postfix">)</mo></mrow><msub><mi>Y</mi><mi>i</mi></msub></mtd></mtr><mtr><mtd columnalign="right" style="text-align: right; padding-right: 0"></mtd><mtd columnalign="left" style="text-align: left; padding-left: 0"><mo>=</mo><msub><mi>W</mi><mi>i</mi></msub><msub><mi>Y</mi><mi>i</mi></msub></mtd></mtr></mtable><annotation encoding="application/x-tex">
+\begin{aligned}
+R_i
+&amp;= Y_i - \frac{\mathbf{1}_k\mathbf{1}_k^{\mathsf T}}{k}Y_i
+       - U_iU_i^{\mathsf T}Y_i \\
+&amp;= \left(I_k-\frac{\mathbf{1}_k\mathbf{1}_k^{\mathsf T}}{k}
+       -U_iU_i^{\mathsf T}\right)Y_i \\
+&amp;= W_i Y_i
+\end{aligned}
+</annotation></semantics></math></p>
+<p>where the LTSA <em>residual projector</em>,
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>W</mi><mi>i</mi></msub><annotation encoding="application/x-tex">W_i</annotation></semantics></math>,
+is defined as:</p>
+<p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>W</mi><mi>i</mi></msub><mo>=</mo><msub><mi>I</mi><mi>k</mi></msub><mo>−</mo><mfrac><mrow><msub><mn>𝟏</mn><mi>k</mi></msub><msubsup><mn>𝟏</mn><mi>k</mi><mi>𝖳</mi></msubsup></mrow><mi>k</mi></mfrac><mo>−</mo><msub><mi>U</mi><mi>i</mi></msub><msubsup><mi>U</mi><mi>i</mi><mi>𝖳</mi></msubsup><mi>.</mi></mrow><annotation encoding="application/x-tex">
+W_i = I_k-\frac{\mathbf{1}_k\mathbf{1}_k^{\mathsf T}}{k}-U_iU_i^{\mathsf T}.
+</annotation></semantics></math></p>
+<p><math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>W</mi><mi>i</mi></msub><annotation encoding="application/x-tex">W_i</annotation></semantics></math>
+is a
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>k</mi><mo>×</mo><mi>k</mi></mrow><annotation encoding="application/x-tex">k \times k</annotation></semantics></math>
+matrix that depends only on the local chart
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>U</mi><mi>i</mi></msub><annotation encoding="application/x-tex">U_i</annotation></semantics></math>.
+Multiplying it by the neighborhood coordinates
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>Y</mi><mi>i</mi></msub><annotation encoding="application/x-tex">Y_i</annotation></semantics></math>
+gives the residual matrix
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>R</mi><mi>i</mi></msub><annotation encoding="application/x-tex">R_i</annotation></semantics></math>
+after the best affine fit. There are two subtractions here. The term
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mn>𝟏</mn><mi>k</mi></msub><msubsup><mn>𝟏</mn><mi>k</mi><mi>𝖳</mi></msubsup><msub><mi>Y</mi><mi>i</mi></msub><mi>/</mi><mi>k</mi></mrow><annotation encoding="application/x-tex">\mathbf{1}_k\mathbf{1}_k^{\mathsf T}Y_i/k</annotation></semantics></math>
+repeats the neighborhood’s mean position in every row. Subtracting it
+centers the neighborhood: we move its centroid to the origin without
+changing the positions of the points relative to one another. The term
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>U</mi><mi>i</mi></msub><msubsup><mi>U</mi><mi>i</mi><mi>𝖳</mi></msubsup><msub><mi>Y</mi><mi>i</mi></msub></mrow><annotation encoding="application/x-tex">U_iU_i^{\mathsf T}Y_i</annotation></semantics></math>
+then subtracts the part explained by the local chart’s linear fit. What
+remains is the coordinate error that the best affine transformation
+cannot explain.</p>
+<p>This also explains why translating the whole neighborhood does not
+change its fitting error. Adding the same offset to every point shifts
+the mean by that offset too, so centering cancels it.</p>
+<p>If the transformed chart can reproduce
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>Y</mi><mi>i</mi></msub><annotation encoding="application/x-tex">Y_i</annotation></semantics></math>
+exactly,
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>W</mi><mi>i</mi></msub><msub><mi>Y</mi><mi>i</mi></msub></mrow><annotation encoding="application/x-tex">W_iY_i</annotation></semantics></math>
+is a matrix of zeros. Otherwise,
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mo stretchy="false" form="postfix">∥</mo><msub><mi>W</mi><mi>i</mi></msub><msub><mi>Y</mi><mi>i</mi></msub><msubsup><mo stretchy="false" form="postfix">∥</mo><mi>F</mi><mn>2</mn></msubsup></mrow><annotation encoding="application/x-tex">\|W_iY_i\|_F^2</annotation></semantics></math>
+gives us a single number: the smallest sum of squared errors that any
+affine fit to this chart can achieve.
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>W</mi><mi>i</mi></msub><annotation encoding="application/x-tex">W_i</annotation></semantics></math>
+therefore lets us score how well the proposed embedding agrees with the
+local chart.</p>
 </div>
 <div class="section level2">
 <h2 id="putting-the-neighborhoods-together">Putting the neighborhoods together<a class="anchor" aria-label="anchor" href="#putting-the-neighborhoods-together"></a>
 </h2>
-<p>For each neighborhood, form the matrix</p>
-<p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>W</mi><mi>i</mi></msub><mo>=</mo><msub><mi>I</mi><mi>k</mi></msub><mo>−</mo><mn>𝟏</mn><msup><mn>𝟏</mn><mi>𝖳</mi></msup><mi>/</mi><mi>k</mi><mo>−</mo><msub><mi>U</mi><mi>i</mi></msub><msubsup><mi>U</mi><mi>i</mi><mi>𝖳</mi></msubsup><mo>,</mo></mrow><annotation encoding="application/x-tex">
-W_i = I_k - \mathbf{1}\mathbf{1}^{\mathsf{T}}/k - U_iU_i^{\mathsf{T}},
+<p>We can now score a proposed global embedding
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>Y</mi><annotation encoding="application/x-tex">Y</annotation></semantics></math>
+by adding the best-fit errors from all the neighborhoods:</p>
+<p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>E</mi><mo stretchy="false" form="prefix">(</mo><mi>Y</mi><mo stretchy="false" form="postfix">)</mo><mo>=</mo><munder><mo>∑</mo><mi>i</mi></munder><mo stretchy="false" form="postfix">∥</mo><msub><mi>W</mi><mi>i</mi></msub><msub><mi>Y</mi><mi>i</mi></msub><msubsup><mo stretchy="false" form="postfix">∥</mo><mi>F</mi><mn>2</mn></msubsup><mi>.</mi></mrow><annotation encoding="application/x-tex">
+E(Y)=\sum_i\|W_i Y_i\|_F^2.
 </annotation></semantics></math></p>
-<p>where
-<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>I</mi><mi>k</mi></msub><annotation encoding="application/x-tex">I_k</annotation></semantics></math>
-is the
-<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>k</mi><mo>×</mo><mi>k</mi></mrow><annotation encoding="application/x-tex">k \times k</annotation></semantics></math>
-identity matrix and
-<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mn>𝟏</mn><annotation encoding="application/x-tex">\mathbf{1}</annotation></semantics></math>
-is a column of
-<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>k</mi><annotation encoding="application/x-tex">k</annotation></semantics></math>
-ones. The middle term removes the mean, and the final term removes the
-part explained by the local tangent coordinates. What remains is the
-residual: the part that doesn’t fit our local description. This makes
+<p>To combine these errors, we can use two properties of
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>W</mi><mi>i</mi></msub><annotation encoding="application/x-tex">W_i</annotation></semantics></math>.
+First, the residual
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>R</mi><mi>i</mi></msub><annotation encoding="application/x-tex">R_i</annotation></semantics></math>
+has zero column means and no components along the columns of
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>U</mi><mi>i</mi></msub><annotation encoding="application/x-tex">U_i</annotation></semantics></math>.
+This is by construction: it is what remains after subtracting the fitted
+translation and the projection onto the columns of
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>U</mi><mi>i</mi></msub><annotation encoding="application/x-tex">U_i</annotation></semantics></math>.
+This makes
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>W</mi><mi>i</mi></msub><annotation encoding="application/x-tex">W_i</annotation></semantics></math><em>idempotent</em>: applying
 <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>W</mi><mi>i</mi></msub><annotation encoding="application/x-tex">W_i</annotation></semantics></math>
-a <em>residual projector</em>.</p>
-<p>Now create an initially zero
+again to the resulting residual leaves it unchanged,
+i.e. <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>W</mi><mi>i</mi></msub><mrow><mo stretchy="true" form="prefix">(</mo><msub><mi>W</mi><mi>i</mi></msub><msub><mi>Y</mi><mi>i</mi></msub><mo stretchy="true" form="postfix">)</mo></mrow><mo>=</mo><msub><mi>W</mi><mi>i</mi></msub><msub><mi>Y</mi><mi>i</mi></msub></mrow><annotation encoding="application/x-tex">W_i \left(W_i Y_i\right) = W_i Y_i</annotation></semantics></math>.
+Therefore
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msubsup><mi>W</mi><mi>i</mi><mn>2</mn></msubsup><mo>=</mo><msub><mi>W</mi><mi>i</mi></msub></mrow><annotation encoding="application/x-tex">W_i^2 = W_i</annotation></semantics></math>.</p>
+<p>Second, each term in the definition of
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>W</mi><mi>i</mi></msub><annotation encoding="application/x-tex">W_i</annotation></semantics></math>
+is symmetric, so
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msubsup><mi>W</mi><mi>i</mi><mi>𝖳</mi></msubsup><mo>=</mo><msub><mi>W</mi><mi>i</mi></msub></mrow><annotation encoding="application/x-tex">W_i^{\mathsf T} = W_i</annotation></semantics></math>.</p>
+<p>For any real matrix
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>M</mi><annotation encoding="application/x-tex">M</annotation></semantics></math>
+the Frobenius norm is related to the trace (sum of the diagonal
+elements) by
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mo stretchy="false" form="postfix">∥</mo><mi>M</mi><msubsup><mo stretchy="false" form="postfix">∥</mo><mi>F</mi><mn>2</mn></msubsup><mo>=</mo><mrow><mi mathvariant="normal">tr</mi><mo>⁡</mo></mrow><mo stretchy="false" form="prefix">(</mo><msup><mi>M</mi><mi>𝖳</mi></msup><mi>M</mi><mo stretchy="false" form="postfix">)</mo></mrow><annotation encoding="application/x-tex">\|M\|_F^2 = \operatorname{tr}(M^{\mathsf T}M)</annotation></semantics></math>.
+For our residual matrix
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>R</mi><mi>i</mi></msub><mo>,</mo></mrow><annotation encoding="application/x-tex">R_i,</annotation></semantics></math>
+each diagonal entry of
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msubsup><mi>R</mi><mi>i</mi><mi>𝖳</mi></msubsup><msub><mi>R</mi><mi>i</mi></msub></mrow><annotation encoding="application/x-tex">R_i^{\mathsf T}R_i</annotation></semantics></math>
+is the sum of squared residuals for one embedding axis. With this
+relationship and the idempotence and symmetry of
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>W</mi><mi>i</mi></msub><annotation encoding="application/x-tex">W_i</annotation></semantics></math>,
+we have:</p>
+<p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mo stretchy="false" form="postfix">∥</mo><msub><mi>W</mi><mi>i</mi></msub><msub><mi>Y</mi><mi>i</mi></msub><msubsup><mo stretchy="false" form="postfix">∥</mo><mi>F</mi><mn>2</mn></msubsup><mo>=</mo><mrow><mi mathvariant="normal">tr</mi><mo>⁡</mo></mrow><mo stretchy="false" form="prefix">(</mo><msubsup><mi>Y</mi><mi>i</mi><mi>𝖳</mi></msubsup><msubsup><mi>W</mi><mi>i</mi><mi>𝖳</mi></msubsup><msub><mi>W</mi><mi>i</mi></msub><msub><mi>Y</mi><mi>i</mi></msub><mo stretchy="false" form="postfix">)</mo><mo>=</mo><mrow><mi mathvariant="normal">tr</mi><mo>⁡</mo></mrow><mo stretchy="false" form="prefix">(</mo><msubsup><mi>Y</mi><mi>i</mi><mi>𝖳</mi></msubsup><msub><mi>W</mi><mi>i</mi></msub><msub><mi>Y</mi><mi>i</mi></msub><mo stretchy="false" form="postfix">)</mo><mi>.</mi></mrow><annotation encoding="application/x-tex">
+\|W_i Y_i\|_F^2
+=\operatorname{tr}(Y_i^{\mathsf T}W_i^{\mathsf T}W_i Y_i)
+=\operatorname{tr}(Y_i^{\mathsf T}W_i Y_i).
+</annotation></semantics></math></p>
+<p>So that’s the cost function for a single neighborhood, simplified.
+The total cost of the global alignment is the sum of the costs for all
+neighborhoods. This can be written in terms of the full embedding matrix
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>Y</mi><annotation encoding="application/x-tex">Y</annotation></semantics></math>
+by assembling the local costs into a <em>global alignment matrix</em>.
+Create an initially zero
 <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>N</mi><mo>×</mo><mi>N</mi></mrow><annotation encoding="application/x-tex">N \times N</annotation></semantics></math>
 matrix
 <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>B</mi><annotation encoding="application/x-tex">B</annotation></semantics></math>.
 Add the entries of each
 <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>W</mi><mi>i</mi></msub><annotation encoding="application/x-tex">W_i</annotation></semantics></math>
-to the rows and columns of
+to the rows and columns belonging to that neighborhood’s
+observations:</p>
+<p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>E</mi><mo stretchy="false" form="prefix">(</mo><mi>Y</mi><mo stretchy="false" form="postfix">)</mo><mo>=</mo><munder><mo>∑</mo><mi>i</mi></munder><mrow><mi mathvariant="normal">tr</mi><mo>⁡</mo></mrow><mo stretchy="false" form="prefix">(</mo><msubsup><mi>Y</mi><mi>i</mi><mi>𝖳</mi></msubsup><msub><mi>W</mi><mi>i</mi></msub><msub><mi>Y</mi><mi>i</mi></msub><mo stretchy="false" form="postfix">)</mo><mo>=</mo><mrow><mi mathvariant="normal">tr</mi><mo>⁡</mo></mrow><mo stretchy="false" form="prefix">(</mo><msup><mi>Y</mi><mi>𝖳</mi></msup><mi>B</mi><mi>Y</mi><mo stretchy="false" form="postfix">)</mo><mi>.</mi></mrow><annotation encoding="application/x-tex">
+E(Y)=\sum_i\operatorname{tr}(Y_i^{\mathsf T}W_i Y_i)
+=\operatorname{tr}(Y^{\mathsf T}BY).
+</annotation></semantics></math></p>
+<p>That is what
 <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>B</mi><annotation encoding="application/x-tex">B</annotation></semantics></math>
-belonging to that neighborhood’s observations. Overlapping neighborhoods
-contribute to the same entries, so
+measures: the total squared error left after giving every neighborhood
+its best local affine fit to the same global embedding. It is symmetric
+because each
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>W</mi><mi>i</mi></msub><annotation encoding="application/x-tex">W_i</annotation></semantics></math>
+contributes to it symmetrically, and positive semidefinite since this
+error is a sum of squares, so can never be negative.</p>
+</div>
+<div class="section level2">
+<h2 id="avoiding-the-trivial-solution">Avoiding the trivial solution<a class="anchor" aria-label="anchor" href="#avoiding-the-trivial-solution"></a>
+</h2>
+<p>There is a trivial solution to the global alignment problem: give
+every observation the same global position. This is the same as giving
+every neighborhood the same translation and
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>A</mi><mi>i</mi></msub><mo>=</mo><mn>0</mn></mrow><annotation encoding="application/x-tex">A_i=0</annotation></semantics></math>.
+The fitting error is zero, but an embedding that smushes every
+observation on top of each other is not useful.</p>
+<p>Let’s first prevent all the coordinates from shrinking to zero by
+requiring each column of
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>Y</mi><annotation encoding="application/x-tex">Y</annotation></semantics></math>
+to have unit length. <em>On top of that</em>, if you embed into more
+than one dimension, you need to make sure that axes don’t repeatedly
+find the same solution. So we also require the columns to be orthogonal.
+Together, you can express those conditions as:</p>
+<p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msup><mi>Y</mi><mi>𝖳</mi></msup><mi>Y</mi><mo>=</mo><msub><mi>I</mi><mi>d</mi></msub><mi>.</mi></mrow><annotation encoding="application/x-tex">
+Y^{\mathsf T}Y=I_d.
+</annotation></semantics></math></p>
+<p>These conditions rule out the all-zero embedding, but a unit-length
+column can still have the same value in every row. We’ll deal with that
+remaining problem when we choose the coordinates.</p>
+</div>
+<div class="section level2">
+<h2 id="why-eigenvectors">Why eigenvectors?<a class="anchor" aria-label="anchor" href="#why-eigenvectors"></a>
+</h2>
+<p>We now have something useful to minimize, but how do we minimize it?
+Start with one embedding axis, represented by a column vector
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>y</mi><annotation encoding="application/x-tex">y</annotation></semantics></math>.
+Its alignment cost is
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msup><mi>y</mi><mi>𝖳</mi></msup><mi>B</mi><mi>y</mi></mrow><annotation encoding="application/x-tex">y^{\mathsf T}By</annotation></semantics></math>,
+and its unit-length constraint is
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msup><mi>y</mi><mi>𝖳</mi></msup><mi>y</mi><mo>=</mo><mn>1</mn></mrow><annotation encoding="application/x-tex">y^{\mathsf T}y=1</annotation></semantics></math>.
+For now, let’s minimize the cost subject to just that constraint. As is
+typical with constrained optimization, we’ll introduce a <em>Lagrange
+multiplier</em>,
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>λ</mi><annotation encoding="application/x-tex">\lambda</annotation></semantics></math>:</p>
+<p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>ℒ</mi><mo stretchy="false" form="prefix">(</mo><mi>y</mi><mo>,</mo><mi>λ</mi><mo stretchy="false" form="postfix">)</mo><mo>=</mo><msup><mi>y</mi><mi>𝖳</mi></msup><mi>B</mi><mi>y</mi><mo>−</mo><mi>λ</mi><mo stretchy="false" form="prefix">(</mo><msup><mi>y</mi><mi>𝖳</mi></msup><mi>y</mi><mo>−</mo><mn>1</mn><mo stretchy="false" form="postfix">)</mo><mi>.</mi></mrow><annotation encoding="application/x-tex">
+\mathcal{L}(y,\lambda)
+=y^{\mathsf T}By-\lambda(y^{\mathsf T}y-1).
+</annotation></semantics></math></p>
+<p>For a general real square matrix
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>M</mi><annotation encoding="application/x-tex">M</annotation></semantics></math>,
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>∇</mi><mi>y</mi></msub><mrow><mo stretchy="true" form="prefix">(</mo><msup><mi>y</mi><mi>𝖳</mi></msup><mi>M</mi><mi>y</mi><mo stretchy="true" form="postfix">)</mo></mrow><mo>=</mo><mrow><mo stretchy="true" form="prefix">(</mo><mi>M</mi><mo>+</mo><msup><mi>M</mi><mi>𝖳</mi></msup><mo stretchy="true" form="postfix">)</mo></mrow><mi>y</mi></mrow><annotation encoding="application/x-tex">\nabla_y\left(y^{\mathsf T}My\right) = \left(M+M^{\mathsf T}\right)y</annotation></semantics></math>,
+so if
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>M</mi><annotation encoding="application/x-tex">M</annotation></semantics></math>
+is symmetric,
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>∇</mi><mi>y</mi></msub><mrow><mo stretchy="true" form="prefix">(</mo><msup><mi>y</mi><mi>𝖳</mi></msup><mi>M</mi><mi>y</mi><mo stretchy="true" form="postfix">)</mo></mrow><mo>=</mo><mn>2</mn><mi>M</mi><mi>y</mi></mrow><annotation encoding="application/x-tex">\nabla_y\left(y^{\mathsf T}My\right) = 2My</annotation></semantics></math>.</p>
+<p>At a constrained minimum, the derivatives with respect to
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>y</mi><annotation encoding="application/x-tex">y</annotation></semantics></math>
+and
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>λ</mi><annotation encoding="application/x-tex">\lambda</annotation></semantics></math>
+must vanish. Because
 <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>B</mi><annotation encoding="application/x-tex">B</annotation></semantics></math>
-brings all the local constraints together. This is the LTSA
-<em>alignment matrix</em>.</p>
-<p>If
-<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>v</mi><annotation encoding="application/x-tex">v</annotation></semantics></math>
-contains one proposed global coordinate for every observation, then
-<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msup><mi>v</mi><mi>𝖳</mi></msup><mi>B</mi><mi>v</mi></mrow><annotation encoding="application/x-tex">v^{\mathsf{T}}Bv</annotation></semantics></math>
-measures the total squared residual across the neighborhoods. For a
-vector of unit length, small values mean that the coordinate fits the
-local tangent spaces well. To find such coordinates, we use eigenvectors
-of
+is symmetric, differentiating with respect to
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>y</mi><annotation encoding="application/x-tex">y</annotation></semantics></math>
+gives</p>
+<p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>∇</mi><mi>y</mi></msub><mi>ℒ</mi><mo>=</mo><mn>2</mn><mi>B</mi><mi>y</mi><mo>−</mo><mn>2</mn><mi>λ</mi><mi>y</mi><mo>=</mo><mn>0</mn><mi>.</mi></mrow><annotation encoding="application/x-tex">
+\nabla_y\mathcal{L}=2By-2\lambda y=0.
+</annotation></semantics></math></p>
+<p>Rearranging gives the equation for an eigenvector:</p>
+<p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>B</mi><mi>y</mi><mo>=</mo><mi>λ</mi><mi>y</mi><mi>.</mi></mrow><annotation encoding="application/x-tex">
+By=\lambda y.
+</annotation></semantics></math></p>
+<p>So the coordinate vector for a single axis is a unit-length
+eigenvector of
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>B</mi><annotation encoding="application/x-tex">B</annotation></semantics></math>,
+with
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>λ</mi><annotation encoding="application/x-tex">\lambda</annotation></semantics></math>
+as the eigenvalue. At any such eigenvector, the alignment cost is the
+eigenvalue:</p>
+<p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msup><mi>y</mi><mi>𝖳</mi></msup><mi>B</mi><mi>y</mi><mo>=</mo><msup><mi>y</mi><mi>𝖳</mi></msup><mo stretchy="false" form="prefix">(</mo><mi>λ</mi><mi>y</mi><mo stretchy="false" form="postfix">)</mo><mo>=</mo><mi>λ</mi><msup><mi>y</mi><mi>𝖳</mi></msup><mi>y</mi><mo>=</mo><mi>λ</mi><mi>.</mi></mrow><annotation encoding="application/x-tex">
+y^{\mathsf T}By
+=y^{\mathsf T}(\lambda y)
+=\lambda y^{\mathsf T}y
+=\lambda.
+</annotation></semantics></math></p>
+<p>So minimizing the cost subject to unit length means selecting an
+eigenvector with the smallest eigenvalue. Its entries supply the
+coordinates for that axis. But there is a catch.</p>
+<p>If every observation has the same coordinate, subtracting the
+neighborhood mean leaves zeros, so each local fit has zero residual. In
+symbols,
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>W</mi><mi>i</mi></msub><msub><mn>𝟏</mn><mi>k</mi></msub><mo>=</mo><mn>0</mn></mrow><annotation encoding="application/x-tex">W_i\mathbf{1}_k=0</annotation></semantics></math>,
+and assembling the local projectors gives
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>B</mi><msub><mn>𝟏</mn><mi>N</mi></msub><mo>=</mo><mn>0</mn></mrow><annotation encoding="application/x-tex">B\mathbf{1}_N=0</annotation></semantics></math>.
+The constant vector is therefore an eigenvector with eigenvalue zero.
+Scaling it to
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mn>𝟏</mn><mi>N</mi></msub><mi>/</mi><msqrt><mi>N</mi></msqrt></mrow><annotation encoding="application/x-tex">\mathbf{1}_N/\sqrt{N}</annotation></semantics></math>
+gives it unit length, so it satisfies our constraint and achieves the
+smallest possible cost. Yet every observation still has the same
+coordinate. This is the remaining collapsed solution we need to
+exclude.</p>
+<p>When the constant direction is the only zero mode, the recipe is
+simple: order the eigenpairs from smallest eigenvalue upwards, discard
+the first eigenvector, and take the next one for a 1-dimensional
+embedding.</p>
+<p>Because
 <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>B</mi><annotation encoding="application/x-tex">B</annotation></semantics></math>
-associated with its smallest eigenvalues.
-<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>B</mi><annotation encoding="application/x-tex">B</annotation></semantics></math>
-is symmetric and positive semidefinite, so those eigenvalues are
-non-negative, apart from numerical rounding.</p>
-<p>There is one particularly unhelpful solution: give every observation
-the same coordinate. Its residual is zero, but as a visualization it
-leaves rather a lot to the imagination. <code>flotsam</code> removes
-this known constant direction and uses the lowest remaining eigenvectors
-as coordinates.</p>
+is symmetric, we can choose its eigenvectors to be orthonormal. Each
+remaining eigenvector
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>y</mi><annotation encoding="application/x-tex">y</annotation></semantics></math>
+is then orthogonal to the constant vector, which means</p>
+<p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msubsup><mn>𝟏</mn><mi>N</mi><mi>𝖳</mi></msubsup><mi>y</mi><mo>=</mo><mn>0</mn><mi>.</mi></mrow><annotation encoding="application/x-tex">
+\mathbf{1}_N^{\mathsf T}y=0.
+</annotation></semantics></math></p>
+<p>The left-hand side is just the sum of the coordinates, so their mean
+is zero. The remaining eigenvectors are already centered: discarding the
+constant eigenvector takes care of that for us.</p>
+<p>The argument above extends to several embedding axes because the
+total cost is the sum of their individual costs. The orthogonality
+constraint prevents us from choosing the same direction repeatedly. So
+if you want
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>d</mi><annotation encoding="application/x-tex">d</annotation></semantics></math>
+coordinates, you exclude the constant direction and take the
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>d</mi><annotation encoding="application/x-tex">d</annotation></semantics></math>
+orthonormal eigenvectors with the lowest eigenvalues in the remaining
+space. Their eigenvalues add up to the total alignment cost.</p>
+<p>We can now write the full optimization problem:</p>
+<p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><munder><mi mathvariant="normal">min</mi><mi>Y</mi></munder><mrow><mi mathvariant="normal">tr</mi><mo>⁡</mo></mrow><mo stretchy="false" form="prefix">(</mo><msup><mi>Y</mi><mi>𝖳</mi></msup><mi>B</mi><mi>Y</mi><mo stretchy="false" form="postfix">)</mo><mspace width="1.0em"></mspace><mtext mathvariant="normal">subject to</mtext><mspace width="1.0em"></mspace><msup><mi>Y</mi><mi>𝖳</mi></msup><mi>Y</mi><mo>=</mo><msub><mi>I</mi><mi>d</mi></msub><mo>,</mo><mspace width="2.0em"></mspace><msup><mi>Y</mi><mi>𝖳</mi></msup><msub><mn>𝟏</mn><mi>N</mi></msub><mo>=</mo><mn>0</mn><mi>.</mi></mrow><annotation encoding="application/x-tex">
+\min_Y \operatorname{tr}(Y^{\mathsf T}BY)
+\quad\text{subject to}\quad
+Y^{\mathsf T}Y=I_d,\qquad Y^{\mathsf T}\mathbf{1}_N=0.
+</annotation></semantics></math></p>
+<p>Here, the centering constraint
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msup><mi>Y</mi><mi>𝖳</mi></msup><msub><mn>𝟏</mn><mi>N</mi></msub><mo>=</mo><mn>0</mn></mrow><annotation encoding="application/x-tex">Y^{\mathsf T}\mathbf{1}_N=0</annotation></semantics></math>
+records the property that our selected eigenvectors already have.</p>
+</div>
+<div class="section level2">
+<h2 id="other-zero-modes">Other zero modes<a class="anchor" aria-label="anchor" href="#other-zero-modes"></a>
+</h2>
 <p>The constant direction isn’t necessarily the only one with a zero
-eigenvalue. Disconnected groups of neighborhoods, or other degeneracies,
-can give us several. So “discard the smallest eigenvector” isn’t quite a
-sufficient recipe: there may be no unique smallest eigenvector to
-discard. This is one reason to look at the diagnostics as well as the
-plot.</p>
+eigenvalue. Maybe you have sampled so beautifully from a pristinely flat
+manifold that a real solution with a nonconstant coordinate vector also
+has zero alignment error. Additionally, disconnected groups of
+neighborhoods, or other degeneracies, can give us additional zero
+modes.</p>
+<p>With several zero modes, the solver can return an orthonormal basis
+for that zero eigenspace without making the constant vector a separate
+column. Several of those vectors can contain a constant component, so
+discarding just one of them need not leave centered coordinates. The
+eigenvectors with nonzero eigenvalues are still orthogonal to the
+constant vector and already centered.</p>
+<p>To handle this, <code>flotsam</code> projects the constant direction
+out of the candidate vectors and then finds the lowest-cost orthonormal
+directions within their remaining span. This enforces centering while
+keeping any useful zero-cost directions.</p>
+</div>
+<div class="section level2">
+<h2 id="the-recipe">The recipe<a class="anchor" aria-label="anchor" href="#the-recipe"></a>
+</h2>
+<p>With the fitting problem established, the calculation is fairly
+compact:</p>
+<ol style="list-style-type: decimal">
+<li>Find a neighborhood for each observation.</li>
+<li>Center each neighborhood and retain its first
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>d</mi><annotation encoding="application/x-tex">d</annotation></semantics></math>
+left singular vectors in
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>U</mi><mi>i</mi></msub><annotation encoding="application/x-tex">U_i</annotation></semantics></math>.</li>
+<li>Form
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>W</mi><mi>i</mi></msub><mo>=</mo><msub><mi>I</mi><mi>k</mi></msub><mo>−</mo><msub><mn>𝟏</mn><mi>k</mi></msub><msubsup><mn>𝟏</mn><mi>k</mi><mi>𝖳</mi></msubsup><mi>/</mi><mi>k</mi><mo>−</mo><msub><mi>U</mi><mi>i</mi></msub><msubsup><mi>U</mi><mi>i</mi><mi>𝖳</mi></msubsup></mrow><annotation encoding="application/x-tex">W_i=I_k-\mathbf{1}_k\mathbf{1}_k^{\mathsf T}/k-U_iU_i^{\mathsf T}</annotation></semantics></math>.</li>
+<li>Add each
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>W</mi><mi>i</mi></msub><annotation encoding="application/x-tex">W_i</annotation></semantics></math>
+into the corresponding rows and columns of
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>B</mi><annotation encoding="application/x-tex">B</annotation></semantics></math>.</li>
+<li>Exclude the constant direction and find
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>d</mi><annotation encoding="application/x-tex">d</annotation></semantics></math>
+orthonormal eigenvectors of
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>B</mi><annotation encoding="application/x-tex">B</annotation></semantics></math>
+with the lowest eigenvalues in the remaining space.</li>
+<li>Put those vectors into the columns of
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>Y</mi><annotation encoding="application/x-tex">Y</annotation></semantics></math>;
+its rows are the embedded observations.</li>
+</ol>
+</div>
+<div class="section level2">
+<h2 id="some-practicalities">Some practicalities<a class="anchor" aria-label="anchor" href="#some-practicalities"></a>
+</h2>
+<p>The rest of the article connects ordinary LTSA to the choices
+available in <code><a href="../reference/ltsa.html">ltsa()</a></code>: building neighborhoods, choosing
+dimensions and solving the eigenproblem.</p>
 </div>
 <div class="section level2">
 <h2 id="choosing-the-neighbors">Choosing the neighbors<a class="anchor" aria-label="anchor" href="#choosing-the-neighbors"></a>
@@ -194,6 +579,26 @@ can leave disconnected groups or global directions that are hard to
 distinguish. Increasing <code>n_neighbors</code> may help, but it also
 asks a flat local approximation to cover a larger piece of the data. It
 changes the model, so more neighbors aren’t automatically better.</p>
+<p>We also assumed that every centered neighborhood had at least
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>d</mi><annotation encoding="application/x-tex">d</annotation></semantics></math>
+nonzero singular values. When a neighborhood has numerical rank
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>r</mi><mo>&lt;</mo><mi>d</mi></mrow><annotation encoding="application/x-tex">r&lt;d</annotation></semantics></math>,
+<code>flotsam</code> uses the
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>r</mi><annotation encoding="application/x-tex">r</annotation></semantics></math>
+supported directions and issues a warning. The same residual-projector
+formula applies with a
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>k</mi><mo>×</mo><mi>r</mi></mrow><annotation encoding="application/x-tex">k \times r</annotation></semantics></math>
+matrix
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>U</mi><mi>i</mi></msub><annotation encoding="application/x-tex">U_i</annotation></semantics></math>
+and an
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>r</mi><mo>×</mo><mi>d</mi></mrow><annotation encoding="application/x-tex">r \times d</annotation></semantics></math>
+coefficient matrix
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>A</mi><mi>i</mi></msub><annotation encoding="application/x-tex">A_i</annotation></semantics></math>.
+With <code>output = "result"</code>,
+<code>assembly$rank_deficient_count</code> and
+<code>assembly$min_local_rank</code> tell you how often this happened
+and the smallest local rank. These are reasons to reconsider the tangent
+dimension or neighborhoods before interpreting the embedding.</p>
 <div class="section level3">
 <h3 id="are-you-your-own-neighbor">Are you your own neighbor?<a class="anchor" aria-label="anchor" href="#are-you-your-own-neighbor"></a>
 </h3>
@@ -203,7 +608,10 @@ observation in its own neighborhood. With
 <code>n_neighbors</code> still counts the observations actually used in
 the local PCA. A precomputed self-first index matrix therefore needs
 <code>n_neighbors + 1</code> columns: the first column contains the
-observation itself and is removed before assembly.</p>
+observation itself and is removed before assembly. With
+<code>include_self = TRUE</code>, a precomputed matrix instead has
+<code>n_neighbors</code> columns and must include the observation’s own
+index somewhere in each row.</p>
 <p>This apparently small bookkeeping choice also has a mathematical
 connection: <a href="https://doi.org/10.1109/TCYB.2017.2655338" class="external-link">work by
 Zhang and co-workers</a> relates it to Hessian Locally Linear Embedding.
@@ -215,109 +623,107 @@ neighborhoods used to build
 <div class="section level2">
 <h2 id="how-many-dimensions">How many dimensions?<a class="anchor" aria-label="anchor" href="#how-many-dimensions"></a>
 </h2>
-<p>Usually, asking a dimensionality reduction method for two dimensions
-means you want a scatter plot. In LTSA, <code>ndim = 2</code> also says
-that each neighborhood should be approximated by a two-dimensional
-tangent space. Changing <code>ndim</code> changes every
-<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>W</mi><mi>i</mi></msub><annotation encoding="application/x-tex">W_i</annotation></semantics></math>,
-and hence
-<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>B</mi><annotation encoding="application/x-tex">B</annotation></semantics></math>.
-We have changed the local model before we even get to choosing the
-global coordinates.</p>
-<p>Those two dimension counts don’t always need to agree. A circle has a
-one-dimensional tangent, but we need two coordinates to show the
-complete loop. Setting <code>ndim = 2</code> would change the local
-model just to get that second coordinate.</p>
-<p>This is where <code>spectral_dim</code> comes in. It lets us keep
-more eigenvectors from the same
-<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>B</mi><annotation encoding="application/x-tex">B</annotation></semantics></math>,
-leaving <code>ndim</code> alone. With <code>output = "result"</code>,
-the first <code>ndim</code> coordinates go into <code>embedding</code>,
-and the larger set goes into <code>spectral_embedding</code>. The <a href="spectral-blocks.html">spectral blocks article</a> shows this with
-a circle, then moves on to some less cooperative datasets.</p>
-<p>The third parameter, <code>eig_k</code>, controls how many candidate
-vectors the eigensolver supplies. These go through a Rayleigh–Ritz step,
-which finds the best approximate eigenvectors within the space spanned
-by those candidates. A larger <code>eig_k</code> gives that step more
-room to work; it doesn’t change
+<p>There are three parameters controlling the number of dimensions at
+different stages of the calculation. I don’t want to overcomplicate
+things, so if you just want a scatterplot or have already chosen the
+number of output dimensions, start with <code>ndim</code>. For a 2D
+scatterplot, the default is already <code>ndim = 2</code>. The other two
+parameters are for more advanced uses where you want to inspect extra
+global coordinates or check the numerical stability of the result.</p>
+<ul>
+<li>
+<code>ndim</code>: the requested local tangent dimension and the
+number of coordinates returned as <code>embedding</code>. This is
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>d</mi><annotation encoding="application/x-tex">d</annotation></semantics></math>
+in the discussion above. Changing <code>ndim</code> changes the local
+tangent spaces, the
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>W</mi><mi>i</mi></msub><annotation encoding="application/x-tex">W_i</annotation></semantics></math>
+matrices, and hence
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>B</mi><annotation encoding="application/x-tex">B</annotation></semantics></math>.</li>
+<li>
+<code>spectral_dim</code>: the number of global coordinates
+retained, so you can inspect extra coordinates and diagnostics to see
+whether the displayed embedding cuts through a group of directions with
+similar eigenvalues. It defaults to <code>ndim</code>, but can be larger
+if you use <code>output = "result"</code>. The larger set is returned as
+<code>spectral_embedding</code>, and its first <code>ndim</code> columns
+form <code>embedding</code>.</li>
+<li>
+<code>eig_k</code>: the number of candidate vectors supplied to
+postprocessing, before removing the constant direction and refining and
+selecting the coordinates. This is effectively a numerical solver
+parameter: a larger value gives the calculation more candidates to work
+with, at greater computational cost. It doesn’t change
 <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>B</mi><annotation encoding="application/x-tex">B</annotation></semantics></math>
-or ask for more output coordinates.</p>
-<table class="table">
-<colgroup>
-<col width="33%">
-<col width="33%">
-<col width="33%">
-</colgroup>
-<thead><tr class="header">
-<th>Parameter</th>
-<th>What it counts</th>
-<th>When to change it</th>
-</tr></thead>
-<tbody>
-<tr class="odd">
-<td><code>ndim</code></td>
-<td>Local tangent directions and returned embedding columns</td>
-<td>You want a different local dimension</td>
-</tr>
-<tr class="even">
-<td><code>spectral_dim</code></td>
-<td>Global coordinates retained from the same alignment matrix</td>
-<td>You want to inspect more of the spectrum</td>
-</tr>
-<tr class="odd">
-<td><code>eig_k</code></td>
-<td>Candidate vectors available to the numerical calculation</td>
-<td>The solver may need a larger candidate space</td>
-</tr>
-</tbody>
-</table>
-<p>Most of the time you can leave <code>eig_k</code> at its default. If
-you set it yourself when requesting <code>spectral_dim &gt; ndim</code>,
-it must be at least <code>spectral_dim + 2</code>. That leaves room for
-the known constant direction and one mode beyond the retained set, so we
-can check the eigenvalue gap where we stop keeping coordinates.</p>
+or the number of output coordinates.</li>
+</ul>
+<p>Iterative solvers request <code>eig_k</code> candidates. The dense
+solver computes the full eigensystem and passes its lowest
+<code>eig_k</code> eigenvectors to postprocessing.</p>
+<p>Increasing <code>spectral_dim</code> keeps more global coordinates
+from the same
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>B</mi><annotation encoding="application/x-tex">B</annotation></semantics></math>.
+It can help us assess the global view, but it doesn’t establish whether
+<code>ndim</code> was sufficient for the local projections. Changing
+that local dimension means changing <code>ndim</code> and rebuilding
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>B</mi><annotation encoding="application/x-tex">B</annotation></semantics></math>.</p>
+<p><code>spectral_dim</code> must be at least <code>ndim</code>. When it
+is larger, <code>eig_k</code> must be at least
+<code>spectral_dim + 2</code>: one extra place for the constant
+direction and another for the mode just beyond the retained coordinates,
+so we can check the eigenvalue gap there. When
+<code>spectral_dim = ndim</code>, the minimum is
+<code>eig_k = ndim + 1</code>. In either case, <code>eig_k</code> must
+be less than the number of observations. Most of the time you can leave
+it at its default.</p>
+<p>For example, with <code>ndim = 2</code>,
+<code>spectral_dim = 4</code>, and <code>eig_k = 8</code>, we build
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>B</mi><annotation encoding="application/x-tex">B</annotation></semantics></math>
+using two-dimensional local projections, use eight candidate vectors for
+postprocessing, and retain four nonconstant global coordinates. The
+first two go into <code>embedding</code>, and all four go into
+<code>spectral_embedding</code>. The <a href="spectral-blocks.html">spectral blocks article</a> gives examples
+of inspecting these extra coordinates.</p>
 </div>
 <div class="section level2">
-<h2 id="normalization">Normalization<a class="anchor" aria-label="anchor" href="#normalization"></a>
+<h2 id="getting-more-than-a-picture">Getting more than a picture<a class="anchor" aria-label="anchor" href="#getting-more-than-a-picture"></a>
 </h2>
-<p>So far we have been finding eigenvectors of
-<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>B</mi><annotation encoding="application/x-tex">B</annotation></semantics></math>
-directly. With <code>normalize = TRUE</code>, we instead solve the
-generalized eigenvalue problem</p>
-<p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>B</mi><mi>v</mi><mo>=</mo><mi>λ</mi><mi>D</mi><mi>v</mi><mo>,</mo><mspace width="2.0em"></mspace><mi>D</mi><mo>=</mo><mrow><mi mathvariant="normal">diag</mi><mo>⁡</mo></mrow><mo stretchy="false" form="prefix">(</mo><mi>B</mi><mo stretchy="false" form="postfix">)</mo><mo>,</mo></mrow><annotation encoding="application/x-tex">
-Bv = \lambda Dv, \qquad D = \operatorname{diag}(B),
-</annotation></semantics></math></p>
-<p>where
-<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>D</mi><annotation encoding="application/x-tex">D</annotation></semantics></math>
-is a diagonal matrix containing the diagonal entries of
+<p>By default, <code><a href="../reference/ltsa.html">ltsa()</a></code> returns a coordinate matrix with
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>N</mi><annotation encoding="application/x-tex">N</annotation></semantics></math>
+rows and <code>ndim</code> columns. To see how the calculation went, use
+<code>output = "result"</code>. For example, given a data matrix
+<code>X</code>, this keeps the default two-dimensional tangent model and
+embedding while retaining four global coordinates:</p>
+<div class="sourceCode" id="cb1"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="va">fit</span> <span class="op">&lt;-</span> <span class="fu">flotsam</span><span class="fu">::</span><span class="fu"><a href="../reference/ltsa.html">ltsa</a></span><span class="op">(</span><span class="va">X</span>, output <span class="op">=</span> <span class="st">"result"</span>, spectral_dim <span class="op">=</span> <span class="fl">4</span><span class="op">)</span></span>
+<span></span>
+<span><span class="va">fit</span><span class="op">$</span><span class="va">embedding</span></span>
+<span><span class="va">fit</span><span class="op">$</span><span class="va">spectral_embedding</span></span>
+<span><span class="va">fit</span><span class="op">$</span><span class="va">eigen</span><span class="op">$</span><span class="va">status</span></span>
+<span><span class="va">fit</span><span class="op">$</span><span class="va">eigen</span><span class="op">$</span><span class="va">spectral</span><span class="op">$</span><span class="va">status</span></span>
+<span><span class="va">fit</span><span class="op">$</span><span class="va">eigen</span><span class="op">$</span><span class="va">messages</span></span>
+<span><span class="va">fit</span><span class="op">$</span><span class="va">assembly</span><span class="op">$</span><span class="va">component_count</span></span>
+<span><span class="va">fit</span><span class="op">$</span><span class="va">assembly</span><span class="op">$</span><span class="va">rank_deficient_count</span></span></code></pre></div>
+<p>The displayed embedding is exactly the first <code>ndim</code>
+columns of <code>spectral_embedding</code>. When we keep extra
+coordinates like this, <code>eigen</code> describes the displayed
+embedding and <code>eigen$spectral</code> describes the larger set. That
+lets us check whether a two-dimensional view is well determined even
+when we have retained a larger, more stable group of directions.</p>
+<p>If you want to work with the matrix yourself,
+<code>output = "B"</code> stops before eigenanalysis and returns
 <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>B</mi><annotation encoding="application/x-tex">B</annotation></semantics></math>.
-In practice, <code>flotsam</code> finds eigenvectors of the symmetric
-matrix
-<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msup><mi>D</mi><mrow><mi>−</mi><mn>1</mn><mi>/</mi><mn>2</mn></mrow></msup><mi>B</mi><msup><mi>D</mi><mrow><mi>−</mi><mn>1</mn><mi>/</mi><mn>2</mn></mrow></msup></mrow><annotation encoding="application/x-tex">D^{-1/2}BD^{-1/2}</annotation></semantics></math>,
-then multiplies them by
-<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msup><mi>D</mi><mrow><mi>−</mi><mn>1</mn><mi>/</mi><mn>2</mn></mrow></msup><annotation encoding="application/x-tex">D^{-1/2}</annotation></semantics></math>
-to get the coordinates back in the generalized problem.</p>
-<p>The <a href="https://jlmelville.github.io/smallvis/spectral.html#laplacian-eigenmaps" class="external-link">Laplacian
-Eigenmaps section of my spectral methods notes</a> walks through this
-conversion from a generalized to an ordinary eigenvalue problem. The
-same algebra applies here, with
+Alternatively, use <code>include_B = TRUE</code> with
+<code>output = "result"</code> to include
 <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>B</mi><annotation encoding="application/x-tex">B</annotation></semantics></math>
-replacing the graph Laplacian and
-<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>D</mi><annotation encoding="application/x-tex">D</annotation></semantics></math>
-containing the diagonal of
-<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>B</mi><annotation encoding="application/x-tex">B</annotation></semantics></math>
-rather than graph degrees.</p>
-<p>The coordinates are now centered and orthogonal using weights from
-<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>D</mi><annotation encoding="application/x-tex">D</annotation></semantics></math>.
-This changes the embedding we are asking for, rather than just providing
-another way to compute ordinary LTSA.</p>
+alongside the embedding and diagnostics.</p>
 </div>
 <div class="section level2">
 <h2 id="computing-the-eigenvectors">Computing the eigenvectors<a class="anchor" aria-label="anchor" href="#computing-the-eigenvectors"></a>
 </h2>
-<p>Once we have chosen the neighborhoods, tangent dimension, and
-normalization, we have specified the mathematical problem.
-<code>eig_method</code> chooses how to solve it.</p>
+<p>Once we have chosen the neighborhoods and tangent dimension, we have
+specified the alignment problem. <code>eig_method</code> chooses how to
+solve its eigenproblem.</p>
 <p>The default, <code>eig_method = "auto"</code>, uses dense
 <code><a href="https://rdrr.io/r/base/eigen.html" class="external-link">base::eigen()</a></code> for small datasets or when we ask for a large
 fraction of the available eigenvectors. Otherwise it uses RSpectra.
@@ -331,41 +737,6 @@ actually ran in <code>eigen$backend$name</code>.</p>
 investigate those, <a href="numerical-diagnostics.html">Diagnosing
 suspicious LTSA results</a> connects the status, message, eigenvalue
 gap, component, and rank diagnostics to things you can try.</p>
-</div>
-<div class="section level2">
-<h2 id="getting-more-than-a-picture">Getting more than a picture<a class="anchor" aria-label="anchor" href="#getting-more-than-a-picture"></a>
-</h2>
-<p>By default, <code><a href="../reference/ltsa.html">ltsa()</a></code> returns a coordinate matrix with
-<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>N</mi><annotation encoding="application/x-tex">N</annotation></semantics></math>
-rows and <code>ndim</code> columns. To see how the calculation went, use
-<code>output = "result"</code>. For example, given a data matrix
-<code>X</code>, this keeps the default two-dimensional tangent model and
-embedding while retaining four global coordinates:</p>
-<div class="sourceCode" id="cb1"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">fit</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/ltsa.html">ltsa</a></span><span class="op">(</span><span class="va">X</span>, output <span class="op">=</span> <span class="st">"result"</span>, spectral_dim <span class="op">=</span> <span class="fl">4</span><span class="op">)</span></span>
-<span></span>
-<span><span class="va">fit</span><span class="op">$</span><span class="va">embedding</span></span>
-<span><span class="va">fit</span><span class="op">$</span><span class="va">spectral_embedding</span></span>
-<span><span class="va">fit</span><span class="op">$</span><span class="va">eigen</span><span class="op">$</span><span class="va">status</span></span>
-<span><span class="va">fit</span><span class="op">$</span><span class="va">eigen</span><span class="op">$</span><span class="va">messages</span></span>
-<span><span class="va">fit</span><span class="op">$</span><span class="va">assembly</span><span class="op">$</span><span class="va">component_count</span></span>
-<span><span class="va">fit</span><span class="op">$</span><span class="va">assembly</span><span class="op">$</span><span class="va">rank_deficient_count</span></span></code></pre></div>
-<p>The displayed embedding is exactly the first <code>ndim</code>
-columns of <code>spectral_embedding</code>. When we keep extra
-coordinates like this, <code>eigen</code> describes the displayed
-embedding and <code>eigen$spectral</code> describes the larger set. That
-lets us check whether a two-dimensional view is well determined even
-when we have retained a larger, more stable group of directions.</p>
-<p>If you want to work with the matrix yourself,
-<code>output = "B"</code> stops before eigenanalysis and returns
-<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>B</mi><annotation encoding="application/x-tex">B</annotation></semantics></math>,
-or
-<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msup><mi>D</mi><mrow><mi>−</mi><mn>1</mn><mi>/</mi><mn>2</mn></mrow></msup><mi>B</mi><msup><mi>D</mi><mrow><mi>−</mi><mn>1</mn><mi>/</mi><mn>2</mn></mrow></msup></mrow><annotation encoding="application/x-tex">D^{-1/2}BD^{-1/2}</annotation></semantics></math>
-when <code>normalize = TRUE</code>. Alternatively, use
-<code>include_B = TRUE</code> with <code>output = "result"</code> to
-include the raw, unnormalized
-<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>B</mi><annotation encoding="application/x-tex">B</annotation></semantics></math>
-alongside the embedding and diagnostics.</p>
 </div>
 <div class="section level2">
 <h2 id="using-more-cores">Using more cores<a class="anchor" aria-label="anchor" href="#using-more-cores"></a>
