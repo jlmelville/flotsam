@@ -330,8 +330,9 @@ For smaller examples, `nn_method = "exact"` compares all observations exhaustive
 exact, deterministic neighbors.
 
 You can also reuse a neighbor graph across fits by passing it as `nn_method`. This can be a 1-based
-neighbor index matrix or an object containing an `idx` matrix. See the
-[reference](../reference/ltsa.html) for the input formats.
+neighbor index matrix, an object containing an `idx` matrix, or a sparse adjacency matrix from the
+Matrix package. A sparse graph must have the same number of off-diagonal neighbors in every row;
+the edge weights are ignored. See the [reference](../reference/ltsa.html) for the input formats.
 
 How many neighbors? We need at least `ndim + 2`: one direction is taken up by the constant vector,
 `ndim` more by the tangent space, and we need something left over for the residual. That is only a
