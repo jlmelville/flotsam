@@ -137,18 +137,14 @@ by their singular values, but for alignment we can work with
 alone (we’ll see why when we write down the fit). If you are following
 along with the paper, it puts observations in columns, so our left
 singular vectors correspond to its right singular vectors.</p>
-<p>So far we have done a lot of small PCAs. We now need to find global
-coordinates that agree as well as possible with all those local
-descriptions. Each observation gets one global position, however many
-charts it appears in. We can think of alignment as choosing one
-transformation per neighborhood, with those shared observations tying
-the transformations together.</p>
+<p>So far we have done a lot of small PCAs. Each observation needs one
+global position, however many charts it appears in. We can think of
+alignment as choosing one transformation per neighborhood, with those
+shared observations tying the transformations together.</p>
 </div>
 <div class="section level2">
 <h2 id="what-are-we-trying-to-align">What are we trying to align?<a class="anchor" aria-label="anchor" href="#what-are-we-trying-to-align"></a>
 </h2>
-<p>Each local PCA gives us coordinates in a tangent plane. We want to
-relate those coordinates to one global coordinate system.</p>
 <p>The paper motivates this using a first-order Taylor approximation:
 over a small enough neighborhood, the smooth relationship between
 tangent-plane coordinates and the desired global coordinates can be
@@ -347,9 +343,7 @@ we have:</p>
 =\operatorname{tr}(Y_i^{\mathsf T}W_i^{\mathsf T}W_i Y_i)
 =\operatorname{tr}(Y_i^{\mathsf T}W_i Y_i).
 </annotation></semantics></math></p>
-<p>So that’s the cost function for a single neighborhood, simplified.
-The total cost of the global alignment is the sum of the costs for all
-neighborhoods. This can be written in terms of the full embedding matrix
+<p>We can write the total cost in terms of the full embedding matrix
 <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>Y</mi><annotation encoding="application/x-tex">Y</annotation></semantics></math>
 by assembling the local costs into a <em>global alignment matrix</em>.
 Create an initially zero
@@ -364,11 +358,12 @@ observations:</p>
 E(Y)=\sum_i\operatorname{tr}(Y_i^{\mathsf T}W_i Y_i)
 =\operatorname{tr}(Y^{\mathsf T}BY).
 </annotation></semantics></math></p>
-<p>That is what
+<p>The matrix
 <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>B</mi><annotation encoding="application/x-tex">B</annotation></semantics></math>
-measures: the total squared error left after giving every neighborhood
-its best local affine fit to the same global embedding. It is symmetric
-because each
+encodes the local fits;
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mrow><mi mathvariant="normal">tr</mi><mo>⁡</mo></mrow><mo stretchy="false" form="prefix">(</mo><msup><mi>Y</mi><mi>𝖳</mi></msup><mi>B</mi><mi>Y</mi><mo stretchy="false" form="postfix">)</mo></mrow><annotation encoding="application/x-tex">\operatorname{tr}(Y^{\mathsf T}BY)</annotation></semantics></math>
+gives their total squared error after fitting every neighborhood to the
+same global embedding. The matrix is symmetric because each
 <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>W</mi><mi>i</mi></msub><annotation encoding="application/x-tex">W_i</annotation></semantics></math>
 contributes to it symmetrically, and positive semidefinite since this
 error is a sum of squares, so can never be negative.</p>
@@ -519,7 +514,9 @@ constant vector and already centered.</p>
 <p>To handle this, <code>flotsam</code> projects the constant direction
 out of the candidate vectors and then finds the lowest-cost orthonormal
 directions within their remaining span. This enforces centering while
-keeping any useful zero-cost directions.</p>
+keeping useful zero-cost directions represented in that span. If the
+neighborhoods form disconnected groups, their relative placement in the
+embedding is not determined by the local fits.</p>
 </div>
 <div class="section level2">
 <h2 id="the-recipe">The recipe<a class="anchor" aria-label="anchor" href="#the-recipe"></a>
@@ -531,7 +528,11 @@ compact:</p>
 <li>Center each neighborhood and retain its first
 <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>d</mi><annotation encoding="application/x-tex">d</annotation></semantics></math>
 left singular vectors in
-<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>U</mi><mi>i</mi></msub><annotation encoding="application/x-tex">U_i</annotation></semantics></math>.</li>
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>U</mi><mi>i</mi></msub><annotation encoding="application/x-tex">U_i</annotation></semantics></math>,
+assuming it has at least
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>d</mi><annotation encoding="application/x-tex">d</annotation></semantics></math>
+supported directions. We’ll return to rank-deficient neighborhoods
+below.</li>
 <li>Form
 <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>W</mi><mi>i</mi></msub><mo>=</mo><msub><mi>I</mi><mi>k</mi></msub><mo>−</mo><msub><mn>𝟏</mn><mi>k</mi></msub><msubsup><mn>𝟏</mn><mi>k</mi><mi>𝖳</mi></msubsup><mi>/</mi><mi>k</mi><mo>−</mo><msub><mi>U</mi><mi>i</mi></msub><msubsup><mi>U</mi><mi>i</mi><mi>𝖳</mi></msubsup></mrow><annotation encoding="application/x-tex">W_i=I_k-\mathbf{1}_k\mathbf{1}_k^{\mathsf T}/k-U_iU_i^{\mathsf T}</annotation></semantics></math>.</li>
 <li>Add each
@@ -568,7 +569,8 @@ neighbors.</p>
 <code>nn_method</code>. This can be a 1-based neighbor index matrix, an
 object containing an <code>idx</code> matrix, or a sparse adjacency
 matrix from the Matrix package. A sparse graph must have the same number
-of off-diagonal neighbors in every row; the edge weights are ignored.
+of off-diagonal neighbors in every row; the edge weights are ignored. If
+<code>n_neighbors</code> is not supplied, it is inferred from the graph.
 See the <a href="../reference/ltsa.html">reference</a> for the input
 formats.</p>
 <p>How many neighbors? We need at least <code>ndim + 2</code>: one
@@ -709,12 +711,19 @@ columns of <code>spectral_embedding</code>. When we keep extra
 coordinates like this, <code>eigen</code> describes the displayed
 embedding and <code>eigen$spectral</code> describes the larger set. That
 lets us check whether a two-dimensional view is well determined even
-when we have retained a larger, more stable group of directions.</p>
+when we have retained a larger, more stable group of directions. A
+component count greater than one calls for investigating disconnected
+neighborhoods; a positive rank-deficient count calls for reconsidering
+the neighborhoods or tangent dimension. The diagnostic guide below
+explains what to look for in the eigenanalysis statuses and
+messages.</p>
 <p>If you want to work with the matrix yourself,
 <code>output = "B"</code> stops before eigenanalysis and returns
-<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>B</mi><annotation encoding="application/x-tex">B</annotation></semantics></math>.
-Alternatively, use <code>include_B = TRUE</code> with
-<code>output = "result"</code> to include
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>B</mi><annotation encoding="application/x-tex">B</annotation></semantics></math>
+for ordinary LTSA. With <code>normalize = TRUE</code>, it returns the
+normalized operator instead; see the <a href="ltsa-normalization.html">normalization article</a>. Alternatively,
+use <code>include_B = TRUE</code> with <code>output = "result"</code> to
+include the unnormalized
 <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>B</mi><annotation encoding="application/x-tex">B</annotation></semantics></math>
 alongside the embedding and diagnostics.</p>
 </div>
