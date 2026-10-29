@@ -46,15 +46,11 @@ with $U_i$ alone (we'll see why when we write down the fit). If you are followin
 paper, it puts observations in columns, so our left singular vectors correspond to its right
 singular vectors.
 
-So far we have done a lot of small PCAs. We now need to find global coordinates that agree as well
-as possible with all those local descriptions. Each observation gets one global position, however
-many charts it appears in. We can think of alignment as choosing one transformation per
-neighborhood, with those shared observations tying the transformations together.
+So far we have done a lot of small PCAs. Each observation needs one global position, however many
+charts it appears in. We can think of alignment as choosing one transformation per neighborhood,
+with those shared observations tying the transformations together.
 
 ## What are we trying to align?
-
-Each local PCA gives us coordinates in a tangent plane. We want to relate those coordinates to
-one global coordinate system.
 
 The paper motivates this using a first-order Taylor approximation: over a small enough
 neighborhood, the smooth relationship between tangent-plane coordinates and the desired global
@@ -172,21 +168,19 @@ $$
 =\operatorname{tr}(Y_i^{\mathsf T}W_i Y_i).
 $$
 
-So that's the cost function for a single neighborhood, simplified. The total cost of the global
-alignment is the sum of the costs for all neighborhoods. This can be written in terms of the full
-embedding matrix $Y$ by assembling the local costs into a *global alignment matrix*. Create an
-initially zero $N \times N$ matrix $B$. Add the entries of each $W_i$ to the rows and
-columns belonging to that neighborhood's observations:
+We can write the total cost in terms of the full embedding matrix $Y$ by assembling the local
+costs into a *global alignment matrix*. Create an initially zero $N \times N$ matrix $B$. Add the
+entries of each $W_i$ to the rows and columns belonging to that neighborhood's observations:
 
 $$
 E(Y)=\sum_i\operatorname{tr}(Y_i^{\mathsf T}W_i Y_i)
 =\operatorname{tr}(Y^{\mathsf T}BY).
 $$
 
-That is what $B$ measures: the total squared error left after giving every neighborhood its best
-local affine fit to the same global embedding. It is symmetric because each $W_i$ contributes to it
-symmetrically, and positive semidefinite since this error is a sum of squares, so can never be
-negative.
+The matrix $B$ encodes the local fits; $\operatorname{tr}(Y^{\mathsf T}BY)$ gives their total squared
+error after fitting every neighborhood to the same global embedding. The matrix is symmetric because
+each $W_i$ contributes to it symmetrically, and positive semidefinite since this error is a sum of
+squares, so can never be negative.
 
 ## Avoiding the trivial solution
 
@@ -303,14 +297,16 @@ centered.
 
 To handle this, `flotsam` projects the constant direction out of the candidate vectors and then
 finds the lowest-cost orthonormal directions within their remaining span. This enforces centering
-while keeping any useful zero-cost directions.
+while keeping useful zero-cost directions represented in that span. If the neighborhoods form
+disconnected groups, their relative placement in the embedding is not determined by the local fits.
 
 ## The recipe
 
 With the fitting problem established, the calculation is fairly compact:
 
 1. Find a neighborhood for each observation.
-2. Center each neighborhood and retain its first $d$ left singular vectors in $U_i$.
+2. Center each neighborhood and retain its first $d$ left singular vectors in $U_i$, assuming
+   it has at least $d$ supported directions. We'll return to rank-deficient neighborhoods below.
 3. Form $W_i=I_k-\mathbf{1}_k\mathbf{1}_k^{\mathsf T}/k-U_iU_i^{\mathsf T}$.
 4. Add each $W_i$ into the corresponding rows and columns of $B$.
 5. Exclude the constant direction and find $d$ orthonormal eigenvectors of $B$ with the lowest
@@ -332,7 +328,8 @@ exact, deterministic neighbors.
 You can also reuse a neighbor graph across fits by passing it as `nn_method`. This can be a 1-based
 neighbor index matrix, an object containing an `idx` matrix, or a sparse adjacency matrix from the
 Matrix package. A sparse graph must have the same number of off-diagonal neighbors in every row;
-the edge weights are ignored. See the [reference](../reference/ltsa.html) for the input formats.
+the edge weights are ignored. If `n_neighbors` is not supplied, it is inferred from the graph.
+See the [reference](../reference/ltsa.html) for the input formats.
 
 How many neighbors? We need at least `ndim + 2`: one direction is taken up by the constant vector,
 `ndim` more by the tangent space, and we need something left over for the residual. That is only a
@@ -424,11 +421,15 @@ fit$assembly$rank_deficient_count
 The displayed embedding is exactly the first `ndim` columns of `spectral_embedding`. When we keep
 extra coordinates like this, `eigen` describes the displayed embedding and `eigen$spectral`
 describes the larger set. That lets us check whether a two-dimensional view is well determined
-even when we have retained a larger, more stable group of directions.
+even when we have retained a larger, more stable group of directions. A component count greater
+than one calls for investigating disconnected neighborhoods; a positive rank-deficient count calls
+for reconsidering the neighborhoods or tangent dimension. The diagnostic guide below explains what
+to look for in the eigenanalysis statuses and messages.
 
 If you want to work with the matrix yourself, `output = "B"` stops before eigenanalysis and returns
-$B$. Alternatively, use `include_B = TRUE` with `output = "result"` to include $B$ alongside the
-embedding and diagnostics.
+$B$ for ordinary LTSA. With `normalize = TRUE`, it returns the normalized operator instead; see the
+[normalization article](ltsa-normalization.html). Alternatively, use `include_B = TRUE` with
+`output = "result"` to include the unnormalized $B$ alongside the embedding and diagnostics.
 
 ## Computing the eigenvectors
 
