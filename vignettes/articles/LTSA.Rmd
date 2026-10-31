@@ -158,14 +158,16 @@ i.e. $W_i \left(W_i Y_i\right) = W_i Y_i$. Therefore $W_i^2 = W_i$.
 Second, each term in the definition of $W_i$ is symmetric, so $W_i^{\mathsf T} = W_i$.
 
 For any real matrix $M$ the Frobenius norm is related to the trace (sum of the diagonal elements)
-by $\|M\|_F^2 = \operatorname{tr}(M^{\mathsf T}M)$. For our residual matrix $R_i,$ each diagonal
+by $\|M\|_F^2 = \operatorname{tr}(M^{\mathsf T}M)$. For our residual matrix $R_i$, each diagonal
 entry of $R_i^{\mathsf T}R_i$ is the sum of squared residuals for one embedding axis. With this
 relationship and the idempotence and symmetry of $W_i$, we have:
 
 $$
+\begin{aligned}
 \|W_i Y_i\|_F^2
-=\operatorname{tr}(Y_i^{\mathsf T}W_i^{\mathsf T}W_i Y_i)
-=\operatorname{tr}(Y_i^{\mathsf T}W_i Y_i).
+&=\operatorname{tr}(Y_i^{\mathsf T}W_i^{\mathsf T}W_i Y_i) \\
+&=\operatorname{tr}(Y_i^{\mathsf T}W_i Y_i).
+\end{aligned}
 $$
 
 We can write the total cost in terms of the full embedding matrix $Y$ by assembling the local
@@ -173,8 +175,10 @@ costs into a *global alignment matrix*. Create an initially zero $N \times N$ ma
 entries of each $W_i$ to the rows and columns belonging to that neighborhood's observations:
 
 $$
-E(Y)=\sum_i\operatorname{tr}(Y_i^{\mathsf T}W_i Y_i)
-=\operatorname{tr}(Y^{\mathsf T}BY).
+\begin{aligned}
+E(Y)&=\sum_i\operatorname{tr}(Y_i^{\mathsf T}W_i Y_i) \\
+&=\operatorname{tr}(Y^{\mathsf T}BY).
+\end{aligned}
 $$
 
 The matrix $B$ encodes the local fits; $\operatorname{tr}(Y^{\mathsf T}BY)$ gives their total squared
@@ -215,8 +219,8 @@ $$
 $$
 
 For a general real square matrix $M$,
-$\nabla_y\left(y^{\mathsf T}My\right) = \left(M+M^{\mathsf T}\right)y$, so if $M$ is symmetric,
-$\nabla_y\left(y^{\mathsf T}My\right) = 2My$.
+$\nabla_y(y^{\mathsf T}My) = (M+M^{\mathsf T})y$, so if $M$ is symmetric,
+$\nabla_y(y^{\mathsf T}My) = 2My$.
 
 At a constrained minimum, the derivatives with respect to $y$ and $\lambda$ must vanish. Because
 $B$ is symmetric, differentiating with respect to $y$ gives
@@ -247,7 +251,7 @@ eigenvalue. Its entries supply the coordinates for that axis. But there is a cat
 If every observation has the same coordinate, subtracting the neighborhood mean leaves zeros,
 so each local fit has zero residual. In symbols, $W_i\mathbf{1}_k=0$, and assembling the local
 projectors gives $B\mathbf{1}_N=0$. The constant vector is therefore an eigenvector with eigenvalue
-zero. Scaling it to $\mathbf{1}_N/\sqrt{N}$ gives it unit length, so it satisfies our constraint
+zero. Scaling it to $N^{-1/2}\mathbf{1}_N$ gives it unit length, so it satisfies our constraint
 and achieves the smallest possible cost. Yet every observation still has the same coordinate.
 This is the remaining collapsed solution we need to exclude.
 
@@ -274,9 +278,13 @@ add up to the total alignment cost.
 We can now write the full optimization problem:
 
 $$
-\min_Y \operatorname{tr}(Y^{\mathsf T}BY)
-\quad\text{subject to}\quad
-Y^{\mathsf T}Y=I_d,\qquad Y^{\mathsf T}\mathbf{1}_N=0.
+\begin{gathered}
+\min_Y\,\operatorname{tr}(Y^{\mathsf T}BY) \\
+\begin{aligned}
+\text{subject to}\quad Y^{\mathsf T}Y&=I_d, \\
+Y^{\mathsf T}\mathbf{1}_N&=0.
+\end{aligned}
+\end{gathered}
 $$
 
 Here, the centering constraint $Y^{\mathsf T}\mathbf{1}_N=0$ records the property that our selected
