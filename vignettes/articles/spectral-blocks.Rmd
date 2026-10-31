@@ -26,13 +26,13 @@ Fashion-MNIST.
 Click any figure to open a larger version; click the enlarged image or press
 Escape to close it. Keyboard users can focus a figure and press Enter or Space.
 
-## Keep more modes from the same operator
+## Keep More Modes from the Same Operator
 
 Given a data matrix `X`, request four low-frequency modes while keeping a
 two-dimensional local tangent model and a two-coordinate returned embedding:
 
 ```r
-fit <- ltsa(
+fit <- flotsam::ltsa(
   X,
   ndim = 2,
   n_neighbors = 15,
@@ -46,24 +46,6 @@ identical(
   fit$embedding,
   fit$spectral_embedding[, 1:2, drop = FALSE]
 )
-```
-
-The calculation follows this pipeline:
-
-```text
-data + graph + ndim
-        |
-        v
-  fixed operator B
-        |
-        v
- eig_k candidate modes
-        |
-        v
-spectral_dim retained modes
-        |
-        v
- first ndim displayed
 ```
 
 | Control | Changes `B`? | Purpose |
@@ -89,23 +71,7 @@ A boundary gap compares the last included mode with the next one. A large gap
 isolates the chosen subspace. A small gap suggests interpreting the neighboring
 modes together and checking their geometry and support.
 
-## A short inspection routine
-
-Three questions organize the diagnostics:
-
-1. **Is the operator structurally sound?** Check graph connectivity and local
-   ranks.
-2. **Was the spectrum computed reliably?** Check status, messages, and
-   residuals.
-3. **Is the displayed view well determined and useful?** Check boundary gaps,
-   inspect a small retained block, and measure how broadly each mode is
-   supported.
-
-When comparing stochastic fits, reuse the same fixed in-memory neighbor matrix,
-reset the eigensolver seed immediately before each fit, and keep thread settings
-equal.
-
-## A circle needs a spectral pair
+## A Circle Needs a Spectral Pair
 
 A circle has a one-dimensional tangent at every point. A single real-valued
 coordinate cannot follow the whole loop continuously, so the first two
@@ -116,6 +82,7 @@ The example uses exact neighbors and dense eigenanalysis, making the repeated
 pairs easy to see.
 
 ```{r circle-fit}
+library(flotsam)
 theta <- seq(0, 2 * pi, length.out = 721)[-721]
 circle <- cbind(x = cos(theta), y = sin(theta))
 
@@ -234,34 +201,29 @@ instead keeps `ndim = 1` and uses `spectral_dim = 4`: the first two retained
 modes reveal the global coordinate pair, while the next two expose its
 neighboring spectral context.
 
-## COIL-20: a real periodic example
+## COIL-20: A Real Periodic Example
 
 [COIL-20](https://cave.cs.columbia.edu/repository/COIL-20) contains 72 views of
 each object as it rotates. One object traces a closed, locally one-dimensional
 curve through pixel space, so the circle example predicts a spectral pair.
 
 At `k = 7`, mixing objects produces a disconnected neighbor graph, so we fit
-objects separately. Objects 4 and 1 were fixed by an earlier topology-only
-screen run before any embedding. The screen required connected graphs,
-bidirectional local pose coverage, wraparound support, and at most one-sixth
-pose-order shortcut edges. Nine objects qualified, and ordering them by
-shortcut rate selected objects 4 and 1. The companion below reproduces these
-fixed-object fits and their spectral claims, not the earlier 20-object screen.
-Each fit uses ordinary LTSA with `ndim = 1`, exact neighbors, and four retained
-modes. The coordinates come from pixels; pose supplies the point colors and
-thumbnail labels.
+objects separately. Objects 4 and 1 were selected before embedding using a
+screen for connected graphs and good coverage of the pose sequence. Each fit
+uses standard LTSA with `ndim = 1`, exact neighbors, and four retained modes.
+The coordinates come from pixels; pose supplies the point colors and thumbnail
+labels.
 
 ![COIL-20 object 4. Modes 1 and 2 form a pose-ordered orbit, with thumbnails placed in the same radial direction as their observations.](figures/ltsa-spectral-block-coil-object-4.png)
 
 ![COIL-20 object 1. The path is more distorted and still follows the object's rotation.](figures/ltsa-spectral-block-coil-object-1.png)
 
-The gap after mode 2 is much larger than the gap between modes 1 and 2. For
-objects 4 and 1, the mode 1--2 gaps are `0.000108` and `0.000181`, while the
-mode 2--3 gaps are `0.00250` and `0.00215`---about 23 and 12 times larger. This
-is the spectral pattern expected from a mode pair. The second mode completes
-the rotational orbit already present in the fixed operator.
+For objects 4 and 1, the gap after mode 2 is about 23 and 12 times larger,
+respectively, than the gap between modes 1 and 2. This is the spectral pattern
+expected from a mode pair. The second mode completes the rotational orbit
+already present in the fixed operator.
 
-## Check whether a mode represents many observations
+## Check Whether a Mode Represents Many Observations
 
 A low-energy mode can be dominated by a few observations. For a
 Euclidean-normalized coordinate vector `v`, the effective support fraction is
@@ -286,153 +248,108 @@ This scalar shows whether a coordinate is carried by many observations or only
 a few. The plots then reveal the variation organized by a broadly supported
 coordinate.
 
-For a retained block, first orthonormalize its columns and let each
-observation's block leverage be the sum of its squared entries across that
-basis. Normalizing those leverages to sum to one gives the same effective
-support formula for the whole span. This block support is unchanged by rotating
-or rescaling coordinates within the span. It does not establish where the span
-should end, so read it together with the boundary gap.
+For a block of linearly independent coordinates, first orthonormalize its
+columns. Each observation's **block leverage** is the sum of its squared
+entries across that basis. Divide those leverages by their sum to get
+influence fractions `p`, then compute `1 / (n * sum(p^2))`:
 
-## MNIST: a complementary view
+```{r block-support}
+block_support_fraction <- function(V) {
+  Q <- qr.Q(qr(V))
+  p <- rowSums(Q^2) / ncol(Q)
+  1 / (nrow(Q) * sum(p^2))
+}
+```
 
-The 7,877 MNIST digit-1 images show how localization changes the interpretation
-of extra modes. Ordinary and normalized LTSA reuse the same fixed neighbor
-matrix, `ndim = 2`, `k = 15`, and four retained modes. Normalized LTSA changes
-the weighting through a generalized eigenproblem, giving a distinct estimator
-over the same graph.
+This block support is unchanged by rotating or rescaling coordinates within
+the span. It does not establish where the span should end, so read it together
+with the boundary gap.
 
-The ordinary first three modes are concentrated on individual observations.
-Normalized modes 1 and 2 are broadly supported and arrange handwriting by
-slant, curvature, stroke width, hooks, and serifed or branched forms.
+## MNIST: Inspect a Neighboring Pair
 
-At the displayed boundary, the ordinary modes 1--2 span has block support
-`0.000261` with a weak mode 2--3 gap of `2.81e-5`. The normalized span has
-block support `0.480` with a mode 2--3 gap of `0.00201`. The span-level
-diagnostic therefore agrees with the individual modes: the ordinary view is
-almost point-localized, while the normalized view is broadly supported.
+The 7,877 MNIST digit-1 images illustrate what an extra coordinate can add to
+an existing display. Here we use Jacobi-normalized LTSA, with `ndim = 2`,
+`k = 15`, and four retained modes. The question is what to show from that
+fixed operator. The [normalization article](ltsa-normalization.html) examines
+the separate decision to change the estimator.
 
-![The ordinary MNIST modes 1--2 span is dominated by two atypical observations; leverage then falls by several orders of magnitude.](figures/ltsa-spectral-block-mnist-ordinary-high-leverage.png)
+The first pair forms a curved band; replacing mode 1 with mode 3 gives a
+loop with two branches. These plots show the full coordinate ranges, including
+the more distant points. Each panel has its own axes, with equal physical
+units on both axes.
 
-![Normalized LTSA modes 1 and 2 for MNIST digit 1. The numbered images cover the central plotted region and show how handwriting changes across the map.](figures/ltsa-spectral-block-mnist-normalized-display.png)
+![Full-range normalized LTSA embeddings of MNIST digit 1. Modes 1 and 2 form a curved band; modes 2 and 3 form a loop with branches and distant points.](figures/ltsa-spectral-block-mnist-full-range.png)
 
-Modes 2 and 3 give another view of the same morphology. Mode 3 has less support,
-so this pair works best as a complementary diagnostic view.
+The first pair arranges handwriting by slant, curvature, stroke width, hooks,
+and serifed or branched forms. Its block support is `0.480`, with a mode 2--3
+boundary gap of `0.00201`. To see the handwriting behind the shapes, expand
+the central views. Numbered thumbnails are chosen to cover that region; the
+plot titles report how many observations fall outside each frame.
 
-![Normalized LTSA modes 2 and 3 expose a different sheet-and-branch view of digit-1 morphology.](figures/ltsa-spectral-block-mnist-normalized-extra.png)
+<details>
+<summary>MNIST: Modes 1 and 2 with Image Thumbnails</summary>
 
-![MNIST low spectra and effective support fractions. Ordinary modes 1--3 approach the single-observation limit; normalized modes become progressively more localized after the first pair.](figures/ltsa-spectral-block-mnist-diagnostics.png)
+![A closer view of normalized LTSA modes 1 and 2 for MNIST digit 1, with numbered thumbnails showing variation in handwriting.](figures/ltsa-spectral-block-mnist-normalized-display.png)
 
-Across all four retained modes, ordinary LTSA has block support `0.000689` at
-the weak mode 4--5 gap `7.06e-5`. Normalized LTSA has block support `0.0497` at
-the mode 4--5 gap `0.00196`; its modes 3 and 4 are more localized than the
-displayed pair. These retained-block values describe the exercised spans, not
-a claim that either boundary is uniquely preferred.
+</details>
 
-The numbered representatives cover the central 98% of each plot axis. Starting
-near the plot center, the selection repeatedly chooses the image farthest from
-those already shown. This gives a compact tour of the central region.
+<details>
+<summary>MNIST: Modes 2 and 3 with Image Thumbnails</summary>
 
-## Fashion-MNIST: localization depends on the estimator
+![A closer view of normalized LTSA modes 2 and 3 for MNIST digit 1, with numbered thumbnails showing variation in handwriting.](figures/ltsa-spectral-block-mnist-normalized-extra.png)
 
-Fashion-MNIST shows why a two-dimensional display should be read together with
-its support diagnostics, and how estimator choice can change both the map and
-the observations that dominate it. We fit trousers, dresses, and bags
-separately with ordinary LTSA, using `ndim = 2`, `k = 15`, and twelve retained
-modes. Each class uses one fixed approximate-neighbor graph in memory.
+</details>
 
-Because dimensionality reduction is often judged through a two-dimensional
-scatterplot, we first inspect the ordinary modes 1--2 maps. For each class, the
-span has block support about `0.000286`, barely above the two-coordinate
-point-support benchmark `2 / 7000 = 0.000285714`. The largest 1% of observations
-carry more than 99.98% of the displayed span's leverage.
+Mode 3 is less broadly supported than modes 1 and 2. Across all four retained
+modes, block support falls to `0.0497`, with a mode 4--5 gap of `0.00196`.
+The additional coordinates therefore deserve more care than the first pair.
+Keeping them makes the complementary view available; it does not mean all
+four coordinates are equally useful.
 
-![The ordinary two-dimensional LTSA displays for three Fashion-MNIST classes, shown at their full coordinate ranges. Orange points 1 and 2 are the two highest-leverage observations in each displayed span; the matching numbered source images appear directly below each plot. Nearly all other images collapse into the small gray clump near the origin.](figures/ltsa-spectral-block-fashion-display.png)
+![MNIST low spectra and per-mode support. The normalized first pair has much broader support than its later modes; the ordinary fit is included for reference and is highly concentrated.](figures/ltsa-spectral-block-mnist-diagnostics.png)
 
-These scatterplots faithfully show the returned coordinates, but they are
-highly misleading as maps of typical within-class variation: two observations
-set the visible scale while nearly 7,000 others are compressed together. This
-diagnoses the ordinary-LTSA displayed prefix, not Fashion-MNIST itself. The
-adjacent numbered images identify the leverage maxima as atypical striped or
-noisy observations rather than representative garments.
+## Fashion-MNIST: Extra Modes Can Stay Concentrated
 
-To isolate the effect of estimator weighting, we repeated each fit on the same
-data and fixed graph, changing only to normalized LTSA. The normalized modes
-1--2 spans have block support `0.0898`, `0.0760`, and `0.327` for trousers,
-dresses, and bags. Their top-1% leverage masses fall to 27.2%, 32.3%, and 10.7%,
-with resolved mode 2--3 gaps of `0.00186`, `0.000427`, and `0.00159`.
+Trousers, dresses, and bags provide a different reason to inspect a block:
+we want to know whether concentration is confined to the first two modes.
+Each class contains 7,000 images and uses one fixed approximate-neighbor
+graph. We fit standard LTSA with `ndim = 2`, `k = 15`, and twelve retained
+modes.
 
-![Normalized LTSA modes 1 and 2 for the same three Fashion-MNIST classes and graphs. Orange points 1 and 2 are the two highest-leverage observations in each displayed span; the matching numbered source images appear directly below each plot. Unlike the ordinary displays, thousands of observations contribute visibly to each map.](figures/ltsa-spectral-block-fashion-normalized-display.png)
+In all three first-pair displays, block support is close to the two-point
+benchmark `2 / 7000`. The largest 1% of observations carry more than 99.98%
+of the displayed span's leverage.
 
-Normalization changes the high-leverage observations as well as the map: none
-of these numbered images belongs to the corresponding ordinary pair. They are
-recognizable class members, but they are only the two leverage maxima, not
-representatives of the normalized display. The much lower top-1% masses show
-that leverage is distributed across many more observations.
+![The ordinary two-dimensional LTSA displays for three Fashion-MNIST classes, shown at their full coordinate ranges. Orange points 1 and 2 are the two highest-leverage observations in each displayed span; the matching source images appear directly below each plot. Nearly all other images collapse near the origin.](figures/ltsa-spectral-block-fashion-display.png)
 
-For these fixed classes and settings, normalization produces substantially
-broader and visually richer displays, especially for bags. This is not a claim
-that normalization is always better for visualization: it changes the
-estimator's weighting, and its usefulness depends on the data, graph, and
-neighborhood. The support and boundary diagnostics justify the interpretation
-here; the estimator name alone does not.
+The source images identify those extreme points as atypical striped or noisy
+records. They set the visible scale, while most garments are compressed
+together. The graphs are connected, the local patches have full rank, and
+the eigensolves converge, so we also inspect the extra modes.
 
-The ordinary localization is not confined to the displayed pair. Across the
-three classes, all 36 coordinates in modes 1--12 lie near the
-single-observation support limit: their effective support fractions range from
-`0.000142917` to
-`0.000146491`, compared with `1 / 7000 = 0.000142857`. The largest 1% of
-observations carry at least 99.88% of every mode's energy. The graphs are
-connected, local patches have full rank, and the eigensolves converge.
+![Fashion-MNIST spectra through mode 13 and per-mode effective support through mode 12. Every retained mode is localized; separators mark the displayed and retained boundaries.](figures/ltsa-spectral-block-fashion-diagnostics.png)
 
-![Fashion-MNIST spectra through mode 13 and per-mode effective support through mode 12. Every retained mode is localized; the separators mark the displayed and inspected prefix boundaries.](figures/ltsa-spectral-block-fashion-diagnostics.png)
+All 36 coordinates across the three classes remain near the single-point
+support limit, `1 / 7000`. The twelve-coordinate block supports are also close
+to the corresponding `12 / 7000` benchmark.
 
-The displayed-pair thumbnails show what sets the scale of a two-dimensional
-map. To ask what drives leverage across the retained span, we instead rank
-observations in each full 12-mode block. These are extreme-leverage diagnostics,
-not representative samples; numbering restarts in every row.
+For these fits, looking farther into the computed block does not reveal a
+broadly supported coordinate. The mode 12--13 gaps are weak, so this
+conclusion stops at the twelve modes inspected. To investigate changing the
+weighting of the estimator itself, see
+[Jacobi-Normalized LTSA](ltsa-normalization.html).
 
-For ordinary LTSA, twelve-mode block support is `0.001720` for trousers,
-`0.001716` for dresses, and `0.001719` for bags, close to the
-twelve-coordinate point-support benchmark `12 / 7000 = 0.001714`. The largest
-1% of observations carry at least 99.93% of each block's leverage. The mode
-12--13 gaps are weak---`2.48e-5`, `1.46e-7`, and `8.99e-7`---so the ordinary
-conclusion stops at the exercised block.
+## What to Carry into Practice
 
-The normalized twelve-mode supports are broader but not uniformly as broad as
-the normalized displayed pairs: `0.1269`, `0.0293`, and `0.0222`. Their top-1%
-leverage masses are 13.8%, 29.6%, and 29.9%, at resolved mode 12--13 gaps of
-`0.000866`, `0.00453`, and `0.000596`.
+Use `spectral_dim` when topology or a weak boundary gives you a reason to
+look beyond the displayed coordinates. On the circle and COIL-20, a pair of
+modes completes a closed path. MNIST supplies a useful neighboring view, with
+less support in the added coordinate. Fashion-MNIST shows that a larger
+computed block can remain concentrated throughout.
 
-![The top 12 leverage observations for each ordinary and normalized twelve-mode Fashion-MNIST block. Ordinary rows are dominated by striped, patterned, or noisy images; normalized rows contain recognizable garments. Numbering restarts for every estimator and class.](figures/ltsa-spectral-block-fashion-high-leverage.png)
-
-The paired rankings show how the estimators differ. Only one trouser appears in
-both top twelves; the dress and bag sets have no overlap. The two normalized
-displayed-pair highlights remain ranks 1 and 2 in the full trouser block and
-ranks 3 and 4 for bags, but fall to ranks 59 and 62 for dresses. Later
-normalized modes therefore shift which dresses drive the retained block. This
-also explains why the normalized full-block support can be more concentrated
-than the visually rich modes 1--2 map.
-
-The eigengap describes boundary stability; block support describes how broadly
-the retained span is represented across observations. Here, the basis-dependent
-per-mode supports and the basis-invariant block support lead to the same
-conclusion.
-
-## What to carry into practice
-
-The circle and COIL-20 show the clearest use: a locally one-dimensional closed
-path appears as a pair in the low-frequency block. MNIST shows how normalized
-LTSA can produce a coherent complementary view, while support reveals whether
-each coordinate describes many observations or only a few. Fashion-MNIST shows
-that estimator choice can change both a fixed displayed pair and the
-observations driving a larger retained block. Normalization broadens the
-displayed pair here without making every later mode broadly supported or
-establishing a universal estimator preference.
-
-Use `spectral_dim` when topology or a weak boundary gives you a reason to look
-past the displayed prefix. Read the block together with connectivity, rank,
-solver, gap, and support diagnostics. For details of the returned fields, see
-[Diagnosing suspicious LTSA results](numerical-diagnostics.html).
+Read the plots together with support and boundary gaps, after checking graph,
+rank, and solver diagnostics. [Diagnosing suspicious LTSA results](numerical-diagnostics.html)
+gives the returned fields and the action associated with each signal.
 
 Retaining a block supplies candidate coordinates; choosing which coordinates
 to display is a separate problem. [Independent Eigencoordinate
@@ -441,42 +358,43 @@ is one published method for selecting smooth, locally independent coordinates
 from a larger spectral set. `spectral_dim` does not perform that selection; it
 exposes the candidate modes needed to investigate it.
 
-## Reproduce the real-data examples
+## Trying It Yourself
 
-The complete script downloads the datasets with `snedata`, reuses fixed
-in-memory neighbor matrices for estimator comparisons, fits the retained
-blocks, checks the claims above, and draws the thumbnail and support plots.
-Install its extra dependencies with `pak::pak("jlmelville/snedata")` and
-`install.packages("rnndescent")`. Set `FLOTSAM_SPECTRAL_BLOCK_FIGURE_DIR` to a
-directory to write all ten real-data article figures with the exact filenames
-and dimensions declared in the script; otherwise they draw on the current
-device.
+Here's a compact version of the COIL-20 example. Install `flotsam`, `snedata`,
+`vizier` 0.6.2 or later, and `ggplot2`:
 
-From the package source tree, after installing the current package, this command
-regenerates the complete figure set and stops if a semantic invariant fails:
-
-```bash
-FLOTSAM_SPECTRAL_BLOCK_FIGURE_DIR=vignettes/articles/figures \
-  Rscript vignettes/articles/spectral-blocks-reproduction.R
+```{r install-coil, eval=FALSE}
+install.packages("pak")
+pak::pak(c(
+  "jlmelville/flotsam", "jlmelville/snedata", "jlmelville/vizier", "ggplot2"
+))
 ```
 
-```{r reproduction-code, echo=FALSE, results="asis"}
-script_path <- file.path(
-  dirname(knitr::current_input(dir = TRUE)),
-  "spectral-blocks-reproduction.R"
+Download object 4 and retain four coordinates from the one-dimensional local
+model. The pose values are used only to color the plot.
+
+```{r coil-example, eval=FALSE}
+coil <- snedata::download_coil20(as = "list")
+rows <- coil$meta$object == 4L
+X <- coil$data[rows, , drop = FALSE]
+pose <- as.integer(as.character(coil$meta$pose[rows]))
+
+fit <- flotsam::ltsa(
+  X, ndim = 1, n_neighbors = 7, nn_method = "exact", eig_method = "eig",
+  eig_k = 8, output = "result", spectral_dim = 4
 )
-script <- paste(readLines(script_path, warn = FALSE), collapse = "\n")
-cat(
-  "<details><summary>Show the complete data and plotting script ",
-  "(downloads three image datasets)</summary>",
-  "<pre><code class=\"language-r\">",
-  htmltools::htmlEscape(script),
-  "</code></pre></details>",
-  sep = "\n"
+vizier::embed_ggplot(
+  fit$spectral_embedding[, 1:2], pose,
+  color_scheme = grDevices::hcl.colors(256, "Dynamic"), num_colors = 256,
+  fixed_aspect = TRUE, title = "COIL-20 object 4: modes 1 and 2"
 )
 ```
 
-## Data sources
+Try `fit$spectral_embedding[, 2:3]` to inspect the next pair. The article
+figures add thumbnails of the object; this example plots the coordinates and
+pose colors.
+
+## Data Sources
 
 The image examples use [COIL-20](https://cave.cs.columbia.edu/repository/COIL-20)
 (Sameer A. Nene, Shree K. Nayar, and Hiroshi Murase),

@@ -20,6 +20,7 @@ article_figures <- data.frame(
     "ltsa-spectral-block-coil-object-4.png",
     "ltsa-spectral-block-coil-object-1.png",
     "ltsa-spectral-block-mnist-ordinary-high-leverage.png",
+    "ltsa-spectral-block-mnist-full-range.png",
     "ltsa-spectral-block-mnist-normalized-display.png",
     "ltsa-spectral-block-mnist-normalized-extra.png",
     "ltsa-spectral-block-mnist-diagnostics.png",
@@ -35,6 +36,7 @@ article_figures <- data.frame(
     1800L,
     1800L,
     1800L,
+    1800L,
     2200L,
     2200L,
     2200L,
@@ -44,6 +46,7 @@ article_figures <- data.frame(
     950L,
     950L,
     1100L,
+    900L,
     1000L,
     1000L,
     650L,
@@ -52,7 +55,7 @@ article_figures <- data.frame(
     1300L,
     1600L
   ),
-  res = c(150L, 150L, 180L, 150L, 150L, 150L, 180L, 180L, 180L, 180L)
+  res = c(150L, 150L, 180L, 150L, 150L, 150L, 150L, 180L, 180L, 180L, 180L)
 )
 
 open_output_figure <- function(filename) {
@@ -222,14 +225,9 @@ central_window <- function(coordinates) {
   )
   spans <- apply(limits, 2L, diff)
   spans[spans == 0] <- 1
-  outside <- coordinates[, 1L] < limits[1L, 1L] |
-    coordinates[, 1L] > limits[2L, 1L] |
-    coordinates[, 2L] < limits[1L, 2L] |
-    coordinates[, 2L] > limits[2L, 2L]
   list(
     xlim = limits[, 1L] + c(-0.04, 0.04) * spans[[1L]],
-    ylim = limits[, 2L] + c(-0.04, 0.04) * spans[[2L]],
-    outside_count = sum(outside)
+    ylim = limits[, 2L] + c(-0.04, 0.04) * spans[[2L]]
   )
 }
 
@@ -402,7 +400,15 @@ draw_embedding_panel <- function(
     ylim = window$ylim,
     xlab = xlab,
     ylab = ylab,
-    main = main
+    main = NULL
+  )
+  frame <- graphics::par("usr")
+  outside <- coordinates[, 1L] < frame[[1L]] |
+    coordinates[, 1L] > frame[[2L]] |
+    coordinates[, 2L] < frame[[3L]] |
+    coordinates[, 2L] > frame[[4L]]
+  graphics::title(
+    main = paste0(main, "; ", sum(outside), " observations outside frame")
   )
   graphics::text(
     coordinates[selected, , drop = FALSE],
@@ -644,15 +650,12 @@ plot_pair_with_images <- function(
   on.exit(graphics::par(old_par))
   graphics::layout(matrix(c(1L, 1L, 1L, 2L, 2L), nrow = 1L))
   graphics::par(mar = c(4.4, 4.5, 4.2, 1.2))
-  window <- central_window(coordinates)
   draw_embedding_panel(
     coordinates,
     selected,
     paste0(
       main,
-      "\nRepresentative coverage; central 98% per axis; ",
-      window$outside_count,
-      " observations outside frame"
+      "\nRepresentative coverage; central view"
     ),
     paste0("same-operator LTSA mode ", pair[[1L]]),
     paste0("same-operator LTSA mode ", pair[[2L]])
@@ -1042,6 +1045,27 @@ draw_ranked_thumbnail_grid(
 graphics::title(main = "Top 16 observations by displayed-block leverage")
 graphics::par(old_par)
 close_output_figure(mnist_figure_open)
+
+mnist_full_open <- open_output_figure(
+  "ltsa-spectral-block-mnist-full-range.png"
+)
+old_par <- graphics::par(no.readonly = TRUE)
+graphics::par(mfrow = c(1L, 2L), mar = c(4.2, 4.5, 3.3, 1))
+for (pair in list(1:2, 2:3)) {
+  coordinates <- mnist_normalized$spectral_embedding[, pair, drop = FALSE]
+  graphics::plot(
+    coordinates,
+    pch = 16,
+    cex = 0.4,
+    col = grDevices::adjustcolor("grey25", alpha.f = 0.3),
+    asp = 1,
+    xlab = paste("LTSA mode", pair[[1L]]),
+    ylab = paste("LTSA mode", pair[[2L]]),
+    main = paste("Modes", pair[[1L]], "and", pair[[2L]])
+  )
+}
+graphics::par(old_par)
+close_output_figure(mnist_full_open)
 
 mnist_normalized_display_open <- open_output_figure(
   "ltsa-spectral-block-mnist-normalized-display.png"

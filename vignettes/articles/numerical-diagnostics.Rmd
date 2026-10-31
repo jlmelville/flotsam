@@ -21,7 +21,7 @@ This article gives a question-to-action path through the result object. See
 [Exploring LTSA spectral blocks](spectral-blocks.html) for worked examples of
 interpreting extra modes.
 
-## Start with the result object
+## Start with the Result Object
 
 Request `output = "result"`, then inspect status and messages before tuning
 anything. This deterministic Swiss-roll example uses exact neighbors to remove
@@ -122,7 +122,7 @@ stopifnot(
 )
 ```
 
-## Choose the next action from the signal
+## Choose the Next Action from the Signal
 
 | Signal | What it supports | Next action |
 |---|---|---|
@@ -137,7 +137,7 @@ residual does not prove that a chosen boundary is meaningful. Use each field to
 rule in or out its own failure class rather than treating `status` as a single
 quality score.
 
-### Keep the three dimension controls distinct
+### Keep the Three Dimension Controls Distinct
 
 - `ndim` sets the local tangent rank, changes the LTSA operator, and sets the
   displayed prefix.
@@ -152,15 +152,14 @@ A stricter tolerance cannot separate a genuinely repeated eigenspace. When
 inside the observed near-zero block are not uniquely identifiable; reason
 about the subspace instead.
 
-## When a tighter solve also needs a wider candidate span
+## When a Tighter Solve Also Needs a Wider Candidate Span
 
-The 10,000-sample S-curve-with-a-hole example exercises a different failure.
-Its reproduction script generates the public `snedata` dataset, builds one
-self-first 15-neighbor graph with one thread, and reuses that graph for all
-three solves. It resets the eigensolver seed immediately before every sampled
-call.
+This S-curve-with-a-hole example exercises a different failure. It generates
+10,000 points with `snedata`; removing the hole leaves 9,489 observations in
+this run. We build one self-first 15-neighbor graph with one thread and reuse
+it for all three solves. Each solve resets the eigensolver seed.
 
-The frozen full run reports:
+In this run:
 
 | Candidate request | Outcome | Minimum latent-coordinate R-squared |
 |---|---|---:|
@@ -168,10 +167,11 @@ The frozen full run reports:
 | `eig_k = 6`, `tol = 1e-8` | RSpectra fails with 0 of 6 candidates converged | — |
 | `eig_k = 18`, `tol = 1e-8` | Warning result; expected unrolled span recovered | 0.999999 |
 
-The R-squared witness regresses each recoverable latent coordinate on the
-returned two-dimensional span. It is unchanged by sign flips, rotations, or
-rescaling of the embedding. The wider strict result recovers the expected
-unrolled geometry; the hole is also visible in the generated figure. Its
+To calculate R-squared, regress each original latent coordinate on the two
+embedding coordinates. This measures how well the embedding can recover that
+coordinate and is unchanged by sign flips, rotations, or rescaling. The wider
+strict result recovers the expected unrolled geometry; the hole is also visible
+in the generated figure. Its
 status remains `"warning"` because the displayed Ritz boundary is weak, so the
 example demonstrates successful geometric recovery without claiming that the
 two-mode boundary is strongly isolated.
@@ -180,41 +180,47 @@ two-mode boundary is strongly isolated.
 
 ![With eighteen candidate vectors and the tighter tolerance, the same fixed graph yields the expected unrolled geometry and visible hole.](figures/s-curve-hole-eig-k-18-tol-1e-8.png)
 
-From the package source tree, after installing the current package and
-`snedata`, one command regenerates both figures and stops if the solver,
-assembly, or latent-geometry invariants fail:
+Here's the central comparison. Install `snedata` with
+`pak::pak("jlmelville/snedata")` and use the same graph for all three fits.
+Each neighborhood includes the observation itself and fourteen other points.
 
-```bash
-FLOTSAM_NUMERICAL_DIAGNOSTICS_FIGURE_DIR=vignettes/articles/figures \
-  Rscript vignettes/articles/numerical-diagnostics-reproduction.R
-```
+```{r s-curve-example, eval=FALSE}
+set.seed(42)
+s_curve <- snedata::s_curve_hole(n_samples = 10000)
+X <- as.matrix(s_curve[, c("x", "y", "z")])
 
-Use the reduced route for a quick no-download execution check. It deliberately
-does not overwrite the full article figures because the scale-dependent
-six-vector failure does not occur on the smaller sample.
+set.seed(42)
+nn <- rnndescent::nnd_knn(X, k = 16, n_threads = 1)
+graph <- t(vapply(seq_len(nrow(X)), function(i) {
+  neighbors <- nn$idx[i, order(nn$dist[i, ], nn$idx[i, ])]
+  c(i, head(neighbors[neighbors != i], 14))
+}, integer(15)))
 
-```bash
-FLOTSAM_NUMERICAL_DIAGNOSTICS_SMOKE=true \
-  Rscript vignettes/articles/numerical-diagnostics-reproduction.R
-```
-
-```{r reproduction-code, echo=FALSE, results="asis"}
-script_path <- file.path(
-  dirname(knitr::current_input(dir = TRUE)),
-  "numerical-diagnostics-reproduction.R"
+fit_s_curve <- function(eig_k, tol) {
+  set.seed(42)
+  flotsam::ltsa(
+    X, n_neighbors = 15, nn_method = graph, eig_method = "rspectra",
+    eig_k = eig_k, tol = tol, output = "result"
+  )
+}
+narrow <- fit_s_curve(eig_k = 6, tol = 1e-6)
+strict_narrow <- tryCatch(
+  fit_s_curve(eig_k = 6, tol = 1e-8), error = function(e) e
 )
-script <- paste(readLines(script_path, warn = FALSE), collapse = "\n")
-cat(
-  "<details><summary>Show the complete S-curve reproduction script ",
-  "(full route uses 10,000 generated samples)</summary>",
-  "<pre><code class=\"language-r\">",
-  htmltools::htmlEscape(script),
-  "</code></pre></details>",
-  sep = "\n"
-)
+wide <- fit_s_curve(eig_k = 18, tol = 1e-8)
+
+strict_narrow
+narrow$eigen$status
+wide$eigen$status
+plot(narrow$embedding, col = s_curve$color, pch = 16, cex = 0.45)
+plot(wide$embedding, col = s_curve$color, pch = 16, cex = 0.45)
 ```
 
-## Tune the selected backend, not an unspecified route
+The exact solver outcome can vary with the software and platform. The example
+plots the coordinates; the reported R-squared values above also use the
+known latent coordinates of this generated surface.
+
+## Tune the Selected Backend, Not an Unspecified Route
 
 If residuals or a hard backend failure point to solver accuracy, select the
 backend explicitly before passing its controls:
@@ -254,7 +260,7 @@ computes the full dense eigensystem and provides a useful eigenvalue or
 eigenspace reference. It is too expensive for large datasets, and repeated
 eigenspaces still make individual eigenvectors non-unique.
 
-## Why `eig_k` can matter
+## Why `eig_k` Can Matter
 
 `flotsam` reflects the alignment operator as $\mu I - B$, turning the lowest
 directions of $B$ into the largest algebraic directions requested from an
@@ -279,7 +285,7 @@ eigenanalysis. With `normalize = FALSE` this returns the raw alignment matrix;
 with `normalize = TRUE` it returns the normalized operator used by the
 generalized estimator.
 
-## Normalization changes the estimator
+## Normalization Changes the Estimator
 
 With `normalize = TRUE`, `flotsam` solves
 
@@ -295,11 +301,13 @@ ordinary graph degree.
 
 When comparing the two estimators, freeze and reuse the neighbor graph, reset
 the solver seed before each fit, and keep thread and solver settings equal.
-Then compare both spectral evidence and support. The
-[spectral-block article](spectral-blocks.html) applies that protocol to MNIST
-and Fashion-MNIST.
+Then compare both spectral evidence and support.
+[Jacobi-Normalized LTSA](ltsa-normalization.html) explains
+the Jacobi weighting and compares its visual effects across several datasets. The
+[spectral-block article](spectral-blocks.html) addresses the separate choice
+of which coordinates to retain and inspect.
 
-## Threading and cross-implementation checks
+## Threading and Cross-Implementation Checks
 
 `n_threads` controls computed-neighbor search;
 `n_assembly_threads` controls construction of the alignment matrix. Serial
