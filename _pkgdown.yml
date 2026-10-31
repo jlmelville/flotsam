@@ -7,4 +7,5 @@ articles:
   contents:
   - articles/LTSA
   - articles/spectral-blocks
+  - articles/ltsa-normalization
   - articles/numerical-diagnostics
