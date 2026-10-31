@@ -28,31 +28,28 @@ happens, then connect the calculation to the choices available in
 
 ## Local PCA
 
-Let’s start with a data matrix $`X`$ containing $`N`$ observations in
-rows and $`p`$ features in columns. For each observation, find a
-neighborhood of $`k`$ observations, where $`k`$ is `n_neighbors`. By
-default, this count includes the observation itself.
+Let’s start with a data matrix X containing N observations in rows and p
+features in columns. For each observation, find a neighborhood of k
+observations, where k is `n_neighbors`. By default, this count includes
+the observation itself.
 
-Center the columns of each $`k \times p`$ neighborhood matrix and
-compute its singular value decomposition. Keep the $`d`$ left singular
-vectors associated with the largest singular values, where $`d`$ is
-`ndim`, and put them in a $`k \times d`$ matrix $`U_i`$ for neighborhood
-$`i`$. These describe how the observations are arranged along the local
-tangent directions.
+Center the columns of each k \times p neighborhood matrix and compute
+its singular value decomposition. Keep the d left singular vectors
+associated with the largest singular values, where d is `ndim`, and put
+them in a k \times d matrix U_i for neighborhood i. These describe how
+the observations are arranged along the local tangent directions.
 
-For now, assume the neighborhood has at least $`d`$ nonzero singular
-values. The columns of $`U_i`$ are then centered and orthonormal:
+For now, assume the neighborhood has at least d nonzero singular values.
+The columns of U_i are then centered and orthonormal:
 
-``` math
-\mathbf{1}_k^{\mathsf T}U_i = 0, \qquad U_i^{\mathsf T}U_i = I_d,
-```
+\mathbf{1}\_k^{\mathsf T}U_i = 0, \qquad U_i^{\mathsf T}U_i = I_d,
 
-where $`\mathbf{1}_k`$ is a column of $`k`$ ones and $`I_d`$ is the
-$`d \times d`$ identity matrix. Ordinary PCA scores would also multiply
-these columns by their singular values, but for alignment we can work
-with $`U_i`$ alone (we’ll see why when we write down the fit). If you
-are following along with the paper, it puts observations in columns, so
-our left singular vectors correspond to its right singular vectors.
+where \mathbf{1}\_k is a column of k ones and I_d is the d \times d
+identity matrix. Ordinary PCA scores would also multiply these columns
+by their singular values, but for alignment we can work with U_i alone
+(we’ll see why when we write down the fit). If you are following along
+with the paper, it puts observations in columns, so our left singular
+vectors correspond to its right singular vectors.
 
 So far we have done a lot of small PCAs. Each observation needs one
 global position, however many charts it appears in. We can think of
@@ -70,173 +67,145 @@ rotations, reflections and translations, so LTSA can fit local
 coordinate changes that do not preserve distances.
 
 To add some notation to the discussion, put the proposed global
-coordinates in an $`N \times d`$ matrix $`Y`$, with one observation per
-row. Let $`Y_i`$ contain the $`k`$ rows belonging to neighborhood $`i`$,
-in the same order as the rows of $`U_i`$. These are coordinates we are
-trying to find.
+coordinates in an N \times d matrix Y, with one observation per row. Let
+Y_i contain the k rows belonging to neighborhood i, in the same order as
+the rows of U_i. These are coordinates we are trying to find.
 
 Within this neighborhood, we want to be able to write
 
-``` math
-Y_i \approx \mathbf{1}_k c_i^{\mathsf T} + U_i A_i,
-```
+Y_i \approx \mathbf{1}\_k c_i^{\mathsf T} + U_i A_i,
 
-where $`c_i`$ is a vector of $`d`$ offsets and $`A_i`$ is a
-$`d \times d`$ matrix. Multiplying by $`A_i`$ does the linear
-transformation, and $`\mathbf{1}_k c_i^{\mathsf T}`$ adds the same
-translation to every observation in the neighborhood. Each neighborhood
-gets its own $`c_i`$ and $`A_i`$.
+where c_i is a vector of d offsets and A_i is a d \times d matrix.
+Multiplying by A_i does the linear transformation, and \mathbf{1}\_k
+c_i^{\mathsf T} adds the same translation to every observation in the
+neighborhood. Each neighborhood gets its own c_i and A_i.
 
-Because the transformation $`A_i`$ allows for stretching and shearing,
-we can use $`U_i`$ directly, rather than multiplying its columns by
-their singular values as we would for PCA scores. That multiplication
-just rescales the local coordinate axes, but that scaling is absorbed
-into $`A_i`$.
+Because the transformation A_i allows for stretching and shearing, we
+can use U_i directly, rather than multiplying its columns by their
+singular values as we would for PCA scores. That multiplication just
+rescales the local coordinate axes, but that scaling is absorbed into
+A_i.
 
 ## Measuring the misfit
 
-We now have $`N`$ affine transformations to fit, one per neighborhood,
-with shared observations tying the fits together. For a proposed global
-embedding $`Y`$, each transformation must try to reproduce the
-corresponding rows $`Y_i`$.
+We now have N affine transformations to fit, one per neighborhood, with
+shared observations tying the fits together. For a proposed global
+embedding Y, each transformation must try to reproduce the corresponding
+rows Y_i.
 
 For each neighborhood, we want to find the affine transformation that
-brings its local chart as close to $`Y_i`$ as possible in the
-least-squares sense. The differences between the proposed coordinates
-and the transformed chart form the *residual matrix* $`R_i`$,
+brings its local chart as close to Y_i as possible in the least-squares
+sense. The differences between the proposed coordinates and the
+transformed chart form the *residual matrix* R_i,
 
-``` math
-R_i = Y_i-\mathbf{1}_k c_i^{\mathsf T}-U_iA_i.
-```
+R_i = Y_i-\mathbf{1}\_k c_i^{\mathsf T}-U_iA_i.
 
-Like $`Y_i`$ and $`U_i`$, $`R_i`$ is a $`k \times d`$ matrix: one row
-per observation and one column per embedding axis. Each entry is a
-proposed coordinate minus the corresponding coordinate predicted by the
-affine fit. To get the best transformation, we minimize its squared
-Frobenius norm, $`\|R_i\|_F^2`$ (the sum of the squared errors across
-all observations and embedding axes).
+Like Y_i and U_i, R_i is a k \times d matrix: one row per observation
+and one column per embedding axis. Each entry is a proposed coordinate
+minus the corresponding coordinate predicted by the affine fit. To get
+the best transformation, we minimize its squared Frobenius norm,
+\\R_i\\\_F^2 (the sum of the squared errors across all observations and
+embedding axes).
 
-Working with $`U_i`$ makes the best fit easy to compute. Because the
-columns of $`U_i`$ are centered, the best translation is given by the
-column means of $`Y_i`$. Because the columns of $`U_i`$ are orthonormal,
-the best linear fit is the projection of each column of $`Y_i`$ onto the
-space spanned by those columns. The fitted translation and coefficient
-matrix are:
+Working with U_i makes the best fit easy to compute. Because the columns
+of U_i are centered, the best translation is given by the column means
+of Y_i. Because the columns of U_i are orthonormal, the best linear fit
+is the projection of each column of Y_i onto the space spanned by those
+columns. The fitted translation and coefficient matrix are:
 
-``` math
-c_i = \frac{1}{k}Y_i^{\mathsf T}\mathbf{1}_k,
-\qquad A_i = U_i^{\mathsf T}Y_i.
-```
+c_i = \frac{1}{k}Y_i^{\mathsf T}\mathbf{1}\_k, \qquad A_i = U_i^{\mathsf
+T}Y_i.
 
 Substituting these into the residual gives us:
 
-``` math
-\begin{aligned}
-R_i
-&= Y_i - \frac{\mathbf{1}_k\mathbf{1}_k^{\mathsf T}}{k}Y_i
-       - U_iU_i^{\mathsf T}Y_i \\
-&= \left(I_k-\frac{\mathbf{1}_k\mathbf{1}_k^{\mathsf T}}{k}
-       -U_iU_i^{\mathsf T}\right)Y_i \\
-&= W_i Y_i
-\end{aligned}
-```
+\begin{aligned} R_i &= Y_i - \frac{\mathbf{1}\_k\mathbf{1}\_k^{\mathsf
+T}}{k}Y_i - U_iU_i^{\mathsf T}Y_i \\ &=
+\left(I_k-\frac{\mathbf{1}\_k\mathbf{1}\_k^{\mathsf T}}{k}
+-U_iU_i^{\mathsf T}\right)Y_i \\ &= W_i Y_i \end{aligned}
 
-where the LTSA *residual projector*, $`W_i`$, is defined as:
+where the LTSA *residual projector*, W_i, is defined as:
 
-``` math
-W_i = I_k-\frac{\mathbf{1}_k\mathbf{1}_k^{\mathsf T}}{k}-U_iU_i^{\mathsf T}.
-```
+W_i = I_k-\frac{\mathbf{1}\_k\mathbf{1}\_k^{\mathsf
+T}}{k}-U_iU_i^{\mathsf T}.
 
-$`W_i`$ is a $`k \times k`$ matrix that depends only on the local chart
-$`U_i`$. Multiplying it by the neighborhood coordinates $`Y_i`$ gives
-the residual matrix $`R_i`$ after the best affine fit. There are two
-subtractions here. The term
-$`\mathbf{1}_k\mathbf{1}_k^{\mathsf T}Y_i/k`$ repeats the neighborhood’s
-mean position in every row. Subtracting it centers the neighborhood: we
-move its centroid to the origin without changing the positions of the
-points relative to one another. The term $`U_iU_i^{\mathsf T}Y_i`$ then
-subtracts the part explained by the local chart’s linear fit. What
-remains is the coordinate error that the best affine transformation
-cannot explain.
+W_i is a k \times k matrix that depends only on the local chart U_i.
+Multiplying it by the neighborhood coordinates Y_i gives the residual
+matrix R_i after the best affine fit. There are two subtractions here.
+The term \mathbf{1}\_k\mathbf{1}\_k^{\mathsf T}Y_i/k repeats the
+neighborhood’s mean position in every row. Subtracting it centers the
+neighborhood: we move its centroid to the origin without changing the
+positions of the points relative to one another. The term
+U_iU_i^{\mathsf T}Y_i then subtracts the part explained by the local
+chart’s linear fit. What remains is the coordinate error that the best
+affine transformation cannot explain.
 
 This also explains why translating the whole neighborhood does not
 change its fitting error. Adding the same offset to every point shifts
 the mean by that offset too, so centering cancels it.
 
-If the transformed chart can reproduce $`Y_i`$ exactly, $`W_iY_i`$ is a
-matrix of zeros. Otherwise, $`\|W_iY_i\|_F^2`$ gives us a single number:
-the smallest sum of squared errors that any affine fit to this chart can
-achieve. $`W_i`$ therefore lets us score how well the proposed embedding
+If the transformed chart can reproduce Y_i exactly, W_iY_i is a matrix
+of zeros. Otherwise, \\W_iY_i\\\_F^2 gives us a single number: the
+smallest sum of squared errors that any affine fit to this chart can
+achieve. W_i therefore lets us score how well the proposed embedding
 agrees with the local chart.
 
 ## Putting the neighborhoods together
 
-We can now score a proposed global embedding $`Y`$ by adding the
-best-fit errors from all the neighborhoods:
+We can now score a proposed global embedding Y by adding the best-fit
+errors from all the neighborhoods:
 
-``` math
-E(Y)=\sum_i\|W_i Y_i\|_F^2.
-```
+E(Y)=\sum_i\\W_i Y_i\\\_F^2.
 
-To combine these errors, we can use two properties of $`W_i`$. First,
-the residual $`R_i`$ has zero column means and no components along the
-columns of $`U_i`$. This is by construction: it is what remains after
-subtracting the fitted translation and the projection onto the columns
-of $`U_i`$. This makes $`W_i`$*idempotent*: applying $`W_i`$ again to
-the resulting residual leaves it unchanged,
-i.e. $`W_i \left(W_i Y_i\right) = W_i Y_i`$. Therefore $`W_i^2 = W_i`$.
+To combine these errors, we can use two properties of W_i. First, the
+residual R_i has zero column means and no components along the columns
+of U_i. This is by construction: it is what remains after subtracting
+the fitted translation and the projection onto the columns of U_i. This
+makes W_i *idempotent*: applying W_i again to the resulting residual
+leaves it unchanged, i.e. W_i \left(W_i Y_i\right) = W_i Y_i. Therefore
+W_i^2 = W_i.
 
-Second, each term in the definition of $`W_i`$ is symmetric, so
-$`W_i^{\mathsf T} = W_i`$.
+Second, each term in the definition of W_i is symmetric, so W_i^{\mathsf
+T} = W_i.
 
-For any real matrix $`M`$ the Frobenius norm is related to the trace
-(sum of the diagonal elements) by
-$`\|M\|_F^2 = \operatorname{tr}(M^{\mathsf T}M)`$. For our residual
-matrix $`R_i,`$ each diagonal entry of $`R_i^{\mathsf T}R_i`$ is the sum
-of squared residuals for one embedding axis. With this relationship and
-the idempotence and symmetry of $`W_i`$, we have:
+For any real matrix M the Frobenius norm is related to the trace (sum of
+the diagonal elements) by \\M\\\_F^2 = \operatorname{tr}(M^{\mathsf
+T}M). For our residual matrix R_i, each diagonal entry of R_i^{\mathsf
+T}R_i is the sum of squared residuals for one embedding axis. With this
+relationship and the idempotence and symmetry of W_i, we have:
 
-``` math
-\|W_i Y_i\|_F^2
-=\operatorname{tr}(Y_i^{\mathsf T}W_i^{\mathsf T}W_i Y_i)
-=\operatorname{tr}(Y_i^{\mathsf T}W_i Y_i).
-```
+\begin{aligned} \\W_i Y_i\\\_F^2 &=\operatorname{tr}(Y_i^{\mathsf
+T}W_i^{\mathsf T}W_i Y_i) \\ &=\operatorname{tr}(Y_i^{\mathsf T}W_i
+Y_i). \end{aligned}
 
-We can write the total cost in terms of the full embedding matrix $`Y`$
-by assembling the local costs into a *global alignment matrix*. Create
-an initially zero $`N \times N`$ matrix $`B`$. Add the entries of each
-$`W_i`$ to the rows and columns belonging to that neighborhood’s
-observations:
+We can write the total cost in terms of the full embedding matrix Y by
+assembling the local costs into a *global alignment matrix*. Create an
+initially zero N \times N matrix B. Add the entries of each W_i to the
+rows and columns belonging to that neighborhood’s observations:
 
-``` math
-E(Y)=\sum_i\operatorname{tr}(Y_i^{\mathsf T}W_i Y_i)
-=\operatorname{tr}(Y^{\mathsf T}BY).
-```
+\begin{aligned} E(Y)&=\sum_i\operatorname{tr}(Y_i^{\mathsf T}W_i Y_i) \\
+&=\operatorname{tr}(Y^{\mathsf T}BY). \end{aligned}
 
-The matrix $`B`$ encodes the local fits;
-$`\operatorname{tr}(Y^{\mathsf T}BY)`$ gives their total squared error
-after fitting every neighborhood to the same global embedding. The
-matrix is symmetric because each $`W_i`$ contributes to it
-symmetrically, and positive semidefinite since this error is a sum of
-squares, so can never be negative.
+The matrix B encodes the local fits; \operatorname{tr}(Y^{\mathsf T}BY)
+gives their total squared error after fitting every neighborhood to the
+same global embedding. The matrix is symmetric because each W_i
+contributes to it symmetrically, and positive semidefinite since this
+error is a sum of squares, so can never be negative.
 
 ## Avoiding the trivial solution
 
 There is a trivial solution to the global alignment problem: give every
 observation the same global position. This is the same as giving every
-neighborhood the same translation and $`A_i=0`$. The fitting error is
-zero, but an embedding that smushes every observation on top of each
-other is not useful.
+neighborhood the same translation and A_i=0. The fitting error is zero,
+but an embedding that smushes every observation on top of each other is
+not useful.
 
 Let’s first prevent all the coordinates from shrinking to zero by
-requiring each column of $`Y`$ to have unit length. *On top of that*, if
-you embed into more than one dimension, you need to make sure that axes
+requiring each column of Y to have unit length. *On top of that*, if you
+embed into more than one dimension, you need to make sure that axes
 don’t repeatedly find the same solution. So we also require the columns
 to be orthogonal. Together, you can express those conditions as:
 
-``` math
 Y^{\mathsf T}Y=I_d.
-```
 
 These conditions rule out the all-zero embedding, but a unit-length
 column can still have the same value in every row. We’ll deal with that
@@ -245,46 +214,34 @@ remaining problem when we choose the coordinates.
 ## Why eigenvectors?
 
 We now have something useful to minimize, but how do we minimize it?
-Start with one embedding axis, represented by a column vector $`y`$. Its
-alignment cost is $`y^{\mathsf T}By`$, and its unit-length constraint is
-$`y^{\mathsf T}y=1`$. For now, let’s minimize the cost subject to just
-that constraint. As is typical with constrained optimization, we’ll
-introduce a *Lagrange multiplier*, $`\lambda`$:
+Start with one embedding axis, represented by a column vector y. Its
+alignment cost is y^{\mathsf T}By, and its unit-length constraint is
+y^{\mathsf T}y=1. For now, let’s minimize the cost subject to just that
+constraint. As is typical with constrained optimization, we’ll introduce
+a *Lagrange multiplier*, \lambda:
 
-``` math
-\mathcal{L}(y,\lambda)
-=y^{\mathsf T}By-\lambda(y^{\mathsf T}y-1).
-```
+\mathcal{L}(y,\lambda) =y^{\mathsf T}By-\lambda(y^{\mathsf T}y-1).
 
-For a general real square matrix $`M`$,
-$`\nabla_y\left(y^{\mathsf T}My\right) = \left(M+M^{\mathsf T}\right)y`$,
-so if $`M`$ is symmetric,
-$`\nabla_y\left(y^{\mathsf T}My\right) = 2My`$.
+For a general real square matrix M, \nabla_y(y^{\mathsf T}My) =
+(M+M^{\mathsf T})y, so if M is symmetric, \nabla_y(y^{\mathsf T}My) =
+2My.
 
-At a constrained minimum, the derivatives with respect to $`y`$ and
-$`\lambda`$ must vanish. Because $`B`$ is symmetric, differentiating
-with respect to $`y`$ gives
+At a constrained minimum, the derivatives with respect to y and \lambda
+must vanish. Because B is symmetric, differentiating with respect to y
+gives
 
-``` math
 \nabla_y\mathcal{L}=2By-2\lambda y=0.
-```
 
 Rearranging gives the equation for an eigenvector:
 
-``` math
 By=\lambda y.
-```
 
 So the coordinate vector for a single axis is a unit-length eigenvector
-of $`B`$, with $`\lambda`$ as the eigenvalue. At any such eigenvector,
-the alignment cost is the eigenvalue:
+of B, with \lambda as the eigenvalue. At any such eigenvector, the
+alignment cost is the eigenvalue:
 
-``` math
-y^{\mathsf T}By
-=y^{\mathsf T}(\lambda y)
-=\lambda y^{\mathsf T}y
+y^{\mathsf T}By =y^{\mathsf T}(\lambda y) =\lambda y^{\mathsf T}y
 =\lambda.
-```
 
 So minimizing the cost subject to unit length means selecting an
 eigenvector with the smallest eigenvalue. Its entries supply the
@@ -292,25 +249,22 @@ coordinates for that axis. But there is a catch.
 
 If every observation has the same coordinate, subtracting the
 neighborhood mean leaves zeros, so each local fit has zero residual. In
-symbols, $`W_i\mathbf{1}_k=0`$, and assembling the local projectors
-gives $`B\mathbf{1}_N=0`$. The constant vector is therefore an
-eigenvector with eigenvalue zero. Scaling it to
-$`\mathbf{1}_N/\sqrt{N}`$ gives it unit length, so it satisfies our
-constraint and achieves the smallest possible cost. Yet every
-observation still has the same coordinate. This is the remaining
-collapsed solution we need to exclude.
+symbols, W_i\mathbf{1}\_k=0, and assembling the local projectors gives
+B\mathbf{1}\_N=0. The constant vector is therefore an eigenvector with
+eigenvalue zero. Scaling it to N^{-1/2}\mathbf{1}\_N gives it unit
+length, so it satisfies our constraint and achieves the smallest
+possible cost. Yet every observation still has the same coordinate. This
+is the remaining collapsed solution we need to exclude.
 
 When the constant direction is the only zero mode, the recipe is simple:
 order the eigenpairs from smallest eigenvalue upwards, discard the first
 eigenvector, and take the next one for a 1-dimensional embedding.
 
-Because $`B`$ is symmetric, we can choose its eigenvectors to be
-orthonormal. Each remaining eigenvector $`y`$ is then orthogonal to the
+Because B is symmetric, we can choose its eigenvectors to be
+orthonormal. Each remaining eigenvector y is then orthogonal to the
 constant vector, which means
 
-``` math
-\mathbf{1}_N^{\mathsf T}y=0.
-```
+\mathbf{1}\_N^{\mathsf T}y=0.
 
 The left-hand side is just the sum of the coordinates, so their mean is
 zero. The remaining eigenvectors are already centered: discarding the
@@ -319,20 +273,18 @@ constant eigenvector takes care of that for us.
 The argument above extends to several embedding axes because the total
 cost is the sum of their individual costs. The orthogonality constraint
 prevents us from choosing the same direction repeatedly. So if you want
-$`d`$ coordinates, you exclude the constant direction and take the $`d`$
+d coordinates, you exclude the constant direction and take the d
 orthonormal eigenvectors with the lowest eigenvalues in the remaining
 space. Their eigenvalues add up to the total alignment cost.
 
 We can now write the full optimization problem:
 
-``` math
-\min_Y \operatorname{tr}(Y^{\mathsf T}BY)
-\quad\text{subject to}\quad
-Y^{\mathsf T}Y=I_d,\qquad Y^{\mathsf T}\mathbf{1}_N=0.
-```
+\begin{gathered} \min_Y\\\operatorname{tr}(Y^{\mathsf T}BY) \\
+\begin{aligned} \text{subject to}\quad Y^{\mathsf T}Y&=I_d, \\
+Y^{\mathsf T}\mathbf{1}\_N&=0. \end{aligned} \end{gathered}
 
-Here, the centering constraint $`Y^{\mathsf T}\mathbf{1}_N=0`$ records
-the property that our selected eigenvectors already have.
+Here, the centering constraint Y^{\mathsf T}\mathbf{1}\_N=0 records the
+property that our selected eigenvectors already have.
 
 ## Other zero modes
 
@@ -361,17 +313,16 @@ embedding is not determined by the local fits.
 With the fitting problem established, the calculation is fairly compact:
 
 1.  Find a neighborhood for each observation.
-2.  Center each neighborhood and retain its first $`d`$ left singular
-    vectors in $`U_i`$, assuming it has at least $`d`$ supported
-    directions. We’ll return to rank-deficient neighborhoods below.
-3.  Form
-    $`W_i=I_k-\mathbf{1}_k\mathbf{1}_k^{\mathsf T}/k-U_iU_i^{\mathsf T}`$.
-4.  Add each $`W_i`$ into the corresponding rows and columns of $`B`$.
-5.  Exclude the constant direction and find $`d`$ orthonormal
-    eigenvectors of $`B`$ with the lowest eigenvalues in the remaining
-    space.
-6.  Put those vectors into the columns of $`Y`$; its rows are the
-    embedded observations.
+2.  Center each neighborhood and retain its first d left singular
+    vectors in U_i, assuming it has at least d supported directions.
+    We’ll return to rank-deficient neighborhoods below.
+3.  Form W_i=I_k-\mathbf{1}\_k\mathbf{1}\_k^{\mathsf
+    T}/k-U_iU_i^{\mathsf T}.
+4.  Add each W_i into the corresponding rows and columns of B.
+5.  Exclude the constant direction and find d orthonormal eigenvectors
+    of B with the lowest eigenvalues in the remaining space.
+6.  Put those vectors into the columns of Y; its rows are the embedded
+    observations.
 
 ## Some practicalities
 
@@ -406,15 +357,15 @@ may help, but it also asks a flat local approximation to cover a larger
 piece of the data. It changes the model, so more neighbors aren’t
 automatically better.
 
-We also assumed that every centered neighborhood had at least $`d`$
-nonzero singular values. When a neighborhood has numerical rank $`r<d`$,
-`flotsam` uses the $`r`$ supported directions and issues a warning. The
-same residual-projector formula applies with a $`k \times r`$ matrix
-$`U_i`$ and an $`r \times d`$ coefficient matrix $`A_i`$. With
-`output = "result"`, `assembly$rank_deficient_count` and
-`assembly$min_local_rank` tell you how often this happened and the
-smallest local rank. These are reasons to reconsider the tangent
-dimension or neighborhoods before interpreting the embedding.
+We also assumed that every centered neighborhood had at least d nonzero
+singular values. When a neighborhood has numerical rank r\<d, `flotsam`
+uses the r supported directions and issues a warning. The same
+residual-projector formula applies with a k \times r matrix U_i and an r
+\times d coefficient matrix A_i. With `output = "result"`,
+`assembly$rank_deficient_count` and `assembly$min_local_rank` tell you
+how often this happened and the smallest local rank. These are reasons
+to reconsider the tangent dimension or neighborhoods before interpreting
+the embedding.
 
 ### Are you your own neighbor?
 
@@ -431,7 +382,7 @@ This apparently small bookkeeping choice also has a mathematical
 connection: [work by Zhang and
 co-workers](https://doi.org/10.1109/TCYB.2017.2655338) relates it to
 Hessian Locally Linear Embedding. For our purposes, the thing to
-remember is that it changes the neighborhoods used to build $`B`$.
+remember is that it changes the neighborhoods used to build B.
 
 ## How many dimensions?
 
@@ -444,9 +395,9 @@ advanced uses where you want to inspect extra global coordinates or
 check the numerical stability of the result.
 
 - `ndim`: the requested local tangent dimension and the number of
-  coordinates returned as `embedding`. This is $`d`$ in the discussion
-  above. Changing `ndim` changes the local tangent spaces, the $`W_i`$
-  matrices, and hence $`B`$.
+  coordinates returned as `embedding`. This is d in the discussion
+  above. Changing `ndim` changes the local tangent spaces, the W_i
+  matrices, and hence B.
 - `spectral_dim`: the number of global coordinates retained, so you can
   inspect extra coordinates and diagnostics to see whether the displayed
   embedding cuts through a group of directions with similar eigenvalues.
@@ -457,17 +408,17 @@ check the numerical stability of the result.
   before removing the constant direction and refining and selecting the
   coordinates. This is effectively a numerical solver parameter: a
   larger value gives the calculation more candidates to work with, at
-  greater computational cost. It doesn’t change $`B`$ or the number of
+  greater computational cost. It doesn’t change B or the number of
   output coordinates.
 
 Iterative solvers request `eig_k` candidates. The dense solver computes
 the full eigensystem and passes its lowest `eig_k` eigenvectors to
 postprocessing.
 
-Increasing `spectral_dim` keeps more global coordinates from the same
-$`B`$. It can help us assess the global view, but it doesn’t establish
-whether `ndim` was sufficient for the local projections. Changing that
-local dimension means changing `ndim` and rebuilding $`B`$.
+Increasing `spectral_dim` keeps more global coordinates from the same B.
+It can help us assess the global view, but it doesn’t establish whether
+`ndim` was sufficient for the local projections. Changing that local
+dimension means changing `ndim` and rebuilding B.
 
 `spectral_dim` must be at least `ndim`. When it is larger, `eig_k` must
 be at least `spectral_dim + 2`: one extra place for the constant
@@ -478,7 +429,7 @@ than the number of observations. Most of the time you can leave it at
 its default.
 
 For example, with `ndim = 2`, `spectral_dim = 4`, and `eig_k = 8`, we
-build $`B`$ using two-dimensional local projections, use eight candidate
+build B using two-dimensional local projections, use eight candidate
 vectors for postprocessing, and retain four nonconstant global
 coordinates. The first two go into `embedding`, and all four go into
 `spectral_embedding`. The [spectral blocks
@@ -489,10 +440,10 @@ gives examples of inspecting these extra coordinates.
 
 By default,
 [`ltsa()`](https://jlmelville.github.io/flotsam/reference/ltsa.md)
-returns a coordinate matrix with $`N`$ rows and `ndim` columns. To see
-how the calculation went, use `output = "result"`. For example, given a
-data matrix `X`, this keeps the default two-dimensional tangent model
-and embedding while retaining four global coordinates:
+returns a coordinate matrix with N rows and `ndim` columns. To see how
+the calculation went, use `output = "result"`. For example, given a data
+matrix `X`, this keeps the default two-dimensional tangent model and
+embedding while retaining four global coordinates:
 
 ``` r
 
@@ -519,12 +470,12 @@ guide below explains what to look for in the eigenanalysis statuses and
 messages.
 
 If you want to work with the matrix yourself, `output = "B"` stops
-before eigenanalysis and returns $`B`$ for ordinary LTSA. With
+before eigenanalysis and returns B for ordinary LTSA. With
 `normalize = TRUE`, it returns the normalized operator instead; see the
 [normalization
 article](https://jlmelville.github.io/flotsam/articles/ltsa-normalization.md).
 Alternatively, use `include_B = TRUE` with `output = "result"` to
-include the unnormalized $`B`$ alongside the embedding and diagnostics.
+include the unnormalized B alongside the embedding and diagnostics.
 
 ## Computing the eigenvectors
 
@@ -551,7 +502,7 @@ diagnostics to things you can try.
 ## Using more cores
 
 `n_threads` controls neighbor search, while `n_assembly_threads`
-controls construction of $`B`$. Both default to serial execution. More
+controls construction of B. Both default to serial execution. More
 threads change how the work is carried out, with one qualification:
 multithreaded approximate neighbor search need not produce exactly the
 same graph on each run, so the embedding can change too. If you are
