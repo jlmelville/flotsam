@@ -1,8 +1,19 @@
-<html>
+<!DOCTYPE html>
+<html lang="en">
   <head>
-    <meta http-equiv="refresh" content="0;URL=https://jlmelville.github.io/flotsam/articles/spectral-blocks.html" />
+    <meta charset="utf-8">
+    <title>Redirecting</title>
     <meta name="robots" content="noindex">
     <link rel="canonical" href="https://jlmelville.github.io/flotsam/articles/spectral-blocks.html">
+    <script>
+      // Preserve section links unless the redirect specifies its own section.
+      const destination = new URL(document.querySelector('link[rel="canonical"]').href);
+      if (!destination.hash) destination.hash = window.location.hash;
+      window.location.replace(destination.href);
+    </script>
+    <noscript>
+      <meta http-equiv="refresh" content="0;URL=https://jlmelville.github.io/flotsam/articles/spectral-blocks.html">
+    </noscript>
   </head>
 </html>
 

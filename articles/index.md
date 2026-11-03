@@ -3,7 +3,7 @@
 ### Notes
 
 - [Local Tangent Space
-  Alignment](https://jlmelville.github.io/flotsam/articles/LTSA.md):
+  Alignment](https://jlmelville.github.io/flotsam/articles/ltsa.md):
 - [Exploring LTSA spectral
   blocks](https://jlmelville.github.io/flotsam/articles/spectral-blocks.md):
 - [Jacobi-Normalized

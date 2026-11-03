@@ -1,7 +1,7 @@
 # Jacobi-Normalized LTSA
 
 The [LTSA
-article](https://jlmelville.github.io/flotsam/articles/LTSA.md) gave us
+article](https://jlmelville.github.io/flotsam/articles/ltsa.md) gave us
 a recipe: construct local charts, assemble their alignment matrix B, and
 use eigenvectors to find global coordinates that agree with those
 charts. Along the way, we chose a normalization to keep the embedding
@@ -191,7 +191,7 @@ the ordinary Euclidean sense.
 
 The direction to exclude is now q, which is generally **not** a constant
 vector. The [procedure for handling other zero
-modes](https://jlmelville.github.io/flotsam/articles/LTSA.html#other-zero-modes)
+modes](https://jlmelville.github.io/flotsam/articles/ltsa.html#other-zero-modes)
 carries over too: `flotsam` projects q out of the candidate vectors
 before selecting the coordinates. The invertible change of variables
 preserves the number of zero modes.
