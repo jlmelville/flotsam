@@ -6,7 +6,10 @@ template:
 articles:
 - title: Notes
   contents:
-  - articles/LTSA
+  - articles/ltsa
   - articles/spectral-blocks
   - articles/ltsa-normalization
   - articles/numerical-diagnostics
+
+redirects:
+  - ["articles/LTSA.html", "articles/ltsa.html"]

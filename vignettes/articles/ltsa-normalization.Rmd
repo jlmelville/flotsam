@@ -2,7 +2,7 @@
 title: "Jacobi-Normalized LTSA"
 ---
 
-The [LTSA article](LTSA.html) gave us a recipe: construct local charts, assemble their alignment
+The [LTSA article](ltsa.html) gave us a recipe: construct local charts, assemble their alignment
 matrix $B$, and use eigenvectors to find global coordinates that agree with those charts. Along
 the way, we chose a normalization to keep the embedding from collapsing. Changing that choice
 gives us a way to explore a family of LTSA methods while retaining much of the same implementation.
@@ -189,7 +189,7 @@ The returned columns of $Y$ have unit length and are orthogonal and centered in 
 product; they need not have those properties in the ordinary Euclidean sense.
 
 The direction to exclude is now $q$, which is generally **not** a constant vector. The
-[procedure for handling other zero modes](LTSA.html#other-zero-modes) carries over too: `flotsam`
+[procedure for handling other zero modes](ltsa.html#other-zero-modes) carries over too: `flotsam`
 projects $q$ out of the candidate vectors before selecting the coordinates. The invertible
 change of variables preserves the number of zero modes.
 
