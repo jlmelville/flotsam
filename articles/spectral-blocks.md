@@ -29,8 +29,8 @@ fit <- flotsam::ltsa(
   spectral_dim = 4
 )
 
-dim(fit$embedding)                    # n by 2
-dim(fit$spectral_embedding)           # n by 4
+dim(fit$embedding) # n by 2
+dim(fit$spectral_embedding) # n by 4
 identical(
   fit$embedding,
   fit$spectral_embedding[, 1:2, drop = FALSE]
@@ -98,7 +98,7 @@ circle_fit$eigen$spectral$values
 circle_fit$eigen$status
 #> [1] "warning"
 circle_fit$eigen$messages
-#> [1] "Weak Ritz boundary gap after the selected block: 2.635e-18 < 1e-04."
+#> [1] "Weak Ritz boundary gap after the selected block: 3.687e-18 < 1e-04."
 ```
 
 ![Four panels show a colored input circle, a sinusoidal one-coordinate
@@ -339,7 +339,10 @@ Here’s a compact version of the COIL-20 example. Install `flotsam`,
 
 install.packages("pak")
 pak::pak(c(
-  "jlmelville/flotsam", "jlmelville/snedata", "jlmelville/vizier", "ggplot2"
+  "jlmelville/flotsam",
+  "jlmelville/snedata",
+  "jlmelville/vizier",
+  "ggplot2"
 ))
 ```
 
@@ -354,13 +357,22 @@ X <- coil$data[rows, , drop = FALSE]
 pose <- as.integer(as.character(coil$meta$pose[rows]))
 
 fit <- flotsam::ltsa(
-  X, ndim = 1, n_neighbors = 7, nn_method = "exact", eig_method = "eig",
-  eig_k = 8, output = "result", spectral_dim = 4
+  X,
+  ndim = 1,
+  n_neighbors = 7,
+  nn_method = "exact",
+  eig_method = "eig",
+  eig_k = 8,
+  output = "result",
+  spectral_dim = 4
 )
 vizier::embed_ggplot(
-  fit$spectral_embedding[, 1:2], pose,
-  color_scheme = grDevices::hcl.colors(256, "Dynamic"), num_colors = 256,
-  fixed_aspect = TRUE, title = "COIL-20 object 4: modes 1 and 2"
+  fit$spectral_embedding[, 1:2],
+  pose,
+  color_scheme = grDevices::hcl.colors(256, "Dynamic"),
+  num_colors = 256,
+  fixed_aspect = TRUE,
+  title = "COIL-20 object 4: modes 1 and 2"
 )
 ```
 

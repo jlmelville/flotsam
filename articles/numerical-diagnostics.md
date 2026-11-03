@@ -75,8 +75,8 @@ data.frame(
   )
 )
 #>       scope  status boundary_gap max_scaled_residual
-#> 1 displayed warning   1.2355e-06          4.4756e-07
-#> 2  retained warning   2.9753e-05          4.4756e-07
+#> 1 displayed warning   1.2355e-06          4.3791e-07
+#> 2  retained warning   2.9753e-05          4.3791e-07
 
 diagnostic_fit$eigen$messages
 #> [1] "Weak Ritz boundary gap after the selected block: 1.235e-06 < 1e-04."
@@ -90,8 +90,7 @@ Now rule out structural problems in the operator.
 
 data.frame(
   components = diagnostic_fit$assembly$component_count,
-  rank_deficient_neighborhoods =
-    diagnostic_fit$assembly$rank_deficient_count,
+  rank_deficient_neighborhoods = diagnostic_fit$assembly$rank_deficient_count,
   minimum_local_rank = diagnostic_fit$assembly$min_local_rank,
   requested_method = diagnostic_fit$eigen$method,
   backend = diagnostic_fit$eigen$backend$name
@@ -195,21 +194,31 @@ X <- as.matrix(s_curve[, c("x", "y", "z")])
 
 set.seed(42)
 nn <- rnndescent::nnd_knn(X, k = 16, n_threads = 1)
-graph <- t(vapply(seq_len(nrow(X)), function(i) {
-  neighbors <- nn$idx[i, order(nn$dist[i, ], nn$idx[i, ])]
-  c(i, head(neighbors[neighbors != i], 14))
-}, integer(15)))
+graph <- t(vapply(
+  seq_len(nrow(X)),
+  function(i) {
+    neighbors <- nn$idx[i, order(nn$dist[i, ], nn$idx[i, ])]
+    c(i, head(neighbors[neighbors != i], 14))
+  },
+  integer(15)
+))
 
 fit_s_curve <- function(eig_k, tol) {
   set.seed(42)
   flotsam::ltsa(
-    X, n_neighbors = 15, nn_method = graph, eig_method = "rspectra",
-    eig_k = eig_k, tol = tol, output = "result"
+    X,
+    n_neighbors = 15,
+    nn_method = graph,
+    eig_method = "rspectra",
+    eig_k = eig_k,
+    tol = tol,
+    output = "result"
   )
 }
 narrow <- fit_s_curve(eig_k = 6, tol = 1e-6)
 strict_narrow <- tryCatch(
-  fit_s_curve(eig_k = 6, tol = 1e-8), error = function(e) e
+  fit_s_curve(eig_k = 6, tol = 1e-8),
+  error = function(e) e
 )
 wide <- fit_s_curve(eig_k = 18, tol = 1e-8)
 

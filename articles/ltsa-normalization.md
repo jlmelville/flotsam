@@ -425,7 +425,9 @@ the plotting code uses `vizier` 0.6.2 or later:
 
 install.packages("pak")
 pak::pak(c(
-  "jlmelville/flotsam", "jlmelville/snedata", "jlmelville/vizier",
+  "jlmelville/flotsam",
+  "jlmelville/snedata",
+  "jlmelville/vizier",
   "ggplot2"
 ))
 ```
