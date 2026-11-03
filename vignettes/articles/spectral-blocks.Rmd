@@ -40,8 +40,8 @@ fit <- flotsam::ltsa(
   spectral_dim = 4
 )
 
-dim(fit$embedding)                    # n by 2
-dim(fit$spectral_embedding)           # n by 4
+dim(fit$embedding) # n by 2
+dim(fit$spectral_embedding) # n by 4
 identical(
   fit$embedding,
   fit$spectral_embedding[, 1:2, drop = FALSE]
@@ -366,7 +366,10 @@ Here's a compact version of the COIL-20 example. Install `flotsam`, `snedata`,
 ```{r install-coil, eval=FALSE}
 install.packages("pak")
 pak::pak(c(
-  "jlmelville/flotsam", "jlmelville/snedata", "jlmelville/vizier", "ggplot2"
+  "jlmelville/flotsam",
+  "jlmelville/snedata",
+  "jlmelville/vizier",
+  "ggplot2"
 ))
 ```
 
@@ -380,13 +383,22 @@ X <- coil$data[rows, , drop = FALSE]
 pose <- as.integer(as.character(coil$meta$pose[rows]))
 
 fit <- flotsam::ltsa(
-  X, ndim = 1, n_neighbors = 7, nn_method = "exact", eig_method = "eig",
-  eig_k = 8, output = "result", spectral_dim = 4
+  X,
+  ndim = 1,
+  n_neighbors = 7,
+  nn_method = "exact",
+  eig_method = "eig",
+  eig_k = 8,
+  output = "result",
+  spectral_dim = 4
 )
 vizier::embed_ggplot(
-  fit$spectral_embedding[, 1:2], pose,
-  color_scheme = grDevices::hcl.colors(256, "Dynamic"), num_colors = 256,
-  fixed_aspect = TRUE, title = "COIL-20 object 4: modes 1 and 2"
+  fit$spectral_embedding[, 1:2],
+  pose,
+  color_scheme = grDevices::hcl.colors(256, "Dynamic"),
+  num_colors = 256,
+  fixed_aspect = TRUE,
+  title = "COIL-20 object 4: modes 1 and 2"
 )
 ```
 
