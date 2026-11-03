@@ -45,7 +45,13 @@ jobs:
           needs: website
 
       - name: Build site
-        run: Rscript -e 'pkgdown::build_site_github_pages(new_process = FALSE, install = FALSE)'
+        run: |
+          pkgdown::build_site_github_pages(new_process = FALSE, install = FALSE)
+          # Add the case-only legacy redirect on Linux, where it cannot overwrite ltsa.html.
+          pkgdown::build_redirects(override = list(
+            redirects = list(c("articles/LTSA.html", "articles/ltsa.html"))
+          ))
+        shell: Rscript {0}
 
       - name: Upload site artifact
         if: github.event_name != 'pull_request'
@@ -55,6 +61,7 @@ jobs:
           name: pkgdown-site
           path: docs
           if-no-files-found: error
+          include-hidden-files: true
 
   deploy-site:
     name: Deploy pkgdown site
@@ -82,6 +89,6 @@ jobs:
         # Pinned to a full-length commit SHA for immutability; Dependabot updates this reference.
         uses: JamesIves/github-pages-deploy-action@fa24774553152dd7873cd16ebd8d959b010c5445
         with:
-          clean: false
+          clean: true
           branch: gh-pages
           folder: docs
