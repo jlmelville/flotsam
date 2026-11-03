@@ -75,8 +75,8 @@ data.frame(
   )
 )
 #>       scope  status boundary_gap max_scaled_residual
-#> 1 displayed warning   1.2355e-06          4.3791e-07
-#> 2  retained warning   2.9753e-05          4.3791e-07
+#> 1 displayed warning   1.2355e-06          4.4756e-07
+#> 2  retained warning   2.9753e-05          4.4756e-07
 
 diagnostic_fit$eigen$messages
 #> [1] "Weak Ritz boundary gap after the selected block: 1.235e-06 < 1e-04."
@@ -166,18 +166,21 @@ remains `"warning"` because the displayed Ritz boundary is weak, so the
 example demonstrates successful geometric recovery without claiming that
 the two-mode boundary is strongly isolated.
 
-![With six candidate vectors, one latent direction is largely missed and
-the embedding bends.](figures/s-curve-hole-eig-k-6.png)
+![Scatterplot of the six-candidate embedding: points form a narrow
+V-shaped band, colored smoothly along its length. One latent direction
+is largely missed.](figures/s-curve-hole-eig-k-6.png)
 
-With six candidate vectors, one latent direction is largely missed and
-the embedding bends.
+Scatterplot of the six-candidate embedding: points form a narrow
+V-shaped band, colored smoothly along its length. One latent direction
+is largely missed.
 
-![With eighteen candidate vectors and the tighter tolerance, the same
-fixed graph yields the expected unrolled geometry and visible
-hole.](figures/s-curve-hole-eig-k-18-tol-1e-8.png)
+![Scatterplot of the eighteen-candidate embedding: points fill a roughly
+rectangular sheet with a central vertical hole, colored smoothly across
+the sheet.](figures/s-curve-hole-eig-k-18-tol-1e-8.png)
 
-With eighteen candidate vectors and the tighter tolerance, the same
-fixed graph yields the expected unrolled geometry and visible hole.
+Scatterplot of the eighteen-candidate embedding: points fill a roughly
+rectangular sheet with a central vertical hole, colored smoothly across
+the sheet.
 
 Here’s the central comparison. Install `snedata` with
 `pak::pak("jlmelville/snedata")` and use the same graph for all three

@@ -98,13 +98,13 @@ circle_fit$eigen$spectral$values
 circle_fit$eigen$status
 #> [1] "warning"
 circle_fit$eigen$messages
-#> [1] "Weak Ritz boundary gap after the selected block: 3.687e-18 < 1e-04."
+#> [1] "Weak Ritz boundary gap after the selected block: 2.635e-18 < 1e-04."
 ```
 
-![The input circle, its one-dimensional LTSA display, the first two
-modes from the same operator, and the low spectrum. The mode pair
-follows the complete periodic
-progression.](spectral-blocks_files/figure-html/circle-figure-1.png)
+![Four panels show a colored input circle, a sinusoidal one-coordinate
+display against angle, a circular first-mode pair, and the low spectrum.
+The first two Ritz values are close together, followed by a larger
+gap.](spectral-blocks_files/figure-html/circle-figure-1.png)
 
 The input circle, its one-dimensional LTSA display, the first two modes
 from the same operator, and the low spectrum. The mode pair follows the
@@ -129,18 +129,23 @@ sequence. Each fit uses standard LTSA with `ndim = 1`, exact neighbors,
 and four retained modes. The coordinates come from pixels; pose supplies
 the point colors and thumbnail labels.
 
-![COIL-20 object 4. Modes 1 and 2 form a pose-ordered orbit, with
-thumbnails placed in the same radial direction as their
-observations.](figures/ltsa-spectral-block-coil-object-4.png)
+![COIL-20 object 4: modes 1 and 2 form a pose-ordered orbit, with
+thumbnails around it. An adjacent spectrum shows the first two modes
+close together and a gap before later
+modes.](figures/ltsa-spectral-block-coil-object-4.png)
 
-COIL-20 object 4. Modes 1 and 2 form a pose-ordered orbit, with
-thumbnails placed in the same radial direction as their observations.
+COIL-20 object 4: modes 1 and 2 form a pose-ordered orbit, with
+thumbnails around it. An adjacent spectrum shows the first two modes
+close together and a gap before later modes.
 
-![COIL-20 object 1. The path is more distorted and still follows the
-object’s rotation.](figures/ltsa-spectral-block-coil-object-1.png)
+![COIL-20 object 1: the mode-pair orbit is more distorted but still
+follows the object’s rotation. An adjacent spectrum shows the first two
+modes close together and a gap before later
+modes.](figures/ltsa-spectral-block-coil-object-1.png)
 
-COIL-20 object 1. The path is more distorted and still follows the
-object’s rotation.
+COIL-20 object 1: the mode-pair orbit is more distorted but still
+follows the object’s rotation. An adjacent spectrum shows the first two
+modes close together and a gap before later modes.
 
 For objects 4 and 1, the gap after mode 2 is about 23 and 12 times
 larger, respectively, than the gap between modes 1 and 2. This is the

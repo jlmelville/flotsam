@@ -1,0 +1,13 @@
+.katex-display {
+  overflow: auto hidden;
+}
+
+[data-bs-theme="dark"] .navbar .text-danger {
+  color: #ffb4b4 !important;
+}
+
+/* Preserve data colors in inline and enlarged figures in dark mode. */
+[data-bs-theme="dark"] .template-article img,
+[data-bs-theme="dark"] [data-figure-modal] img {
+  filter: none !important;
+}
